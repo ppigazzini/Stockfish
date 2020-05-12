@@ -149,7 +149,7 @@ namespace {
   constexpr Score WeakQueenProtection = S( 15,  0);
 
   int Coef1 = 20;
-  TUNE (Coef1);
+  TUNE(SetRange(-1000,1000), Coef1);
 
 #undef S
 
