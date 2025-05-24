@@ -77,10 +77,10 @@ jobs:
         run: |
           if [ $COMP == ndk ]; then
             export PATH=${{ env.ANDROID_NDK_BIN }}:$PATH
-            export LDFLAGS="-static -Wno-unused-command-line-argument"
+            #export LDFLAGS="-static -Wno-unused-command-line-argument"
           fi
           make clean
-          make -j4 profile-build ARCH=$BINARY COMP=$COMP WINE_PATH=$EMU
+          make -j4 build ARCH=$BINARY COMP=$COMP WINE_PATH=$EMU
           make strip ARCH=$BINARY COMP=$COMP
           WINE_PATH=$EMU ../tests/signature.sh $benchref
           mv ./stockfish$EXT ../stockfish-android-$BINARY$EXT
