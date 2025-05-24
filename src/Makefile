@@ -562,7 +562,7 @@ ifeq ($(COMP),ndk)
 			STRIP=llvm-strip
 		endif
 	endif
-	LDFLAGS += -static-libstdc++ -pie -lm -latomic
+	LDFLAGS += -static-libstdc++ -pie -latomic
 endif
 
 ### Allow overwriting CXX from command line
