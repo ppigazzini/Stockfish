@@ -13,7 +13,7 @@ on:
       - tools
 jobs:
   Prerelease:
-    if: github.repository == 'official-stockfish/Stockfish' && (github.ref == 'refs/heads/master' || (startsWith(github.ref_name, 'sf_') && github.ref_type == 'tag'))
+    #if: github.repository == 'official-stockfish/Stockfish' && (github.ref == 'refs/heads/master' || (startsWith(github.ref_name, 'sf_') && github.ref_type == 'tag'))
     runs-on: ubuntu-latest
     permissions:
       contents: write # For deleting/creating a prerelease
@@ -81,6 +81,7 @@ jobs:
           TASKS_ARM=$(echo $(cat .github/ci/arm_matrix.json) )
           echo "ARM_MATRIX=$TASKS_ARM" >> $GITHUB_OUTPUT
   Compilation:
+    if: github.repository == 'official-stockfish/Stockfish'
     needs: [Matrix]
     uses: ./.github/workflows/compilation.yml
     with:
@@ -111,7 +112,7 @@ jobs:
     secrets:
       token: ${{ secrets.GITHUB_TOKEN }}
   ARM_Binaries:
-    if: github.repository == 'official-stockfish/Stockfish'
+    #if: github.repository == 'official-stockfish/Stockfish'
     needs: [Matrix, Prerelease, ARMCompilation]
     uses: ./.github/workflows/upload_binaries.yml
     with:
