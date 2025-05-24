@@ -535,7 +535,7 @@ endif
 
 # To cross-compile for Android, use NDK version r27c or later.
 ifeq ($(COMP),ndk)
-	CXXFLAGS += -stdlib=libc++
+	CXXFLAGS += -stdlib=libc++ -nostdinc++
 	comp=clang
 	ifeq ($(arch),armv7)
 		CXX=armv7a-linux-androideabi29-clang++
@@ -562,7 +562,7 @@ ifeq ($(COMP),ndk)
 			STRIP=llvm-strip
 		endif
 	endif
-	LDFLAGS += -static-libstdc++
+	LDFLAGS += -nostdlib++
 endif
 
 ### Allow overwriting CXX from command line
