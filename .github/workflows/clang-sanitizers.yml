@@ -1,0 +1,168 @@
+name: Clang Sanitizer
+on:
+  workflow_call:
+jobs:
+  test-under-clang-sanitizer:
+    name: ${{ matrix.sanitizers.name }}
+    runs-on: ${{ matrix.config.os }}
+    continue-on-error: ${{ matrix.sanitizers.continue_on_error }}
+    env:
+      COMPCXX: ${{ matrix.config.compiler }}
+      COMP: ${{ matrix.config.comp }}
+      CXXFLAGS: "-Werror"
+      LLVM_VERSION: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Ubuntu Latest Clang 22
+            os: ubuntu-latest
+            compiler: clang++
+            comp: clang
+            shell: bash
+        sanitizers:
+          - name: Run with thread sanitizer
+            make_option: sanitize=thread
+            cxx_extra_flags: ""
+            ld_extra_flags: -fuse-ld=lld
+            instrumented_option: sanitizer-thread
+            continue_on_error: false
+            ubsan_options: ""
+            asan_options: ""
+            msan_options: ""
+            extra_make_variables: ""
+            make_debug: yes
+            make_optimize: no
+          - name: Run with address and UB sanitizer
+            make_option: "sanitize='address undefined'"
+            cxx_extra_flags: -fno-omit-frame-pointer
+            ld_extra_flags: -fuse-ld=lld
+            instrumented_option: sanitizer-address
+            continue_on_error: false
+            ubsan_options: print_stacktrace=1
+            asan_options: detect_leaks=1:check_initialization_order=1:strict_string_checks=1
+            msan_options: ""
+            extra_make_variables: ""
+            make_debug: yes
+            make_optimize: no
+          - name: Run with UB sanitizer
+            make_option: sanitize=undefined
+            cxx_extra_flags: ""
+            ld_extra_flags: -fuse-ld=lld
+            instrumented_option: sanitizer-undefined
+            continue_on_error: false
+            ubsan_options: ""
+            asan_options: ""
+            msan_options: ""
+            extra_make_variables: ""
+            make_debug: yes
+            make_optimize: no
+          - name: Run under valgrind
+            make_option: ""
+            cxx_extra_flags: ""
+            ld_extra_flags: -fuse-ld=lld
+            instrumented_option: valgrind
+            continue_on_error: false
+            ubsan_options: ""
+            asan_options: ""
+            msan_options: ""
+            extra_make_variables: ""
+            make_debug: yes
+            make_optimize: no
+          - name: Run under valgrind-thread
+            make_option: ""
+            cxx_extra_flags: ""
+            ld_extra_flags: -fuse-ld=lld
+            instrumented_option: valgrind-thread
+            continue_on_error: false
+            ubsan_options: ""
+            asan_options: ""
+            msan_options: ""
+            extra_make_variables: ""
+            make_debug: yes
+            make_optimize: no
+          - name: Run non-instrumented
+            make_option: ""
+            cxx_extra_flags: ""
+            ld_extra_flags: -fuse-ld=lld
+            instrumented_option: none
+            continue_on_error: false
+            ubsan_options: ""
+            asan_options: ""
+            msan_options: ""
+            extra_make_variables: ""
+            make_debug: yes
+            make_optimize: no
+          - name: Run with glibcxx assertions
+            make_option: ""
+            cxx_extra_flags: -D_GLIBCXX_ASSERTIONS
+            ld_extra_flags: -fuse-ld=lld
+            instrumented_option: none
+            continue_on_error: false
+            ubsan_options: ""
+            asan_options: ""
+            msan_options: ""
+            extra_make_variables: ""
+            make_debug: yes
+            make_optimize: no
+    defaults:
+      run:
+        working-directory: src
+        shell: ${{ matrix.config.shell }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download required linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y expect valgrind g++-multilib wget ca-certificates
+
+      - name: Install LLVM and Clang 22
+        run: |
+          sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)" ./llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y --no-install-recommends \
+            clang-"${LLVM_VERSION}" \
+            clang-tools-"${LLVM_VERSION}" \
+            lld-"${LLVM_VERSION}" \
+            libclang-rt-"${LLVM_VERSION}"-dev
+          llvm_bindir="$(llvm-config-"${LLVM_VERSION}" --bindir)"
+          echo "PATH=${llvm_bindir}:$PATH" >> "$GITHUB_ENV"
+          echo "MSAN_SYMBOLIZER_PATH=${llvm_bindir}/llvm-symbolizer" >> "$GITHUB_ENV"
+
+      - name: Show LLVM toolchain
+        run: |
+          clang --version
+          clang++ --version
+          ld.lld --version
+          llvm-symbolizer --version
+
+      - name: Download the used network from the fishtest framework
+        run: make net
+
+      - name: Check compiler
+        run: $COMPCXX -v
+
+      - name: Test help target
+        run: make help
+
+      - name: Check git
+        run: git --version
+
+      - name: ${{ matrix.sanitizers.name }}
+        env:
+          UBSAN_OPTIONS: ${{ matrix.sanitizers.ubsan_options }}
+          ASAN_OPTIONS: ${{ matrix.sanitizers.asan_options }}
+          MSAN_OPTIONS: ${{ matrix.sanitizers.msan_options }}
+        run: |
+          export CXXFLAGS="-O1 -fno-inline ${{ matrix.sanitizers.cxx_extra_flags }}"
+          export LDFLAGS="${{ matrix.sanitizers.ld_extra_flags }}"
+          make clean
+          make -j4 ARCH=x86-64-sse41-popcnt \
+            ${{ matrix.sanitizers.make_option }} \
+            ${{ matrix.sanitizers.extra_make_variables }} \
+            debug=${{ matrix.sanitizers.make_debug }} \
+            optimize=${{ matrix.sanitizers.make_optimize }} \
+            build > /dev/null
+          python3 ../tests/instrumented.py --${{ matrix.sanitizers.instrumented_option }} ./stockfish

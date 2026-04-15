@@ -1,0 +1,84 @@
+name: Clang Tidy
+on:
+  workflow_call:
+jobs:
+  ClangTidy:
+    runs-on: ubuntu-latest
+    env:
+      COMPCXX: clang++
+      COMP: clang
+      CXXFLAGS: "-Werror"
+      LLVM_VERSION: 22
+    defaults:
+      run:
+        working-directory: src
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download required linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget ca-certificates
+
+      - name: Install LLVM and Clang 22
+        run: |
+          sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)" ./llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y --no-install-recommends \
+            clang-"${LLVM_VERSION}" \
+            clang-tidy-"${LLVM_VERSION}" \
+            clang-tools-"${LLVM_VERSION}" \
+            lld-"${LLVM_VERSION}" \
+            libclang-rt-"${LLVM_VERSION}"-dev
+          llvm_bindir="$(llvm-config-"${LLVM_VERSION}" --bindir)"
+          if clang_tidy_bin="$(command -v clang-tidy-"${LLVM_VERSION}")"; then
+            :
+          elif clang_tidy_bin="$(command -v clang-tidy)"; then
+            :
+          else
+            echo "clang-tidy executable not found" >&2
+            exit 1
+          fi
+          echo "PATH=${llvm_bindir}:$PATH" >> "$GITHUB_ENV"
+          echo "LLVM_BINDIR=${llvm_bindir}" >> "$GITHUB_ENV"
+          echo "CLANG_TIDY_BIN=${clang_tidy_bin}" >> "$GITHUB_ENV"
+
+      - name: Show LLVM toolchain
+        run: |
+          clang --version
+          clang++ --version
+          "$LLVM_BINDIR"/intercept-build --help > /dev/null
+          "$CLANG_TIDY_BIN" --version
+
+      - name: Download the used network from the fishtest framework
+        run: make net
+
+      - name: Generate compilation database
+        run: |
+          rm -rf ../artifacts/clang-tidy
+          mkdir -p ../artifacts/clang-tidy
+          make clean
+          "$LLVM_BINDIR"/intercept-build --cdb compile_commands.json make -j4 ARCH=x86-64-sse41-popcnt debug=no optimize=no build > /dev/null
+          cp compile_commands.json ../artifacts/clang-tidy/compile_commands.json
+          clang_tidy_config="$GITHUB_WORKSPACE/.clang-tidy"
+          if [[ ! -f "$clang_tidy_config" ]]; then
+            printf 'Expected clang-tidy config at %s, but it was not found.\n' "$clang_tidy_config" >&2
+            exit 1
+          fi
+          cp "$clang_tidy_config" ../artifacts/clang-tidy/.clang-tidy
+          echo "CLANG_TIDY_CONFIG=${clang_tidy_config}" >> "$GITHUB_ENV"
+
+      - name: Run clang-tidy
+        run: |
+          find . -name '*.cpp' | sort > ../artifacts/clang-tidy/files.txt
+          xargs -a ../artifacts/clang-tidy/files.txt "$CLANG_TIDY_BIN" --quiet --config-file "$CLANG_TIDY_CONFIG" -p . 2>&1 | tee ../artifacts/clang-tidy/clang-tidy.txt
+
+      - name: Upload clang-tidy artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy
+          path: artifacts/clang-tidy
+          if-no-files-found: error

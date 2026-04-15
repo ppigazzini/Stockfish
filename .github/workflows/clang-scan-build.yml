@@ -1,0 +1,71 @@
+name: Clang Scan-Build
+on:
+  workflow_call:
+jobs:
+  ScanBuild:
+    runs-on: ubuntu-latest
+    env:
+      COMPCXX: clang++
+      COMP: clang
+      CXXFLAGS: "-Werror"
+      LLVM_VERSION: 22
+    defaults:
+      run:
+        working-directory: src
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download required linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget ca-certificates
+
+      - name: Install LLVM and Clang 22
+        run: |
+          sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)" ./llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y --no-install-recommends \
+            clang-"${LLVM_VERSION}" \
+            clang-tools-"${LLVM_VERSION}" \
+            lld-"${LLVM_VERSION}" \
+            libclang-rt-"${LLVM_VERSION}"-dev
+          llvm_bindir="$(llvm-config-"${LLVM_VERSION}" --bindir)"
+          echo "PATH=${llvm_bindir}:$PATH" >> "$GITHUB_ENV"
+
+      - name: Show LLVM toolchain
+        run: |
+          clang --version
+          clang++ --version
+          scan-build --help > /dev/null
+
+      - name: Download the used network from the fishtest framework
+        run: make net
+
+      - name: Run scan-build
+        run: |
+          rm -rf ../artifacts/scan-build
+          mkdir -p ../artifacts/scan-build
+          make clean
+          scan-build \
+            --keep-going \
+            --use-cc clang \
+            --use-c++ clang++ \
+            -o ../artifacts/scan-build \
+            make -j4 ARCH=x86-64-sse41-popcnt debug=no optimize=no build > /dev/null
+          latest_report="$(find ../artifacts/scan-build -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+          if [[ -n "$latest_report" ]]; then
+            mkdir -p ../artifacts/scan-build/latest
+            cp -R "$latest_report"/. ../artifacts/scan-build/latest/
+          else
+            printf 'scan-build produced no HTML report directory.\n' > ../artifacts/scan-build/README.txt
+          fi
+
+      - name: Upload scan-build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-scan-build
+          path: artifacts/scan-build
+          if-no-files-found: error

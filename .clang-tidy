@@ -1,0 +1,15 @@
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  concurrency-*,
+  portability-*
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*(/src/|/tests/fuzz/).*'
+ExtraArgsBefore:
+  - -Xclang
+  - -analyzer-config
+  - -Xclang
+  - cfg-temporary-dtors=false
+FormatStyle: none
+UseColor: false

@@ -96,6 +96,21 @@ jobs:
   Sanitizers:
     if: ${{ always() }}
     uses: ./.github/workflows/sanitizers.yml
+  ClangSanitizer:
+    if: ${{ always() }}
+    uses: ./.github/workflows/clang-sanitizers.yml
+  ClangScanBuild:
+    if: ${{ always() }}
+    uses: ./.github/workflows/clang-scan-build.yml
+  ClangTidy:
+    if: ${{ always() }}
+    uses: ./.github/workflows/clang-tidy.yml
+  ClangCoverage:
+    if: ${{ always() }}
+    uses: ./.github/workflows/clang-coverage.yml
+  ClangFuzz:
+    if: ${{ always() }}
+    uses: ./.github/workflows/clang-fuzz.yml
   Tests:
     if: ${{ always() }}
     uses: ./.github/workflows/tests.yml
@@ -110,12 +125,12 @@ jobs:
     uses: ./.github/workflows/avx2_compilers.yml
   # Release Jobs
   Compilation:
-    needs: [Matrix, Sanitizers, Tests, Matetrack, Games, CompilerCheck]
+    needs: [Matrix, Sanitizers, ClangSanitizer, ClangScanBuild, ClangTidy, ClangCoverage, ClangFuzz, Tests, Matetrack, Games, CompilerCheck]
     uses: ./.github/workflows/compilation.yml
     with:
       matrix: ${{ needs.Matrix.outputs.matrix }}
   ARMCompilation:
-    needs: [Matrix, Sanitizers, Tests, Matetrack, Games, CompilerCheck]
+    needs: [Matrix, Sanitizers, ClangSanitizer, ClangScanBuild, ClangTidy, ClangCoverage, ClangFuzz, Tests, Matetrack, Games, CompilerCheck]
     uses: ./.github/workflows/arm_compilation.yml
     with:
       matrix: ${{ needs.Matrix.outputs.arm_matrix }}

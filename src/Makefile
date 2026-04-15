@@ -83,6 +83,16 @@ HEADERS = benchmark.h bitboard.h evaluate.h misc.h movegen.h movepick.h history.
 		tt.h tune.h types.h uci.h ucioption.h perft.h nnue/network.h engine.h score.h numa.h memory.h shm.h shm_linux.h
 
 OBJS = $(notdir $(SRCS:.cpp=.o))
+CORE_OBJS = $(filter-out main.o,$(OBJS))
+
+FUZZ_DIR = ../tests/fuzz
+FUZZ_BASES = fen move
+FUZZ_OBJECTS = $(addprefix fuzz-,$(addsuffix .o,$(FUZZ_BASES)))
+FUZZ_BINARIES = $(addprefix stockfish-fuzz-,$(FUZZ_BASES))
+FUZZ_COMPILE_SANITIZERS ?= address,undefined,fuzzer-no-link
+FUZZ_LINK_SANITIZERS ?= address,undefined,fuzzer
+FUZZ_EXTRACXXFLAGS = -O1 -g -fno-omit-frame-pointer -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -fsanitize=$(FUZZ_COMPILE_SANITIZERS)
+FUZZ_EXTRALDFLAGS = -fsanitize=$(FUZZ_LINK_SANITIZERS)
 
 VPATH = syzygy:nnue:nnue/features
 
@@ -934,6 +944,7 @@ help:
 	echo "Supported targets:" && \
 	echo "" && \
 	echo "help                    > Display architecture details" && \
+	echo "fuzzers                 > Build libFuzzer targets" && \
 	echo "profile-build           > standard build with profile-guided optimization" && \
 	echo "build                   > skip profile-guided optimization" && \
 	echo "net                     > Download the default nnue nets" && \
@@ -1001,7 +1012,7 @@ ifneq ($(SUPPORTED_ARCH), true)
 endif
 
 
-.PHONY: help analyze build profile-build strip install clean net \
+.PHONY: help analyze build fuzzers fuzz-build profile-build strip install clean net \
 	objclean profileclean config-sanity \
 	icx-profile-use icx-profile-make \
 	gcc-profile-use gcc-profile-make \
@@ -1013,6 +1024,16 @@ analyze: net config-sanity objclean
 
 build: net config-sanity
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) all
+
+fuzzers: net objclean
+	@echo ""
+	@echo "Building libFuzzer targets ..."
+	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) debug=no optimize=no \
+	EXTRACXXFLAGS='$(FUZZ_EXTRACXXFLAGS)' \
+	EXTRALDFLAGS='$(FUZZ_EXTRALDFLAGS)' \
+	config-sanity fuzz-build
+
+fuzz-build: $(FUZZ_BINARIES)
 
 profile-build: net config-sanity objclean profileclean
 	@echo ""
@@ -1044,7 +1065,7 @@ clean: objclean profileclean
 
 # clean binaries and objects
 objclean:
-	@rm -f stockfish stockfish.exe *.o ./syzygy/*.o ./nnue/*.o ./nnue/features/*.o $(BUILD_SHA_FILE) $(BUILD_DATE_FILE)
+	@rm -f stockfish stockfish.exe stockfish-fuzz-* *.o fuzz-*.o ./syzygy/*.o ./nnue/*.o ./nnue/features/*.o $(BUILD_SHA_FILE) $(BUILD_DATE_FILE)
 
 # clean auxiliary profiling files
 profileclean:
@@ -1140,7 +1161,13 @@ config-sanity: net
 $(EXE): $(OBJS)
 	+$(CXX) -o $@ $(OBJS) $(LDFLAGS)
 
+stockfish-fuzz-%: $(CORE_OBJS) fuzz-%.o
+	+$(CXX) -o $@ $^ $(LDFLAGS)
+
 %.o: %.cpp
+	$(strip $(CXX) $(CPPFLAGS) $(CXXFLAGS)) -c -o $@ $<
+
+fuzz-%.o: $(FUZZ_DIR)/fuzz_%.cpp
 	$(strip $(CXX) $(CPPFLAGS) $(CXXFLAGS)) -c -o $@ $<
 
 misc.o: misc.cpp $(BUILD_SHA_FILE) $(BUILD_DATE_FILE)

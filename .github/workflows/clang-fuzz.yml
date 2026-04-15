@@ -1,0 +1,75 @@
+name: Clang Fuzz
+on:
+  workflow_call:
+jobs:
+  Fuzz:
+    runs-on: ubuntu-latest
+    env:
+      COMPCXX: clang++
+      COMP: clang
+      CXXFLAGS: "-Werror"
+      LLVM_VERSION: 22
+      ASAN_OPTIONS: detect_leaks=0
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    defaults:
+      run:
+        working-directory: src
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download required linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget ca-certificates
+
+      - name: Install LLVM and Clang 22
+        run: |
+          sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)" ./llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y --no-install-recommends \
+            clang-"${LLVM_VERSION}" \
+            clang-tools-"${LLVM_VERSION}" \
+            libfuzzer-"${LLVM_VERSION}"-dev \
+            lld-"${LLVM_VERSION}" \
+            libclang-rt-"${LLVM_VERSION}"-dev
+          llvm_bindir="$(llvm-config-"${LLVM_VERSION}" --bindir)"
+          echo "PATH=${llvm_bindir}:$PATH" >> "$GITHUB_ENV"
+
+      - name: Show LLVM toolchain
+        run: |
+          clang --version
+          clang++ --version
+
+      - name: Build libFuzzer targets
+        run: |
+          rm -rf ../artifacts/fuzz
+          mkdir -p ../artifacts/fuzz/fen ../artifacts/fuzz/move
+          make -j4 ARCH=x86-64-sse41-popcnt fuzzers > /dev/null
+
+      - name: Run FEN fuzzer
+        run: |
+          ./stockfish-fuzz-fen \
+            ../tests/fuzz/corpus/fen \
+            -artifact_prefix=../artifacts/fuzz/fen/ \
+            -max_len=128 \
+            -max_total_time=60 \
+            -print_final_stats=1 2>&1 | tee ../artifacts/fuzz/fen.log
+
+      - name: Run move fuzzer
+        run: |
+          ./stockfish-fuzz-move \
+            ../tests/fuzz/corpus/move \
+            -artifact_prefix=../artifacts/fuzz/move/ \
+            -max_len=160 \
+            -max_total_time=60 \
+            -print_final_stats=1 2>&1 | tee ../artifacts/fuzz/move.log
+
+      - name: Upload fuzz artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-fuzz
+          path: artifacts/fuzz
+          if-no-files-found: error

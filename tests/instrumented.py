@@ -19,6 +19,13 @@ from testing import (
 PATH = pathlib.Path(__file__).parent.resolve()
 CWD = os.getcwd()
 
+SANITIZER_PATTERNS = (
+    ("sanitizer_undefined", ("runtime error:",)),
+    ("sanitizer_memory", ("WARNING: MemorySanitizer:",)),
+    ("sanitizer_thread", ("WARNING: ThreadSanitizer:",)),
+    ("sanitizer_address", ("ERROR: AddressSanitizer:", "ERROR: LeakSanitizer:")),
+)
+
 
 def get_prefix():
     if args.valgrind:
@@ -39,25 +46,21 @@ def get_path():
     return os.path.abspath(os.path.join(CWD, args.stockfish_path))
 
 
-def postfix_check(output):
-    if args.sanitizer_undefined:
-        for idx, line in enumerate(output):
-            if "runtime error:" in line:
-                # print next possible 50 lines
-                for i in range(50):
-                    debug_idx = idx + i
-                    if debug_idx < len(output):
-                        print(output[debug_idx])
-                return False
+def print_debug_lines(output, start_idx):
+    for i in range(50):
+        debug_idx = start_idx + i
+        if debug_idx < len(output):
+            print(output[debug_idx])
 
-    if args.sanitizer_thread:
+
+def postfix_check(output):
+    for attribute, patterns in SANITIZER_PATTERNS:
+        if not getattr(args, attribute):
+            continue
+
         for idx, line in enumerate(output):
-            if "WARNING: ThreadSanitizer:" in line:
-                # print next possible 50 lines
-                for i in range(50):
-                    debug_idx = idx + i
-                    if debug_idx < len(output):
-                        print(output[debug_idx])
+            if any(pattern in line for pattern in patterns):
+                print_debug_lines(output, idx)
                 return False
 
     return True
@@ -78,7 +81,8 @@ class TestCLI(metaclass=OrderedClassMembers):
         self.stockfish = None
 
     def afterEach(self):
-        assert postfix_check(self.stockfish.get_output()) == True
+        assert self.stockfish is not None
+        assert postfix_check(self.stockfish.get_output())
         self.stockfish.clear_output()
 
     def test_eval(self):
@@ -196,7 +200,7 @@ class TestCLI(metaclass=OrderedClassMembers):
             )
             assert False
 
-        diff = subprocess.run(["diff", network, f"verify.nnue"])
+        diff = subprocess.run(["diff", network, "verify.nnue"])
 
         assert diff.returncode == 0
 
@@ -206,11 +210,12 @@ class TestInteractive(metaclass=OrderedClassMembers):
         self.stockfish = Stockfish()
 
     def afterAll(self):
+        assert self.stockfish is not None
         self.stockfish.quit()
         assert self.stockfish.close() == 0
 
     def afterEach(self):
-        assert postfix_check(self.stockfish.get_output()) == True
+        assert postfix_check(self.stockfish.get_output())
         self.stockfish.clear_output()
 
     def test_startup_output(self):
@@ -418,11 +423,12 @@ class TestSyzygy(metaclass=OrderedClassMembers):
         self.stockfish = Stockfish()
 
     def afterAll(self):
+        assert self.stockfish is not None
         self.stockfish.quit()
         assert self.stockfish.close() == 0
 
     def afterEach(self):
-        assert postfix_check(self.stockfish.get_output()) == True
+        assert postfix_check(self.stockfish.get_output())
         self.stockfish.clear_output()
 
     def test_syzygy_setup(self):
@@ -480,11 +486,12 @@ class TestEnPassantSanitization(metaclass=OrderedClassMembers):
         self.stockfish = Stockfish()
 
     def afterAll(self):
+        assert self.stockfish is not None
         self.stockfish.quit()
         assert self.stockfish.close() == 0
 
     def afterEach(self):
-        assert postfix_check(self.stockfish.get_output()) == True
+        assert postfix_check(self.stockfish.get_output())
         self.stockfish.clear_output()
 
     def test_position_1(self):
@@ -577,6 +584,12 @@ def parse_args():
     )
     parser.add_argument(
         "--sanitizer-thread", action="store_true", help="Run sanitizer-thread testing"
+    )
+    parser.add_argument(
+        "--sanitizer-memory", action="store_true", help="Run sanitizer-memory testing"
+    )
+    parser.add_argument(
+        "--sanitizer-address", action="store_true", help="Run sanitizer-address testing"
     )
 
     parser.add_argument(
