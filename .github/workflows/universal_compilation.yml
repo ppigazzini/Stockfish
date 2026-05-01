@@ -5,19 +5,21 @@ jobs:
   UniversalLinux:
     name: Linux
     runs-on: ubuntu-22.04
+    container:
+      image: gcc:15
     defaults:
       run:
         shell: bash
     steps:
+      - name: Install container dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git make wget xz-utils
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
           fetch-depth: 0
-
-      - name: Install GCC 15
-        uses: egor-tensin/setup-gcc@a2861a8b8538f49cf2850980acccf6b05a1b2ae4 # v2.0
-        with:
-          version: 15
 
       - name: Download SDE package
         uses: petarpetrovt/setup-sde@2a27a21f27212e473f3cc59a6dac97d8dffe8970 # v3.0
