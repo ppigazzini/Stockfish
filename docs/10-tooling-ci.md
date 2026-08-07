@@ -164,6 +164,33 @@ outcome for anything under roughly ten percent -- which is why the instruction a
 | `scripts/check_universal_macos.sh` | the same for the macOS universal binary |
 | `scripts/check_universal_riscv.sh` | the same for riscv64 |
 
+## `tests/fingerprint.sh`
+
+Per-function **call counts** between two revisions.
+
+```sh
+./tests/fingerprint.sh HEAD~1
+```
+
+Every other gate here compares values -- a node total, an instruction count, a disassembly.
+This one asks whether the engine still gets to its answer by calling what it called, as
+often. A change that claims to be a decomposition is exactly where that can move while every
+value stays put, which makes this the instrument for splitting a large function.
+
+A call count is inlining-immune **at the callee**: it does not care how the callee was
+reached, only that it was. It is **not** immune at the caller -- a function inlined into its
+caller disappears from the profile -- so read the one-sided list as inlining differences and
+the changed list as the signal.
+
+Scope is the engine's own symbols. The allocator and glibc's thread-cancellation counters
+(`_int_malloc`, `sbrk`, `munmap`, the pthread cancel pair) move between two runs of one
+binary, so they are reported apart from the verdict rather than folded into it. Functions
+callgrind can only name by address are excluded: two builds place them differently, so they
+have no comparable identity.
+
+Deterministic: three A/A runs report IDENTICAL across 206 engine symbols. Forcing
+`Position::adjust_key50` out of line makes it appear as a called symbol with 105296 calls.
+
 ## `tests/negative_control.sh`
 
 Breaks the engine on purpose and requires each gate to notice.
