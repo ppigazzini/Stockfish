@@ -135,6 +135,30 @@ callgrind implements no AVX-512 and dies on the first instruction it does not kn
 instruction axis stops at avx2/bmi2 -- below the tier a player builds. The script refuses
 such an `--arch` rather than producing a number.
 
+### Which lane is binding
+
+`perfbudget.sh` can be run at plain `-O3` or with `--pgo`, and on this tree they do not agree
+about header restructuring. Measured twice, on changes with identical node counts:
+
+| change | gcc -O3 | gcc PGO | clang -O3 |
+| --- | --- | --- | --- |
+| the win-rate model moved into the core | +0.0377% | +0.0000% | +0.0005% |
+| shared memory taken out of the NUMA header | +0.0367% | +0.0008% | not measured |
+
+**PGO is the binding lane.** It is upstream's own recipe, it is what ships, and it is what
+fishtest measures; a refactor that is free there and costs under a build nobody distributes has
+not cost a player anything. The plain `-O3` figure is advisory: record it in the commit body,
+investigate it when it is large, and do not let it alone veto a change.
+
+That is a decision about which measurement answers the question, not a licence to skip one. A
+change still reports both, and a regression under PGO still does not land.
+
+The first of those two is a worked example of the gate misreporting rather than the compiler:
+the whole process retired 1832789 FEWER instructions, while the separately measured startup
+probe got 2423700 cheaper, so `total - startup` rose by the difference. **A startup probe that
+moves makes the subtracted search figure move the other way**, which is the same class of trap
+as the locality case below -- the number is real and its sign is not the change's.
+
 ### `tests/textequal.sh`
 
 Per-symbol machine-code equivalence, LTO disabled.
