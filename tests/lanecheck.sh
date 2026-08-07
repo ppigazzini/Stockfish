@@ -27,21 +27,17 @@ cd "$ROOT" || exit 2
 EXCUSED_NAMES=(
   npsab.sh
   negative_control.sh
-  lanecheck.sh
   testing.py
   get_native_properties.sh
   net.sh
-  docslint.sh
   fingerprint.sh
 )
 EXCUSED_WHY=(
   "wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
   "mutates tracked sources and rebuilds per row, so it cannot share a checkout with a lane"
-  "this check; it is the thing that would report itself"
   "a harness imported by instrumented.py rather than a gate"
   "invoked by the Makefile, not by a workflow"
   "invoked by the Makefile's net target"
-  "no lane yet; run locally and by negative_control.sh -- an open hole, not a pass"
   "roughly 10x the cost of the budget gate; run by hand before a decomposition"
 )
 
