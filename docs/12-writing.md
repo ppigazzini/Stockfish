@@ -1,95 +1,165 @@
-# Writing these docs
+# Technical writing
 
-What a page here must be true about, and what `tests/docslint.sh` does and does not check.
-Read it before adding or editing a page.
+Every sentence written about this engine -- in a page here, in a code comment, in a commit
+message -- is a **claim with a shelf life**. It was true when written, it is checkable, and
+the code will move under it.
 
-Audience: anyone editing a page.
+That is the whole discipline. What follows is how to write a claim that survives, and how to
+write one that fails loudly when it stops being true.
 
-## The set
+Audience: anyone writing prose about this code.
 
-`README.md` is the index; GitHub renders it for the folder, so it is what a reader lands on.
-The rest are numbered by **reading order**, not importance: a contributor works down from the
-architecture into a zone. The prefix is the only ordinal.
+## A claim, and what it costs to get wrong
 
-Each page owns one part of `src/` and names its audience in the index table. A page describes
-**what this code does** -- not what a chess engine does in general. Background a reader could
-get from the wiki belongs there, not here.
+Three sentences about the same line:
 
-## The rules
+```
+1.  The penalty decrements the stored depth.
+2.  The penalty decrements depth8, clamped at zero (tt.cpp:146).
+3.  The penalty decrements depth8, clamped at zero (tt.cpp:146). depth8 is a u8
+    holding d - DEPTH_NONE, and bool(depth8) IS the occupancy test, so letting
+    it reach zero retires a live entry and letting it wrap makes a penalised
+    shallow entry the deepest in the table.
+```
 
-**Name the owner and the invariant, not just the mechanism.** Say which file and symbol owns
-the behaviour and what must stay true about it. "`TTEntry::save` stores the depth" is accurate
-and useless; the sentence a reader needs is that `depth8` is stored as an offset from
-`DEPTH_NONE` and that `is_occupied()` tests it, so a depth encoding that reaches zero makes a
-live entry read as empty. Write the sentence someone needs before they delete your line.
+The first is accurate and useless. The second is accurate and looks like a nicety someone can
+simplify away -- `std::max(..., 0)` reads as defensive programming until you know what zero
+means. Only the third stops the next reader removing the clamp.
 
-**Verify the claim against the tree.** Not "read it carefully" -- run it. `grep -c`, a `bench`
-invocation, a `printf | ./stockfish`. A claim that takes seconds to check and was not checked
-is the claim that turns out false.
+**Write the sentence someone needs before they change your line**, not the sentence that
+describes what it currently does.
 
-**Describe a gap as a gap, never as a design.** If something is unimplemented or unchecked,
-say unimplemented, and say what it costs. Framing a hole as a decision is what keeps it alive:
-nobody fixes a design.
+## Name the owner, the invariant, and the failure
 
-**Never rationalise a defect into a convention.** When you find yourself explaining why the
-odd thing is fine, check whether it is.
+A claim is complete when it says **which symbol** owns the behaviour, **what must stay true**,
+and **what breaks otherwise**. Two of the three is where the defects live.
 
-**State the limit.** A description that omits its own boundary invites over-trust. Say what
-the thing does not cover -- as a property of the thing, not as a section about the page.
+| incomplete | complete |
+|---|---|
+| "the cluster is 32 bytes" | "`sizeof(Cluster) == 32` is asserted so a cluster divides a cache line: probing one position must touch one line" |
+| "the states are in a deque" | "`StateListPtr` is a `deque` because the search holds pointers into it and a `vector` would invalidate them on resize" |
+| "evaluation is clamped" | "the evaluation is clamped strictly inside the tablebase band, so an estimate can never be read as a proven verdict" |
 
-**Never pin a number a gate computes.** The bench signature above all: it moves with every
-functional commit and nobody greps documentation when it does. Quote the command. `docslint`
-fails on a pinned signature, and it reads the current value out of the commit record to do it.
+The failure clause is what makes prose load-bearing. Without it a reader has a description;
+with it they have a reason not to break something.
+
+## Verify, do not recall
+
+**Run it.** Not "read it carefully" -- `grep -c`, a `bench`, a `printf | ./stockfish`, an
+`awk` over the file. A claim that takes seconds to check and was not checked is the claim that
+turns out false.
+
+The claims that survive review and fail verification are always the same shapes:
+
+- **a list with the wrong count** -- an enum with five members written as four;
+- **a real symbol under a wrong name** -- `TBCursedWin` for `WDLCursedWin`;
+- **a case list that omits a case** -- `legal()` described without castling;
+- **a paraphrase that inverts a condition** -- "a king move forces a refresh", when it forces
+  one only across a bucket boundary.
+
+None of them is catchable by a tool. All of them are catchable by opening the file.
+
+## Show the command
+
+"It is faster" is not a claim. The output of `tests/perfbudget.sh` is.
+
+A behavioural or performance claim ships with what produced it, so the next reader re-runs it
+instead of trusting you. If you cannot produce a command, you are writing hearsay -- cut the
+sentence.
+
+## Never pin a number that moves
+
+Two classes, and both go stale:
+
+- **Numbers a gate computes.** The bench signature above all. Quote the command;
+  `tests/docslint.sh` refuses a page that quotes the signature, and reads the current value
+  out of the commit record to do it.
+- **Numbers the code computes about itself.** Line counts, file sizes, symbol counts. Every
+  one drifts with the next commit that touches its subject.
+
+Where the figure earns its place, write the command that produces it:
+
+```sh
+awk 'NR>=708 && /^}/{print NR-708; exit}' src/search.cpp
+```
+
+Where it does not, write the claim that stays true: *the largest file under `src/nnue/`*
+rather than *over a thousand lines*.
 
 Tuned constants are the same class. Margins, reductions and history clamps move with tuning
-patches; name the file, not the value, unless the value is the point.
+patches -- name the file, not the value, unless the value is the point being made.
 
-**No history.** "Used to be", "fixed in", "previously a stub" is out of date the day after and
-tells a reader nothing about the code in front of them. The before and after belong in the
-commit message -- that plus the code is the durable record.
+## Describe a gap as a gap
 
-**No meta.** A page does not describe itself. No "this page explains", no section listing what
-the page does not cover, no summary restating the section above it.
+If something is unimplemented, unchecked or unmeasured, **say so, and say what it costs**.
 
-**Show the command.** "It is faster" is not a claim; the output of `tests/perfbudget.sh` is. A
-behavioural or performance claim ships with what produced it, so the next reader can re-run it
-instead of trusting you.
+Framing a hole as a decision is what keeps it alive: nobody fixes a design. "The platform
+layer is deliberately minimal" invites no work. "`bench` is single-threaded and on one node,
+so it exercises the allocator and nothing else here -- a change in this layer is one whose
+correctness the gates largely do not establish" invites exactly the right work.
 
-**One example beats three paragraphs**, and **pair every prohibition with an alternative**.
-"Do not call X" leaves a reader stuck; "do not call X, use Y, which holds the lock" does not.
+The same trap one step further: **never rationalise a defect into a convention.** When you
+find yourself writing a sentence that makes a strange thing sound intended, stop and check
+whether it is. That sentence is load-bearing for the next reader who might otherwise have
+fixed it.
 
-**Cut anything that does not help implement or verify.** Length is not thoroughness; it is
-where rot hides.
+## State the limit
 
-## Hot and cold
+A description that omits its own boundary invites over-trust. Say what the thing does **not**
+cover, as a property of the thing:
 
-These pages do not age alike. A page is **hot** when it describes code that moves: it is a
-running claim about a tree someone is changing today. It is **cold** when what it describes
-barely moves.
+> A call count is inlining-immune at the callee. It is not immune at the caller -- a function
+> inlined into its caller leaves the profile entirely.
+
+That is a limit. "This page does not cover inlining" is not -- it is a note about the prose.
+
+## What not to write
+
+**No history.** "Used to be", "previously a stub", "fixed in". It is out of date the day after
+and tells a reader nothing about the code in front of them. The before and after belong in the
+commit message; that plus the code is the durable record.
+
+**No meta.** Prose does not describe itself. No "this page explains", no section listing what
+the page does not cover, no summary restating the section above it, no next-steps list nobody
+asked for.
+
+**No padding.** Length is not thoroughness; it is where rot hides. Cut anything that does not
+help a reader implement or verify. Background available from the wiki belongs in
+[11-references.md](11-references.md) as a link.
+
+**Pair every prohibition with an alternative.** "Do not call X" leaves a reader stuck; "do not
+call X, use Y, which holds the lock" does not.
+
+**One example beats three paragraphs.**
+
+## The three surfaces
+
+The rules above are the same on all three. What differs is the shelf life.
+
+### Pages
+
+Numbered by reading order; a contributor works down from the architecture into a zone. Each
+owns one part of `src/`, names it in the opening lines, and names its audience.
+
+A page is **hot** when it describes code that moves and **cold** when what it describes barely
+does. The index table carries the temperature. Every false claim found in a set like this is
+found in a hot row, and lands the same way: a commit changed the code and left the page
+describing the code it replaced.
 
 **Change hot code, re-read its page in the same commit.** A doc is wrong from the moment the
 code lands, and nobody knows which claim broke better than the person who broke it.
 
-The index table carries the temperature. Every false claim found in a set like this is found
-in a hot row, and lands the same way: a commit changed the code and left the page describing
-the code it replaced.
+A diagram earns its place only when the structure is a graph or a branch that prose has to
+serialise -- a decision with several conditions, a cycle, a dependency graph. A list, a table
+or a linear pipeline is better as a list, a table or a linear pipeline.
 
-Cold does not mean unowned. It means the claim outlives a release, so when it is wrong it has
-usually been wrong for a long time.
-
-## Code comments
-
-Same rules, plus these. No gate enforces comment style, so the tree stays clean only by
-review.
+### Code comments
 
 **Imperative mood, leading with a verb.** "Resolve the path", not "Returns the path" or "This
 function resolves...". A comment is an order to the reader, not a description of the author.
 
-**Write only the constraint the code cannot show.** Never restate the next line. Never say
-where the change came from or why it is right -- that is the commit message's job and it is
-noise the moment the change merges. If the line reads plainly, say nothing.
-
-**Name the invariant and what breaks without it.**
+**Write only the constraint the code cannot show.** Never restate the next line. If the line
+reads plainly, say nothing.
 
 ```cpp
 // Sized to divide a cache line: probing one position must touch one line.
@@ -98,9 +168,19 @@ static_assert(sizeof(Cluster) == 32, "Suboptimal Cluster size");
 
 That comment survives a refactor. "The cluster is 32 bytes" does not.
 
-**No history, no meta.** Not "was a stub", not "the following block does".
+Never say where the change came from or why it is right -- that is the commit message's job,
+and it is noise the moment the change merges.
 
-## The gate
+### Commit messages
+
+The one surface where history is the **subject** rather than the contamination. A commit
+message may say what the code used to do, because that is what a commit is.
+
+Subject in the imperative, under 72 characters. Body wrapped at 80, carrying the **evidence**:
+the gate output and the exit code, not "should work". A change that moves the bench signature
+says what moved it and carries the new `Bench:`.
+
+## What the gate checks, and what it cannot
 
 ```sh
 ./tests/docslint.sh
@@ -109,10 +189,9 @@ That comment survives a refactor. "The cluster is 32 bytes" does not.
 fails on a dead internal link, a `src/`/`tests/`/`scripts/`/`.github/` path named in prose
 that is not in the tree, a bench signature quoted in a page, a script in `tests/` or
 `scripts/` that no page names, and a tracked file pointing into the untracked working area.
-
-A path `.gitignore` names is exempt from the path check, because a page legitimately describes
+A path `.gitignore` names is exempt from the path check, because prose legitimately describes
 the tool that writes an ignored artifact.
 
-**It cannot tell you a sentence is false.** A page can parse, link, name only real paths, and
+**It cannot tell you a sentence is false.** Prose can parse, link, name only real paths, and
 still describe code that moved a month ago. The gate buys the mechanical half so review can
-spend its attention on the half that needs a reader.
+spend its attention on the half that needs a reader -- which is every rule above this one.

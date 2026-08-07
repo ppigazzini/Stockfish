@@ -15,7 +15,7 @@ The index. Each page owns one part of `src/` and is the claim this set makes abo
 | [09-type-design.md](09-type-design.md) | the value domain: what each quantity means and which are distinguishable | anyone adding a type or changing an encoding | cold |
 | [10-tooling-ci.md](10-tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
 | [11-references.md](11-references.md) | external links: chess programming, C++17, Make, LTO, gates | all developers | cold |
-| [12-writing.md](12-writing.md) | the rules for these pages and for code comments | anyone editing a page | cold |
+| [12-writing.md](12-writing.md) | technical writing: pages, code comments, commit messages | anyone writing prose about this code | cold |
 | [13-glossary.md](13-glossary.md) | the vocabulary, in tiers | all contributors | cold |
 
 Numbered by reading order. A contributor works down from the architecture into a zone.
