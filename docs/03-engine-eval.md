@@ -40,18 +40,45 @@ exactly what changed, and reconstructing that from two board states would cost m
 update saves.
 
 `src/nnue/nnue_accumulator.cpp` is the largest file under `src/nnue/` because this is where
-the engine's time goes, and it carries the awkward cases:
+the engine's time goes.
 
-- **A king move invalidates everything** under a king-bucketed feature set, because every
-  feature is indexed relative to the king square. That is a refresh, not an update.
-- **The refresh cache** (`AccumulatorCaches`) keeps, per king bucket, the last accumulator
-  computed there and the board it was computed from. A refresh then diffs against that cached
-  board rather than starting from zero -- usually a handful of features rather than all of
-  them.
-- **The stack** holds one accumulator per ply, so unmaking a move is a pop rather than a
-  recomputation.
-- **Lazy evaluation.** An accumulator is only brought up to date when someone asks for the
-  evaluation. Plies that get pruned without being evaluated never pay.
+**The stack** holds one accumulator per ply, so unmaking a move is a pop. **Evaluation is
+lazy**: an accumulator is brought up to date only when someone asks for it, so plies pruned
+without being evaluated never pay. `find_last_usable_accumulator` walks back to the nearest
+usable state, which is either a computed one or the state just before a change that forces a
+refresh.
+
+Bringing that state forward is not a two-way choice. `AccumulatorStack::evaluate_side` picks
+between three, and the caller has a fast path when both perspectives are already computed:
+
+```mermaid
+flowchart TD
+    E["evaluate()"] --> B{"both perspectives<br/>computed?"}
+    B -->|yes| FB["forward_update_incremental_both"]
+    B -->|no| S["evaluate_side, per perspective"]
+    S --> C{"last usable accumulator<br/>computed for this side?"}
+    C -->|yes| F["forward_update_incremental<br/>walk forward from it"]
+    C -->|no| H{"king move, 2-back computed,<br/>>= 15 pieces, same board half,<br/>not castling?"}
+    H -->|yes| HY["update_accumulator_hybrid"]
+    H -->|no| R["update_accumulator_refresh_cache<br/>then backward_update_incremental"]
+```
+
+**A king move invalidates everything** under a king-bucketed feature set, because every
+feature is indexed relative to the king square -- but only when the king crosses a bucket
+boundary. The hybrid guard tests `(from & 0b100) == (to & 0b100)`, which is bit 2 of the
+square index: the file bit that decides which half of the board the king is on, and therefore
+which side of the horizontal mirror its bucket sits on. A king move inside one half keeps the
+bucket, so the hybrid path can reuse the accumulator from two plies back instead of
+refreshing.
+
+**The refresh cache** (`AccumulatorCaches`) is what makes the last branch affordable. Each
+`Entry` holds an accumulation, its PSQT counterpart, and the `pieces` array and `pieceBB` it
+was computed from, so a refresh diffs against that cached board rather than starting from the
+biases -- usually a handful of features rather than all of them.
+
+The `MIN_PC_COUNT_HYBRID` guard of 15 pieces is why the hybrid path is an opening and
+middlegame optimisation: with few pieces left a refresh is cheap enough that the extra
+bookkeeping does not pay.
 
 ## The feature sets
 
