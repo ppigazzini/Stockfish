@@ -146,7 +146,7 @@ translation unit compiles at a different standard from the rest of the engine.
 ## What the gates reach
 
 `bench` is single-threaded, runs on one node, sets no `SyzygyPath` and needs no shared memory.
-It therefore exercises the allocator and nothing else on this page.
+It therefore exercises the allocator and nothing else described here.
 
 The topology paths, the binding, the replication and the shared-memory server are covered by
 the compile matrix -- which proves they build on every target -- and by whatever a developer
