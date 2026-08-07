@@ -31,7 +31,7 @@
 #include "../position.h"
 #include "../misc.h"
 #include "../types.h"
-#include "../uci.h"
+#include "../score.h"
 #include "network.h"
 #include "nnue_accumulator.h"
 
@@ -44,7 +44,7 @@ namespace {
 // Converts a Value into pawns, always keeping two decimals
 void format_cp_aligned_dot(Value v, std::stringstream& stream, const Position& pos) {
 
-    const double pawns = std::abs(0.01 * UCIEngine::to_cp(v, pos));
+    const double pawns = std::abs(0.01 * to_cp(v, pos));
 
     stream << (v < 0   ? '-'
                : v > 0 ? '+'

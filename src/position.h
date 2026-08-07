@@ -83,6 +83,8 @@ struct PositionSetError: std::runtime_error {
 // pieces, side to move, hash keys, castling info, etc. Important methods are
 // do_move() and undo_move(), used by the search to update node info when
 // traversing the search tree.
+std::string square_name(Square s);
+
 class Position {
    public:
     static void init();
