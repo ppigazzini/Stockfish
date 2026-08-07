@@ -3,6 +3,8 @@
 What a page here must be true about, and what `tests/docslint.sh` does and does not check.
 Read it before adding or editing a page.
 
+Audience: anyone editing a page.
+
 ## The set
 
 `README.md` is the index; GitHub renders it for the folder, so it is what a reader lands on.
