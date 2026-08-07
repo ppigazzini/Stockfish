@@ -18,6 +18,8 @@
 
 #include "search.h"
 
+#include "numa_shared.h"
+
 #include <algorithm>
 #include <array>
 #include <atomic>

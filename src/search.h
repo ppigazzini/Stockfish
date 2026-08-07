@@ -43,6 +43,11 @@
 
 namespace Stockfish {
 
+// Held only by reference here; engine.h owns one by value and includes
+// numa_shared.h for the definition.
+template<typename T>
+class LazyNumaReplicatedSystemWide;
+
 // Different node types, used as a template parameter
 enum NodeType {
     NonPV,
