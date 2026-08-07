@@ -210,6 +210,41 @@ have no comparable identity.
 Deterministic: three A/A runs report IDENTICAL across 206 engine symbols. Forcing
 `Position::adjust_key50` out of line makes it appear as a called symbol with 105296 calls.
 
+## `tests/golden.sh`
+
+Byte-compares the engine's output for a scripted UCI session.
+
+```sh
+./tests/golden.sh            # compare every case
+./tests/golden.sh search     # one case
+./tests/golden.sh --update   # re-record
+```
+
+`signature.sh` proves the engine searched the same tree. Nothing else proves it **said** the
+same thing: an `info` field that loses a name or changes order, a PV one move short, a ponder
+move named against the wrong position, a `d` board that stops printing checkers. None of those
+moves the node count.
+
+Three properties, each of which a naive comparison gets wrong:
+
+- **What is not behaviour is filtered before comparing.** The clock, the nps, `hashfull`, the
+  network banner and the build stamp are properties of the machine or the build. Leaving the
+  stamp in would invalidate every golden on the next commit.
+- **The driver waits.** The engine runs `go` on its own thread and treats end of input as
+  `quit`, so writing every line at once collects a `bestmove` from a search that never
+  finished. After a search command the driver reads until the engine says it is done.
+- **A comparison that compared nothing fails.** An absent corpus skips at exit 2; a corpus
+  that is present and yields nothing is a rig fault and goes red. A case whose engine printed
+  nothing is a dead engine rather than a behaviour.
+
+A `.uci` file is engine input, piped raw, so a `#` line is a command the engine answers
+`Unknown command` to. The gate refuses one rather than letting the case diverge for a reason
+unrelated to what it tests.
+
+**Re-recording a golden records whatever the engine currently does**, so an update over a
+broken build makes the break the expected output. Update only from a tree whose signature
+matches the commit record, and put the diff in the commit body.
+
 ## `tests/negative_control.sh`
 
 Breaks the engine on purpose and requires each gate to notice.

@@ -1,0 +1,4 @@
+ucinewgame
+setoption name MultiPV value 3
+position startpos
+go depth 7
