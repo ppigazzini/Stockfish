@@ -158,6 +158,79 @@ fi
 
 # --------------------------------------------------------------- fingerprint
 
+row docslint-path
+if selected docslint-path; then
+    echo "negative-control: docslint    -- a named path that is not in the tree"
+    mutate docs/00-architecture.md \
+        '## Startup' \
+        'The scheduler lives in `src/scheduler.cpp`.
+
+## Startup'
+    if ./tests/docslint.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the lint accepted a path that does not exist"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
+row docslint-bench
+if selected docslint-bench; then
+    REF=$(git log -60 --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+    if [ -z "$REF" ]; then
+        echo "negative-control: docslint    SKIPPED -- no Bench: in the commit record"
+        SKIP=$((SKIP+1))
+    else
+        echo "negative-control: docslint    -- a page quoting the current bench signature"
+        mutate docs/10-tooling-ci.md \
+            '## `tests/perft.sh`' \
+            "The reference is $REF today.
+
+## \`tests/perft.sh\`"
+        if ./tests/docslint.sh >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- the lint accepted a pinned signature"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+        restore
+    fi
+fi
+
+row docslint-gate
+if selected docslint-gate; then
+    echo "negative-control: docslint    -- a gate no page names"
+    printf '#!/bin/bash\nexit 0\n' > tests/zzz_undocumented.sh
+    chmod +x tests/zzz_undocumented.sh
+    if ./tests/docslint.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- an undiscoverable gate passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    rm -f tests/zzz_undocumented.sh
+fi
+
+row docslint-internal
+if selected docslint-internal; then
+    echo "negative-control: docslint    -- a tracked file pointing into the ignored area"
+    # Read the needle out of docslint.sh rather than naming it. A
+    # literal here would make THIS file a tracked file pointing into it, which
+    # is the thing the check catches -- and widening the check's exemption list
+    # to cover the script that injects the fault weakens the check itself.
+    internal=$(sed -n "s/^INTERNAL='\\(.*\\)'$/\\1/p" tests/docslint.sh)
+    [ -n "$internal" ] || die "could not read the needle out of tests/docslint.sh"
+    mutate AGENTS.md \
+        '## Commits' \
+        "See $internal/notes.md for more.
+
+## Commits"
+    if ./tests/docslint.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a dangling reference into an ignored path passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 row fingerprint
 if selected fingerprint; then
     if ! command -v valgrind >/dev/null; then
