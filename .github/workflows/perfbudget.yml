@@ -1,0 +1,110 @@
+name: Perf budget
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+# One job, both sides. The point of the design is that base and head are built
+# and measured on the SAME runner in the SAME run, so nothing is stored and
+# nothing has to be reproduced across machines or toolchains. A stored absolute
+# instruction count is a property of the box as much as of the code.
+jobs:
+  Budget:
+    name: Instruction budget (base vs head)
+    runs-on: ubuntu-24.04
+    # A locality change can legitimately cost instructions -- upstream
+    # ee72cf49f is the worked example, see docs/10-tooling-ci.md. This lane is
+    # therefore informative on such a PR and authoritative on a refactor that
+    # claims to cost nothing. It does not replace fishtest.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install valgrind
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Download the network
+        working-directory: src
+        run: make net
+
+      - name: Resolve the two sides
+        id: revs
+        run: |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            echo "head=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=HEAD~1" >> "$GITHUB_OUTPUT"
+            echo "head=HEAD"   >> "$GITHUB_OUTPUT"
+          fi
+
+      # Two tiers. A change can improve one and regress the other, and callgrind
+      # implements no AVX-512 so the instruction axis stops at avx2.
+      # `cmd | tee log` reports TEE's status, so a step ending on the pipeline --
+      # or worse, on a trailing `echo` -- passes while the gate is red. The first
+      # version of this lane did exactly that and could never have failed. It is
+      # the trap this repository's own docs name, committed into the lane that
+      # documents it. pipefail plus an explicit exit is the fix, and a SKIP is
+      # failed deliberately: a gate that could not run has proven nothing and
+      # must not read as green.
+      - name: Instruction budget, x86-64-avx2
+        run: |
+          set -o pipefail
+          rc=0
+          ./tests/perfbudget.sh --arch x86-64-avx2 \
+            "${{ steps.revs.outputs.base }}" "${{ steps.revs.outputs.head }}" \
+            2>&1 | tee budget-avx2.log || rc=$?
+          if [ "$rc" = "2" ]; then
+            echo "::error::perfbudget SKIPPED -- it proved nothing"
+          fi
+          exit "$rc"
+
+      - name: Instruction budget, x86-64-sse41-popcnt
+        if: always()
+        run: |
+          set -o pipefail
+          rc=0
+          ./tests/perfbudget.sh --arch x86-64-sse41-popcnt \
+            "${{ steps.revs.outputs.base }}" "${{ steps.revs.outputs.head }}" \
+            2>&1 | tee budget-sse41.log || rc=$?
+          if [ "$rc" = "2" ]; then
+            echo "::error::perfbudget SKIPPED -- it proved nothing"
+          fi
+          exit "$rc"
+
+      # textequal is deterministic and CI-safe, so it gets a lane. npsab does
+      # NOT: a hosted runner is not an idle box, and a wall-clock ratio measured
+      # on one is noise wearing a number. It stays local by design, which is
+      # recorded rather than left as an omission.
+      - name: Codegen equivalence (informational)
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./tests/textequal.sh \
+            "${{ steps.revs.outputs.base }}" "${{ steps.revs.outputs.head }}" \
+            2>&1 | tee textequal.log
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## Instruction budget'
+            echo
+            echo 'Startup subtracted by measurement. Node counts must match or the'
+            echo 'comparison is void. See `docs/10-tooling-ci.md` for what this gate'
+            echo 'can and cannot see -- in particular that a locality win can read'
+            echo 'here as a regression.'
+            echo
+            for f in budget-avx2.log budget-sse41.log textequal.log; do
+              [ -f "$f" ] || continue
+              echo "### $f"
+              echo '```'
+              cat "$f"
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
