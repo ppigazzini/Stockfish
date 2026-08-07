@@ -64,8 +64,8 @@ attacks come from `RankAttacks` in either case.
 single call, `alignas(32)` so the pair of lookups sits in one cache line. Callers that need
 both -- `slider_blockers`, `see_ge` -- get them without touching two structures.
 
-`RankAttacks` is `alignas(64) constexpr`: generated at compile time rather than at startup,
-and small enough to stay resident. Shrinking it was worth measurable strength.
+`RankAttacks` is `alignas(64) constexpr`, so it is generated at compile time rather than at
+startup and is cache-line aligned where it is read.
 
 **Which implementation is compiled changes the code but not the answer.** Every tier must
 produce the same attack sets, and the compile matrix benching one signature across roughly
