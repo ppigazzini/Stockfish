@@ -124,8 +124,13 @@ from the next call on.
 
 ## `search.cpp` -- the node
 
-`Worker::search<NodeType>` is one function of about 910 lines, structured as 21 numbered
-Steps. `NodeType` is a template parameter -- `NonPV`, `PV`, `Root` -- so the PV-only
+`Worker::search<NodeType>` is a single function structured as 21 numbered Steps, and it is
+the largest in the tree:
+
+```sh
+awk 'NR>=708 && /^}/{print NR-708; exit}' src/search.cpp
+```
+ `NodeType` is a template parameter -- `NonPV`, `PV`, `Root` -- so the PV-only
 bookkeeping is compiled out of the zero-window instantiation, which is the overwhelming
 majority of nodes.
 
