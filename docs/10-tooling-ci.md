@@ -144,6 +144,7 @@ about header restructuring. Measured twice, on changes with identical node count
 | --- | --- | --- | --- |
 | the win-rate model moved into the core | +0.0377% | +0.0000% | +0.0005% |
 | shared memory taken out of the NUMA header | +0.0367% | +0.0008% | not measured |
+| `NumaConfig`'s cold half moved to a `.cpp` | **-0.0009%** | +0.0002% | not measured |
 
 **PGO is the binding lane.** It is upstream's own recipe, it is what ships, and it is what
 fishtest measures; a refactor that is free there and costs under a build nobody distributes has
@@ -152,6 +153,12 @@ investigate it when it is large, and do not let it alone veto a change.
 
 That is a decision about which measurement answers the question, not a licence to skip one. A
 change still reports both, and a regression under PGO still does not land.
+
+**The third row is why the rule is "report both" rather than "ignore -O3".** It is the largest
+of the three changes and the only one that moved definitions out of a header entirely, and it
+is free on both lanes -- faster on the one the other two regressed. Whatever the +0.037% is, it
+is not a general tax on restructuring, so a future change reading that way deserves a look
+rather than a shrug.
 
 The first of those two is a worked example of the gate misreporting rather than the compiler:
 the whole process retired 1832789 FEWER instructions, while the separately measured startup
