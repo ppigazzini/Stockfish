@@ -122,6 +122,59 @@ reaches. `skip_quiets` is read at every call rather than fixed at construction, 
 search decides mid-node that it has seen enough quiet moves and the picker has to honour that
 from the next call on.
 
+## `search.cpp` -- the driver
+
+`Worker::iterative_deepening` is what every thread runs, and it is three nested loops rather
+than one. `search<Root>` is called from the innermost, so a single root position is searched
+many times.
+
+```mermaid
+flowchart TD
+    D{"rootDepth+1 < MAX_PLY,<br/>not stopped,<br/>depth limit not hit?"}
+    D -->|no| OUT(["report bestmove"])
+    D -->|yes| INC["rootDepth++"]
+    INC --> MPV{"for each PV line<br/>pvIdx < multiPV"}
+    MPV --> W["delta from the move's<br/>mean squared score<br/>alpha = avg-delta, beta = avg+delta"]
+    W --> A["adjustedDepth = rootDepth<br/>- failedHighCnt - searchAgain term"]
+    A --> SR["search&lt;Root&gt;(alpha, beta, adjustedDepth)"]
+    SR --> SORT["stable_sort the root moves<br/>from pvIdx"]
+    SORT --> ST{"stopped?"}
+    ST -->|yes| OUT
+    ST -->|no| C{"bestValue vs window"}
+    C -->|"<= alpha, fail low"| FL["beta = alpha<br/>alpha = bestValue - delta<br/>failedHighCnt = 0"]
+    C -->|">= beta, fail high"| FH["alpha = max(beta - delta, alpha)<br/>beta = bestValue + delta<br/>failedHighCnt++"]
+    C -->|inside| NEXT["next PV line"]
+    FL --> WID["delta widens"]
+    FH --> WID
+    WID --> A
+    NEXT --> MPV
+    MPV -->|done| D
+```
+
+Three things the shape makes visible:
+
+- **A fail high shrinks the depth it re-searches at.** `adjustedDepth` subtracts
+  `failedHighCnt`, so each successive fail high at one root depth searches shallower. A node
+  that keeps failing high is one whose value is not yet bracketed, and re-searching it at full
+  depth repeatedly would spend the iteration on it.
+- **A fail low does not.** It resets `failedHighCnt` to zero and moves `beta` down to the old
+  `alpha`, because a fail low means the move is worse than believed and the search needs the
+  full depth to find out how much. Both branches keep the window one-sided rather than
+  reopening it: a fail high raises `alpha` to `beta - delta` as well as lifting `beta`, so
+  the re-search is still narrow.
+- **The sort must be stable.** Every root move but the first and the new best is set to
+  `-VALUE_INFINITE`, so an unstable sort would reorder moves that compare equal and lose the
+  ordering the previous iteration established. Under MultiPV it would also disturb the lines
+  already searched.
+
+`delta` starts from the move's own `meanSquaredScore` and from `threadIdx`, so **threads
+begin with different window widths** -- one of the ways Lazy SMP diverges
+([04-multithreading.md](04-multithreading.md)).
+
+Output during a fail is throttled by node count rather than depth: a re-search only reports
+past a node threshold, because depth is reached quickly at the start of a search and some GUIs
+do not cope with the volume.
+
 ## `search.cpp` -- the node
 
 `Worker::search<NodeType>` is a single function structured as 21 numbered Steps, and it is
