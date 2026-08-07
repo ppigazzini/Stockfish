@@ -1,0 +1,144 @@
+# The value domain
+
+What the engine's quantities mean, which of them the compiler can tell apart, and -- stated
+as plainly as the rest -- which of them it cannot.
+
+`src/types.h` owns most of it; `src/history.h` owns the history clamps and
+`src/position.h` the key accessors. The theory each family rests on is linked in
+[11-references.md](11-references.md).
+
+Audience: anyone adding a type or changing an encoding.
+
+## The two instruments C++ gives, and they are not equally strong
+
+| instrument | what it is | strength | arithmetic |
+|---|---|---|---|
+| `enum : T` | a distinct type with a fixed underlying width | a hard error on enum-to-enum | promotes to `int` freely |
+| `using X = T` | an alias | none at all | unrestricted |
+
+Almost every domain quantity here is in the first tier: `Color`, `Square`, `File`, `Rank`,
+`Piece`, `PieceType`, `Direction`, `CastlingRights`, `Bound`, `MoveType`. Passing a
+`Direction` where a `Square` belongs does not compile, which is why `operator+(Square,
+Direction)` exists as a named operation rather than as integer addition.
+
+`Move` is a third shape: a class over a `u16` with an `explicit` raw constructor and named
+accessors, so a raw 16-bit value does not become a move without a visible cast.
+
+**A plain alias is documentation, not a type.** `Value`, `Key`, `Bitboard` and `Depth` are
+aliases, and a `Key` where a `Bitboard` belongs compiles silently.
+
+## The encodings, and what depends on them
+
+Each of these is load-bearing arithmetic, not a naming convention:
+
+| encoding | what it buys |
+|---|---|
+| `Piece = colour << 3 \| type` | `type_of` is `& 7`, `color_of` is `>> 3`, `~pc` is `^ 8` |
+| `Square = rank << 3 \| file` | `flip_rank` is `^ SQ_A8`, `flip_file` is `^ SQ_H1` |
+| `relative_square(c, s) = s ^ (c * 56)` | a branch-free board flip |
+| `relative_rank(c, r) = r ^ (c * 7)` | the same for ranks |
+| `Move`: to in 0-5, from in 6-11, promotion in 12-13, flag in 14-15 | a move is one `u16`, and a move list is a fixed array |
+| `Move::none()` / `Move::null()` have from == to | two sentinels inside the encoding, because no real move has them equal |
+
+`PIECE_NB` is 16 rather than 12 because the encoding leaves a gap at `type == 0` and
+`type == 7` in each colour. Indexing a `[PIECE_NB]` array by a `Piece` is therefore direct,
+and the unused rows are the price.
+
+## Where the compiler helps
+
+- **A `Direction` cannot reach a `Square` parameter**, and the reverse. `operator+(Square,
+  Direction)` is the only bridge.
+- **A history bonus cannot be transposed with its clamp.** `StatsEntry<T, D>` takes the clamp
+  as a *template parameter*, one per table, so `operator<<(int bonus)` has nothing beside the
+  bonus to swap it with. A design that passed the limit as a second argument would make both
+  directions of the swap compile.
+- **A non-PV root cannot be named.** `NodeType` is `{NonPV, PV, Root}`, one tag rather than
+  two independent booleans. Four combinations for three meanings would make a non-PV root
+  expressible, and no call site produces one. Because the tag is a template argument, the
+  tests on it fold in each instantiation and it costs nothing.
+- **A widened domain type is caught at compile time.** `types.h` closes with the relationships
+  that imply each width -- `PIECE_NB` against `COLOR_NB`, `SQUARE_NB` against the bitboard
+  width -- so an assertion cannot go stale against a literal.
+
+## Where it does not
+
+A page that omits its own boundary invites over-trust.
+
+**Seven key spaces share one alias.** `using Key = u64` covers the raw position key, the
+transposition key, and the pawn, minor-piece, material and two non-pawn keys. `Bitboard` is
+the same underlying type, so a `Key` where a `Bitboard` belongs also compiles.
+
+The sharpest pair is the position key and the transposition key. `Position::adjust_key50`
+mixes the halfmove clock in only at and above a threshold, so **below it the two words are
+identical** -- a confusion between them passes every position where the clock is low and is
+wrong only later in a game. No perft can see it.
+
+**Two arguments of the same type transpose in silence.** `Move(from, to)` and
+`make_square(f, r)` are reversible, and so is any pair of `Color`s or same-typed keys. No
+type in this family addresses that.
+
+**A wrong index that is in range.** Every enum here is a distinct type over an integer, not a
+refinement over a range. It narrows which *space* an index lives in, never which *entry*. The
+Syzygy prober is the sharpest case: an index computed one off returns a confident wrong
+verdict rather than failing.
+
+**`Value` is an alias, so a score and a margin are the same type.** The search is full of
+margins -- futility, aspiration delta, razoring thresholds -- and each is an `int` compared
+against scores that are also `int`. A wrapper would turn every arithmetic site into a
+function call in the code read most directly against its own tuning history.
+
+**`SQ_NONE` is in-band.** `Square` has a 65th value, and `is_ok(Square)` is the test. In
+practice it appears almost entirely inside `assert`s, because callers know by construction
+that a square is on the board -- but the type does not enforce that.
+
+**`cutNode` is a bare `bool` passed positionally**, next to a `Depth`, in
+`search(pos, ss, alpha, beta, depth, cutNode)`. Both of its values are legal, so this is a
+provenance problem rather than an illegal-state one.
+
+## Why there is no `Depth` type
+
+Deliberate. A depth-scaled product feeds at least six different codomains:
+
+| expression shape | scales into |
+|---|---|
+| a depth-scaled bonus, clamped | a history bonus |
+| `alpha - c1 - c2 * depth * depth` | a `Value` margin |
+| `beta - c * depth + ...` | a `Value` margin |
+| `(c + depth * depth) / (c - improving)` | a move count |
+| `history < -c * depth` | a history magnitude |
+| `r += r * c / (c * depth + c)` | a reduction denominator |
+
+A `Mul` returning one type leaves the other five needing an escape, and the choice that
+serves all six -- depth times an int giving an int -- turns any depth into any integer.
+**A type that needs six output types needs none.** Units-of-measure systems solve this with
+unit polymorphism, which C++ cannot express; see [11-references.md](11-references.md).
+
+## The cost of a type here
+
+A wrapper is not free, and the direction is not predictable from the source.
+
+> A newtype over a scalar is free while the value is **carried** -- produced, stored, passed,
+> indexed with. It can cost when many instances are **live at once inside one large
+> function**, because that is a register-allocation problem and the wrapper perturbs it.
+
+`Search::Worker::search` is one 910-line function holding many live values, which is exactly
+the shape the rule warns about. The rule is about what a function *holds*, not what it is
+*parameterised by*: a template argument occupies no register, which is why `NodeType` costs
+nothing on the hottest function in the engine while a runtime flag in the same position would
+not.
+
+**The rule is predictive, not exact.** Treat a type on a hot path as an experiment and
+measure it -- `tests/perfbudget.sh`, both tiers and both build modes.
+
+## Adding a type
+
+1. Say which set it denotes, and give it constructors that are the only way into that set.
+2. Give it the algebra the quantity actually has and no more. An operator added because it is
+   convenient will be used where it should not be.
+3. Check the value is **carried**, not computed with. If it participates in arithmetic inside
+   the node body, expect a cost.
+4. **Make the mutation fail.** Break the code on purpose in the way the type is meant to stop,
+   build it, and confirm the compiler rejects it. Arguing that it would fail is not watching
+   it fail.
+5. Gate it: the bench signature must not move, and `tests/perfbudget.sh` at two tiers.
+6. Add a row here -- to the table of what the compiler catches, to the boundary, or to both.
