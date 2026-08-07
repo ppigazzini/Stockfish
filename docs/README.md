@@ -11,14 +11,17 @@ The index. Each page owns one part of `src/` and is the claim this set makes abo
 | [04-multithreading.md](04-multithreading.md) | `thread`, `numa`, `shm` | threading and NUMA | hot |
 | [05-tablebases.md](05-tablebases.md) | `syzygy/` | tablebase probing | hot |
 | [07-shell.md](07-shell.md) | `main`, `uci`, `ucioption`, `engine`, `benchmark`, `tune` | the UCI surface and options | hot |
+| [09-type-design.md](09-type-design.md) | the value domain: what each quantity means and which are distinguishable | anyone adding a type or changing an encoding | cold |
 | [10-tooling-ci.md](10-tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
+| [11-references.md](11-references.md) | external links: chess programming, C++17, Make, LTO, gates | all developers | cold |
 | [12-writing.md](12-writing.md) | the rules for these pages and for code comments | anyone editing a page | cold |
+| [13-glossary.md](13-glossary.md) | the vocabulary, in tiers | all contributors | cold |
 
 Numbered by reading order. A contributor works down from the architecture into a zone.
 
-`06-platform`, `08`, `09-type-design`, `11-references` and `13-glossary` are unwritten. The
-platform layer, the value domain and the vocabulary are undocumented; a reader needing them
-reads the source.
+`06-platform` is unwritten: `src/numa.h`, `src/shm.h` and `src/memory.h` are described only
+where [04-multithreading.md](04-multithreading.md) needs them. A reader working on the
+platform layer reads the source.
 
 The wiki covers building, usage, UCI commands and terminology for users. Nothing here
 duplicates it.
