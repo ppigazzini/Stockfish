@@ -7,6 +7,8 @@
 The process around the engine: the UCI transport, the option table, the session that holds
 the position and the network, and the bench.
 
+Audience: the UCI surface and options.
+
 ## The split that matters
 
 `engine.cpp` owns the **session**: the current position and its `StateInfo` chain, the option

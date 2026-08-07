@@ -1,5 +1,7 @@
 # References
 
+Background for the rest of the set. Owns no source.
+
 Links only. Anything a reader could learn from one of these does not belong in the rest of
 this set -- see [12-writing.md](12-writing.md).
 
