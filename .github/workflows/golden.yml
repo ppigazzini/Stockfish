@@ -1,0 +1,19 @@
+name: Golden
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  Golden:
+    name: UCI output corpus
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Build
+        working-directory: src
+        run: make -j build ARCH=x86-64-avx2
+      - name: Compare the corpus
+        run: ./tests/golden.sh
