@@ -180,6 +180,24 @@ fi
 
 # --------------------------------------------------------------- lanecheck
 
+row lanecheck-reach
+if selected lanecheck-reach; then
+    echo "negative-control: lanecheck   -- the budget lane unwired from the umbrella"
+    mutate .github/workflows/stockfish.yml \
+        '  PerfBudget:
+    name: Perf budget
+    if: ${{ always() }}
+    uses: ./.github/workflows/perfbudget.yml
+' \
+        ''
+    if ./tests/lanecheck.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- lanecheck called an unreachable lane reachable"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 row lanecheck
 if selected lanecheck; then
     echo "negative-control: lanecheck   -- a gate with no lane and no excuse"
