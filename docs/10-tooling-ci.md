@@ -289,6 +289,7 @@ that has it. That half is yours.
 | `iwyu.yml`, `clang-format.yml`, `codeql.yml` | include hygiene, formatting, static analysis |
 | `upload_binaries.yml` | release artifacts |
 | `perfbudget.yml` | the instruction budget, base against head, at two tiers |
+| `docs.yml` | `docslint.sh` and `lanecheck.sh` -- no build, seconds |
 
 `tests/perft.sh` and `tests/reprosearch.sh` run at exactly one step of `tests.yml`, gated on
 the 64-bit configurations, after an avx2 build.
