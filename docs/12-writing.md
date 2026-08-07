@@ -176,9 +176,75 @@ and it is noise the moment the change merges.
 The one surface where history is the **subject** rather than the contamination. A commit
 message may say what the code used to do, because that is what a commit is.
 
-Subject in the imperative, under 72 characters. Body wrapped at 80, carrying the **evidence**:
-the gate output and the exit code, not "should work". A change that moves the bench signature
-says what moved it and carries the new `Bench:`.
+**Every commit ends with a `Bench:` line or the words "No functional change".** This is not a
+convention, it is checked: the wiki's `pre-push` hook refuses a push otherwise, matching
+
+```
+bench_regex='\b[Bb]ench[ :]+[1-9][0-9]{5,7}\b'
+no_functional_change_regex='\b[Nn]o[[:space:]][Ff]unctional[[:space:]][Cc]hange\b'
+```
+
+so the bench number must be 6 to 8 digits and stand on its own line. Which of the two applies
+is the same question `CONTRIBUTING.md` asks: a functional change is tested on fishtest, a
+non-functional one is not, unless it might affect performance.
+
+#### A functional change
+
+Subject, then the test results, then the pull request, then the bench:
+
+```
+Multi cut pruning correction history
+
+STC: https://tests.stockfishchess.org/tests/view/<id>
+LLR: 2.93 (-2.94,2.94) <0.00,2.00>
+Total: 151072 W: 39154 L: 38677 D: 73241
+Ptnml(0-2): 372, 17511, 39320, 17934, 399
+
+LTC: https://tests.stockfishchess.org/tests/view/<id>
+LLR: 2.96 (-2.94,2.94) <0.50,2.50>
+Total: 109866 W: 28697 L: 28240 D: 52929
+Ptnml(0-2): 39, 11353, 31686, 11822, 33
+
+closes https://github.com/official-stockfish/Stockfish/pull/<n>
+
+Bench: <node total>
+```
+
+One block per test, blank line between. The four lines of a block are the label and link, the
+`LLR:` with its bounds, the `Total:` with the W/L/D split, and `Ptnml(0-2):` with the
+pentanomial counts. The label is `STC:` or `LTC:` for a gainer and `Passed STC non-reg:` or
+`Passed LTC non-reg:` for a change tested only to show it loses nothing; `VLTC` and `VVLTC`
+appear for the longest controls.
+
+Both a short and a long control are expected for a gainer. A non-regression result is one
+block.
+
+`Co-authored-by:` goes last, after the bench, when the work came from more than one person.
+
+#### A non-functional change
+
+The same shape without the tests, ending in the exact phrase:
+
+```
+Remove an incorrect AVX512 comment
+
+closes https://github.com/official-stockfish/Stockfish/pull/<n>
+
+No functional change
+```
+
+**A non-functional change that might affect performance is still tested**, and then it carries
+a non-regression block and still ends "No functional change" -- the phrase is about the node
+count, not about whether anyone measured it.
+
+#### Prose in the body
+
+Between the subject and the results, say what the change does and why it is expected to gain.
+Credit an idea taken from elsewhere. This is the part a reader six months later actually needs,
+and it is the part most often omitted.
+
+The `closes` line is what links the commit to its review, and nearly every commit in the
+history carries one.
 
 ## What the gate checks, and what it cannot
 
