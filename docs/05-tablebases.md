@@ -61,8 +61,8 @@ the search can tell a proven result from an estimate. `VALUE_TB` and the
 
 ## The prober
 
-`tbprobe.cpp` is around 1,800 lines, most of it inside one anonymous namespace, and it is the
-only part of the engine that **parses a file the project did not write**.
+Most of `tbprobe.cpp` sits inside one anonymous namespace, and it is the only part of the
+engine that **parses a file the project did not write**.
 
 The tables are memory-mapped, indexed by a material key, and decompressed on demand: the data
 is stored with a Huffman-style scheme and a pairs table, so a probe walks a compressed block

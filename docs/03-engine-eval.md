@@ -39,8 +39,8 @@ This is why `Position::do_move` records a `DirtyPiece`: the accumulator update n
 exactly what changed, and reconstructing that from two board states would cost more than the
 update saves.
 
-`src/nnue/nnue_accumulator.cpp` is over a thousand lines because this is where the engine's
-time goes, and it carries the awkward cases:
+`src/nnue/nnue_accumulator.cpp` is the largest file under `src/nnue/` because this is where
+the engine's time goes, and it carries the awkward cases:
 
 - **A king move invalidates everything** under a king-bucketed feature set, because every
   feature is indexed relative to the king square. That is a refresh, not an update.
@@ -147,7 +147,11 @@ The `padding` variable beside the array is not decoration: `#embed` yields exact
 bytes, while `network_dump.inc` is a C string literal with a trailing NUL, so
 `gEmbeddedNNUESize` subtracts 1 in the fallback path and 0 in the `#embed` path.
 
-Either way the net is in the image, which is why a release binary is around 96 MB.
+Either way the network is in the image, and it dominates the binary's size:
+
+```sh
+ls -l src/stockfish src/*.nnue
+```
 
 **The engine resolves `EvalFile` relative to the working directory.** Running from anywhere
 but `src/` finds no external net and produces an unrelated but entirely plausible number.
