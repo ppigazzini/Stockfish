@@ -142,9 +142,16 @@ the honest measure of how far the tree is from it. Concretely, at the time of wr
   `TranspositionTable&` and the network reference (`src/search.h`). Linking the search means
   linking the option model and the thread pool; there is no way to drive a search without a
   process around it.
-- **`numa.h` carries its implementation in the header** and includes `shm.h`, which includes
-  `shm_unix.h`. `search.h` includes `numa.h`, so the shared-memory and NUMA subsystems reach
-  everything that includes `search.h`.
+- **`numa.h` carries its implementation in the header**, all of it, and `search.h` includes
+  `numa.h`, so the NUMA subsystem reaches everything that includes `search.h`.
+  `Search::Worker` holds a `NumaReplicatedAccessToken` by value, so that edge is load-bearing
+  and a forward declaration cannot replace it.
+- **Shared memory no longer rides along with it.** `LazyNumaReplicatedSystemWide` was the only
+  user of `shm.h` inside `numa.h`, and it now lives in `numa_shared.h`, which includes both.
+  `engine.h` owns one by value and includes it; `search.h` holds one only by reference and
+  forward-declares instead, so `shm.h` and `shm_unix.h` no longer reach every consumer of
+  `search.h`. Removing the include also exposed that `numa.h` had been getting `<variant>`
+  transitively through `shm.h`, which it now includes itself.
 - **`types.h` includes `tune.h` after its own `#endif`**, deliberately outside the include
   guard and commented "Global visibility to tuning setup". Anything that touches `types.h` or
   the tunable constants has to account for it. This one is **kept on purpose**: no committed
