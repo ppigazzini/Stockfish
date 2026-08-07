@@ -289,16 +289,3 @@ that has it. That half is yours.
 `tests/perft.sh` and `tests/reprosearch.sh` run at exactly one step of `tests.yml`, gated on
 the 64-bit configurations, after an avx2 build.
 
-## What no gate here covers
-
-Worth stating, because a long list of green checks reads as coverage:
-
-- **No fuzzing of any kind.** The UCI parser, the Syzygy table reader and the shared-memory
-  layer all consume input the process did not write, and none of them has a harness.
-- **No byte-golden of engine output.** `instrumented.py` checks substrings.
-- **No negative control.** No gate here except `docslint` has been demonstrated to fail. A
-  gate's power to detect a defect is an assumption until something breaks the engine on
-  purpose and the gate is watched going red -- and a gate that has quietly stopped being able
-  to fail is invisible, because it reports success.
-- **The bench is a fixed position list.** A divergence off those positions is invisible to the
-  anchor.
