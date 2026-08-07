@@ -1,7 +1,11 @@
 # Tooling and CI
 
+`tests/`, `scripts/`, `.github/workflows/`.
+
 Every gate in the tree, what it proves, and -- the half that matters more -- what it cannot
 see. For the source layout see [00-architecture.md](00-architecture.md).
+
+Audience: anyone adding or running a gate.
 
 ## Check the exit code, never a piped fragment
 

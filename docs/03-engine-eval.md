@@ -6,6 +6,8 @@ accumulator, the layers, and the feature sets under `src/nnue/features/`.
 A neural network evaluates the position. `evaluate.cpp` turns its output into the value the
 search uses.
 
+Audience: evaluation and NNUE.
+
 ## The network, shape first
 
 ```

@@ -1,5 +1,7 @@
 # Glossary
 
+The vocabulary the rest of the set uses. Owns no source.
+
 The words the rest of this set uses without stopping to define them, in tiers that must not
 be confused:
 
@@ -48,7 +50,7 @@ computes.
 | **Lazy SMP** | the threading model: N workers on one root, sharing the transposition table, with no work queue and no split points |
 | **the vote** | `ThreadPool::get_best_thread`, which picks the answer by weighted agreement across threads rather than by taking the deepest or highest-scoring |
 | **WDL, DTZ** | the two Syzygy results -- win/draw/loss, and distance to a zeroing move. `src/syzygy/tbprobe.cpp` |
-| **cursed win, blessed loss** | a win the fifty-move rule takes away, and a loss it rescues. `TBCursedWin` and `TBBlessedLoss` exist because the tables are generated under two rules at once |
+| **cursed win, blessed loss** | a win the fifty-move rule takes away, and a loss it rescues. `WDLCursedWin` and `WDLBlessedLoss` in `syzygy/tbprobe.h` exist because the tables are generated under two rules at once |
 | **cardinality** | the largest piece count the loaded tablebases cover. Zero with no `SyzygyPath`, which is what makes the Step 6 probe one predictable branch for a user with no tables |
 
 ## 2. This repository's vocabulary
