@@ -156,6 +156,21 @@ if selected docslint; then
     restore
 fi
 
+# --------------------------------------------------------------- lanecheck
+
+row lanecheck
+if selected lanecheck; then
+    echo "negative-control: lanecheck   -- a gate with no lane and no excuse"
+    printf '#!/bin/bash\nexit 0\n' > tests/zzz_unlaned.sh
+    chmod +x tests/zzz_unlaned.sh
+    if ./tests/lanecheck.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- lanecheck reported clean"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    rm -f tests/zzz_unlaned.sh
+fi
+
 # --------------------------------------------------------------- perft
 
 row perft
