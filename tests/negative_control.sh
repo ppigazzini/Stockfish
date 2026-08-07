@@ -158,6 +158,39 @@ fi
 
 # --------------------------------------------------------------- fingerprint
 
+row golden
+if selected golden; then
+    echo "negative-control: golden      -- an info field renamed, which the signature cannot see"
+    mutate src/uci.cpp \
+        '<< " multipv " << info.multiPV' \
+        '<< " MULTIPV " << info.multiPV'
+    if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
+        if ./tests/golden.sh >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- the corpus matched a renamed field"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+    else
+        restore; die "the golden mutant did not compile"
+    fi
+    restore
+    ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
+fi
+
+row golden-empty
+if selected golden-empty; then
+    echo "negative-control: golden      -- an empty corpus must not pass"
+    mv tests/cases /tmp/nc_cases_$$
+    mkdir -p tests/cases
+    if ./tests/golden.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a corpus that compared nothing passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    rmdir tests/cases 2>/dev/null
+    mv /tmp/nc_cases_$$ tests/cases
+fi
+
 row docslint-path
 if selected docslint-path; then
     echo "negative-control: docslint    -- a named path that is not in the tree"

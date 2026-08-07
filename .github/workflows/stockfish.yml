@@ -164,6 +164,10 @@ jobs:
     name: Docs
     if: ${{ always() }}
     uses: ./.github/workflows/docs.yml
+  Golden:
+    name: Golden
+    if: ${{ always() }}
+    uses: ./.github/workflows/golden.yml
   WASMCompilation:
     name: WASM compilation
     if: ${{ always() }}

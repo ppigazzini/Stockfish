@@ -1,0 +1,4 @@
+uci
+ucinewgame
+position startpos
+go depth 8
