@@ -116,10 +116,13 @@ discovered.
 
 Concretely, at the time of writing:
 
-- **The engine core depends on the UCI frontend.** `evaluate.cpp` includes `uci.h` for
-  `UCIEngine::to_cp`, used inside `Eval::trace` to render centipawns; `position.cpp` includes
-  it for `UCIEngine::square`. Both are string formatting, and both are real -- `iwyu` runs in
-  CI, so these are used includes rather than leftovers.
+- **`search.cpp` still depends on the UCI frontend**, for `UCIEngine::wdl` and
+  `UCIEngine::format_score` on the `info` line. That edge is string rendering and remains.
+  The four other core files that reached across no longer do: the win-rate model
+  (`win_rate_model`, `to_cp`) is evaluation-domain knowledge fitted to fishtest statistics
+  rather than protocol, so it lives in `score.h/.cpp`, and coordinate notation is
+  `square_name` in `position.h/.cpp`. `evaluate.cpp`, `position.cpp`, `score.cpp` and
+  `nnue/nnue_misc.cpp` include neither.
 - **`Search::Worker` holds the frontend as members**: `const OptionsMap&`, `ThreadPool&`,
   `TranspositionTable&` and the network reference (`src/search.h`). Linking the search means
   linking the option model and the thread pool; there is no way to drive a search without a
