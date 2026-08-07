@@ -32,7 +32,7 @@
 #include "nnue/nnue_misc.h"
 #include "position.h"
 #include "types.h"
-#include "uci.h"
+#include "score.h"
 #include "nnue/nnue_accumulator.h"
 
 namespace Stockfish {
@@ -90,13 +90,13 @@ std::string Eval::trace(Position& pos, const Eval::NNUE::Network& network) {
     Value v                 = psqt + positional;
     ss << "NNUE evaluation          " << v << " (side to move, internal units)\n";
     v = pos.side_to_move() == WHITE ? v : -v;
-    ss << "NNUE evaluation        " << 0.01 * UCIEngine::to_cp(v, pos) << " (white side)\n";
+    ss << "NNUE evaluation        " << 0.01 * to_cp(v, pos) << " (white side)\n";
 
     v = evaluate(network, pos, *accumulators, *caches, VALUE_ZERO);
     v = pos.side_to_move() == WHITE ? v : -v;
 
     ss << "Final evaluation      ";
-    ss << 0.01 * UCIEngine::to_cp(v, pos) << " (white side)";
+    ss << 0.01 * to_cp(v, pos) << " (white side)";
     ss << " [with scaled NNUE, ...]\n";
 
     return ss.str();

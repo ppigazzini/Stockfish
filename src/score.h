@@ -28,6 +28,18 @@ namespace Stockfish {
 
 class Position;
 
+// The win-rate model fitted to fishtest LTC statistics. It is evaluation-domain
+// knowledge rather than protocol: the UCI layer renders what these return, and
+// the engine core reads them without depending on the frontend.
+// See github.com/official-stockfish/WDL_model
+
+// Return the win rate in per mille units.
+int win_rate_model(Value v, const Position& pos);
+
+// Turn a Value into an integer centipawn number, without treatment of mate and
+// similar special scores.
+int to_cp(Value v, const Position& pos);
+
 class Score {
    public:
     struct Mate {

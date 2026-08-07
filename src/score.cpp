@@ -18,20 +18,75 @@
 
 #include "score.h"
 
+#include "position.h"
+
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
+#include <cmath>
+#include <algorithm>
 
-#include "uci.h"
 
 namespace Stockfish {
+
+namespace {
+
+struct WinRateParams {
+    double a;
+    double b;
+};
+
+WinRateParams win_rate_params(const Position& pos) {
+
+
+    int material = pos.count<PAWN>() + 3 * pos.count<KNIGHT>() + 3 * pos.count<BISHOP>()
+                 + 5 * pos.count<ROOK>() + 9 * pos.count<QUEEN>();
+
+    // The fitted model only uses data for material counts in [17, 78], and is anchored at count 58.
+    double m = std::clamp(material, 17, 78) / 58.0;
+
+    // Return a = p_a(material) and b = p_b(material), see github.com/official-stockfish/WDL_model
+    constexpr double as[] = {-142.72052667, 372.35176398, -340.71073572, 415.23490212};
+    constexpr double bs[] = {5.93832785, 15.61267078, -30.57816876, 69.63866711};
+
+    double a = (((as[0] * m + as[1]) * m + as[2]) * m) + as[3];
+    double b = (((bs[0] * m + bs[1]) * m + bs[2]) * m) + bs[3];
+
+    return {a, b};
+}
+
+}  // namespace
+
+// The win rate model is 1 / (1 + exp((a - eval) / b)), where a = p_a(material)
+// and b = p_b(material). It fits the LTC fishtest statistics rather accurately.
+int win_rate_model(Value v, const Position& pos) {
+
+    auto [a, b] = win_rate_params(pos);
+
+    // Return the win rate in per mille units, rounded to the nearest integer.
+    return int(0.5 + 1000 / (1 + std::exp((a - double(v)) / b)));
+}
+
+// Turns a Value to an integer centipawn number,
+// without treatment of mate and similar special scores.
+int to_cp(Value v, const Position& pos) {
+
+    // In general, the score can be defined via the WDL as
+    // (log(1/L - 1) - log(1/W - 1)) / (log(1/L - 1) + log(1/W - 1)).
+    // Based on our win_rate_model, this simply yields v / a.
+
+    auto [a, b] = win_rate_params(pos);
+
+    return int(std::round(100 * int(v) / a));
+}
+
 
 Score::Score(Value v, const Position& pos) {
     assert(-VALUE_INFINITE < v && v < VALUE_INFINITE);
 
     if (!is_decisive(v))
     {
-        score = InternalUnits{UCIEngine::to_cp(v, pos)};
+        score = InternalUnits{to_cp(v, pos)};
     }
     else if (std::abs(v) <= VALUE_TB)
     {
