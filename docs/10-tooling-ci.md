@@ -310,6 +310,142 @@ sentence has become false. Three classes it will pass: a real symbol attributed 
 file, a list with the wrong count or order, and a behaviour described as absent from a build
 that has it. That half is yours.
 
+## Fuzzing
+
+Every gate above compares the engine against a **known-good answer**. That shape can only find
+a defect in behaviour someone already described. The three inputs the engine did not produce --
+a command from a GUI, a Syzygy table off a mirror, a network file named by `EvalFile` -- have
+no known-good answer to compare against, so nothing above covers them.
+
+```sh
+./tests/tbfetch.sh                                  # the tb corpus, once
+./tests/fuzz.py --seconds 600 --harness tb          # one harness
+./tests/fuzz.py --seed 4242 --harness tb            # reproduce a finding
+```
+
+`tests/fuzz.py` runs three harnesses, which fail differently and do not substitute for one
+another:
+
+| harness | input | what it reaches |
+|---|---|---|
+| `uci` | mutated command text | the parser, and essentially never the search behind it -- a mutated line is rejected at the first token |
+| `tb` | mutated Syzygy bytes | the decoder, the highest-consequence reader in the tree |
+| `net` | a mutated file through `EvalFile` | the loader, whose failure mode is a *replacement* net rather than a missing one |
+
+The `tb` harness matters most because its bad outcome is not a crash. An index computed one off
+returns a **confident wrong verdict** the search believes, so "did not crash" is not the
+property that matters there.
+
+**The seed prints first, and every finding prints the seed that produced it.** A fuzz run whose
+failure cannot be replayed is an anecdote.
+
+`Hash` and `Threads` are the only options whose fuzzed value the engine turns straight into an
+allocation, so they are drawn from a bounded pool and emitted **verbatim**. Mangling defeats a
+bound, and truncation is the specific defeat: it rewrites a value the spin parser refuses into
+one it honours, turning `Hash value 99999999` into `9999` -- a table the box actually backs,
+which exhausts the machine rather than the process and takes the harness down with it, leaving
+no finding to read.
+
+A harness must also refuse to bank a broken **rig** as a finding. Three ways the tb rig can be
+wrong -- an illegal fixture, no table loaded, a search never reached -- and each stops the run
+with a rig fault instead of a verdict. This is not hypothetical: the harness's first run
+reported one, against an illegal fixture. `tests/negative_control.sh` carries a row for each
+detector and a `fuzz-rig` row for the inverse property.
+
+`tests/tbfetch.sh` fetches the ten-file, ~26 KiB 3-man set and verifies each file by its
+**magic** rather than by HTTP status, because a mirror that answers a missing file with a body
+-- an error page, a redirect to a landing page -- otherwise stores it as a table, and it fails
+much later inside the decoder where it reads as a corrupt table rather than a bad download.
+Both mirrors tried do exactly that. Without a corpus the harness **skips visibly** rather than
+passing.
+
+**None of this is a merge gate**, and the nightly `fuzz.yml` gives each harness a job of its
+own with the whole budget rather than splitting one budget three ways -- they run at
+throughputs orders of magnitude apart, so a shared budget is really a budget for the fastest of
+them. A clean run means "nothing failed inside that budget", never "there is nothing to find".
+
+### A corrupt table crashes the engine
+
+The `tb` harness found this, and it is **not fixed**:
+
+```sh
+printf '\x00' | dd of=tests/syzygy/KNvK.rtbw bs=1 seek=10 count=1 conv=notrunc
+```
+
+The engine loads the table, answers `readyok`, and dies with SIGSEGV on the first probe. Under
+valgrind the fault is a read of unmapped memory inside `decompress_pairs`
+(`src/syzygy/tbprobe.cpp`), reached from `probe_dtz` by way of `rank_root_moves` and
+`Engine::go`:
+
+```
+Invalid read of size 1
+   at decompress_pairs(PairsData*, unsigned long)
+   by do_probe_table<TBTable<WDL>, WDLScore>(...)
+   by Tablebases::probe_dtz(Position&, ProbeState*)
+Address 0x6378 is not stack'd, malloc'd or (recently) free'd
+```
+
+Sweeping all 80 bytes of `KNvK.rtbw` at two values each finds exactly one aborting byte, and
+its behaviour is a clean threshold rather than noise -- **every** value below the shipped 128
+crashes, and every value at or above it is answered normally:
+
+| byte 10 | 0 | 1 | 2 | 3 | 64 | 127 | 129 | 255 |
+|---|---|---|---|---|---|---|---|---|
+| | SEGV | SEGV | SEGV | SEGV | SEGV | SEGV | ok | ok |
+
+A header field the decoder trusts to bound how far it may walk fits that shape: understating it
+sends the decoder past the end of the mapping, overstating it changes nothing it reaches for
+this position. **Which named field it is has not been established** -- byte 11 tolerates every
+value tried, which rules out the adjacent `maxSymLen`/`minSymLen` pair, and no reading of the
+header layout offered so far survives contact with the sweep. The reproducer and the fault site
+are solid; the field identity is not, and is the next thing to nail down.
+
+Two consequences regardless of which field it is. **A corrupt table should be refused, not
+answered and not crashed on** -- one flipped byte in a downloaded file kills the engine
+mid-game, and Syzygy files come off public mirrors. And a random 8-byte mutation of the same
+file has separately produced an uncaught `std::bad_alloc`, which `-fno-exceptions` turns into
+`std::terminate`; whether that shares this cause is unknown.
+
+### setoption during an unbounded search deadlocks the engine
+
+The `uci` harness found this, and it is **not fixed**:
+
+```sh
+printf 'uci\nisready\ngo infinite\nsetoption name Hash value 32\nquit\n' | ./src/stockfish
+```
+
+The engine never exits. It is not slow -- it is unreachable: `stop` and `quit` are no longer
+read, so nothing in the protocol can recover it.
+
+`Engine::resize_threads` (`src/engine.cpp:249`) and `Engine::set_tt_size`
+(`src/engine.cpp:259`) each open with `wait_for_search_finished()`, and both are reached from
+an option's on-change handler. That handler runs on the **UCI reader thread**, which is the
+only thread that would ever read the `stop` that releases the wait. The reader blocks waiting
+for a search that only the reader could end.
+
+The boundary is exactly whether the search ends by itself:
+
+| after `go infinite` | after `go depth 20` |
+|---|---|
+| `setoption name Threads value 2` hangs | returns normally |
+| `setoption name Threads value 1` hangs -- even with no change to apply | returns normally |
+| `setoption name Hash value 32` hangs | returns normally |
+| `stop` first, then `setoption` returns normally | -- |
+
+Any option whose handler waits will do; `Threads` and `Hash` are simply the two reached here,
+and a value identical to the current one still hangs, so the wait happens before anything asks
+whether there is work to do.
+
+**The UCI specification says `setoption` is sent only while the engine is not calculating**, so
+a conforming GUI does not produce this, and that is the honest limit on its severity. It is
+still a state from which the protocol offers no way out, reachable in four lines from a stock
+binary.
+
+The harness reached it through a defect of its own -- a generated line beginning with an empty
+token read as `" go"`, which its stop-guard missed, leaving an unbounded search with nothing
+behind it. That guard is fixed and the harness now runs clean. The engine behaviour is
+independent of it, and the reproducer above uses no fuzzing at all.
+
 ## CI
 
 | Workflow | Gates |
