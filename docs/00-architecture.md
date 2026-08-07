@@ -142,8 +142,11 @@ the honest measure of how far the tree is from it. Concretely, at the time of wr
   `TranspositionTable&` and the network reference (`src/search.h`). Linking the search means
   linking the option model and the thread pool; there is no way to drive a search without a
   process around it.
-- **`numa.h` carries its implementation in the header**, all of it, and `search.h` includes
-  `numa.h`, so the NUMA subsystem reaches everything that includes `search.h`.
+- **`numa.h` no longer carries all of its implementation.** The cold half of `NumaConfig` --
+  topology discovery, the string forms, thread binding, 452 lines that all run before the
+  first search -- is in `numa.cpp`. What stays is template-bound and cannot move.
+  `search.h` still includes `numa.h`, so the NUMA subsystem still reaches everything that
+  includes `search.h`.
   `Search::Worker` holds a `NumaReplicatedAccessToken` by value, so that edge is load-bearing
   and a forward declaration cannot replace it.
 - **Shared memory no longer rides along with it.** `LazyNumaReplicatedSystemWide` was the only
