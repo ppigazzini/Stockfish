@@ -156,6 +156,28 @@ if selected docslint; then
     restore
 fi
 
+# --------------------------------------------------------------- fingerprint
+
+row fingerprint
+if selected fingerprint; then
+    if ! command -v valgrind >/dev/null; then
+        echo "negative-control: fingerprint SKIPPED -- valgrind is not installed"; SKIP=$((SKIP+1))
+    else
+        echo "negative-control: fingerprint -- adjust_key50 forced out of line"
+        mutate src/position.h \
+            'template<bool AfterMove>
+inline Key Position::adjust_key50(Key k) const {' \
+            'template<bool AfterMove>
+__attribute__((noinline)) Key Position::adjust_key50(Key k) const {'
+        if ./tests/fingerprint.sh HEAD worktree >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- the call graph compared equal"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+        restore
+    fi
+fi
+
 # --------------------------------------------------------------- lanecheck
 
 row lanecheck

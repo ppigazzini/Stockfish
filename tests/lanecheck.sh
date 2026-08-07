@@ -32,6 +32,7 @@ EXCUSED_NAMES=(
   get_native_properties.sh
   net.sh
   docslint.sh
+  fingerprint.sh
 )
 EXCUSED_WHY=(
   "wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
@@ -41,6 +42,7 @@ EXCUSED_WHY=(
   "invoked by the Makefile, not by a workflow"
   "invoked by the Makefile's net target"
   "no lane yet; run locally and by negative_control.sh -- an open hole, not a pass"
+  "roughly 10x the cost of the budget gate; run by hand before a decomposition"
 )
 
 FAIL=0
