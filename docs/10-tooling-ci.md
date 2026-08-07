@@ -182,6 +182,23 @@ asserting the sources were put back.
 
 Rows that cannot run report SKIPPED and are counted separately. A skipped row proves nothing.
 
+## `tests/lanecheck.sh`
+
+Every gate must be dispatched by a workflow, or carry an excuse saying what runs it.
+
+A check nobody runs is a claim about the tree rather than a check on it: it never reports, so
+it never goes red, so nobody notices it stopped working -- and it still looks like coverage in
+a directory listing.
+
+Dispatch is counted from **workflows only**. A gate invoked solely by another local gate is
+not dispatched: if that gate runs nowhere the chain bottoms out at nothing and the hole is
+laundered into a pass.
+
+The excuse list is the hole, so it expires in its own direction -- an excused script that IS
+dispatched is reported as a stale excuse, and an excuse naming a script the tree no longer has
+fails too. A script named only in a comment does not count as dispatched, and the name match
+requires a separator on both sides so `net.sh` cannot be satisfied by `subnet.shx`.
+
 ## `tests/docslint.sh`
 
 Five mechanical checks over this documentation set:
