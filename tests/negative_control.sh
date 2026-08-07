@@ -340,6 +340,90 @@ if selected perft; then
     fi
 fi
 
+# --------------------------------------------------------------- fuzz
+#
+# A fuzz harness has two ways to be useless, and only one of them is visible in
+# a normal run: it can fail to notice a broken engine, and it can bank a broken
+# RIG as a finding. Both are checked here by pointing the harness at a stub
+# engine through EXE, which needs no rebuild.
+
+NCSTUB=$(mktemp -d)
+stub() { printf '%s\n' "$2" > "$NCSTUB/$1"; chmod +x "$NCSTUB/$1"; }
+
+row fuzz-uci
+if selected fuzz-uci; then
+    echo "negative-control: fuzz [uci]  -- an engine that never answers isready"
+    stub silent '#!/bin/bash
+cat >/dev/null
+exit 0'
+    if EXE="$NCSTUB/silent" ./tests/fuzz.py --seconds 1 --harness uci >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a wedged engine ran clean"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+fi
+
+row fuzz-tb
+if selected fuzz-tb; then
+    if [ -z "$(ls tests/syzygy 2>/dev/null)" ]; then
+        echo "negative-control: fuzz [tb]   SKIPPED -- no corpus; run tests/tbfetch.sh"
+        SKIP=$((SKIP+1))
+    else
+        echo "negative-control: fuzz [tb]   -- an engine that dies on a corrupt table"
+        stub tbcrash '#!/bin/bash
+echo "info string Found 5 WDL and 5 DTZ tablebase files (up to 3-man)."
+cat >/dev/null
+kill -SEGV $$'
+        if EXE="$NCSTUB/tbcrash" ./tests/fuzz.py --seconds 1 --harness tb >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- a crashing engine ran clean"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+    fi
+fi
+
+row fuzz-rig
+if selected fuzz-rig; then
+    if [ -z "$(ls tests/syzygy 2>/dev/null)" ]; then
+        echo "negative-control: fuzz [rig]  SKIPPED -- no corpus; run tests/tbfetch.sh"
+        SKIP=$((SKIP+1))
+    else
+        # The inverse of every other row: the harness must NOT claim a finding.
+        # A run where no table loaded tests nothing, and reporting it as a defect
+        # is how a harness earns credit for an experiment it never ran -- which
+        # this one did on its first run, against an illegal fixture.
+        echo "negative-control: fuzz [rig]  -- a rig with no tables must not read as a finding"
+        stub norig '#!/bin/bash
+echo "info string Found 0 WDL and 0 DTZ tablebase files (up to 3-man)."
+cat >/dev/null
+echo "bestmove a1a1"
+exit 0'
+        out=$(EXE="$NCSTUB/norig" ./tests/fuzz.py --seconds 1 --harness tb 2>&1)
+        if printf '%s' "$out" | grep -q 'RIG FAULT'; then
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        elif printf '%s' "$out" | grep -q 'FINDING'; then
+            echo "  NOT DETECTED -- a dead rig was reported as a defect"; FAIL=$((FAIL+1))
+        else
+            echo "  NOT DETECTED -- a dead rig ran clean"; FAIL=$((FAIL+1))
+        fi
+    fi
+fi
+
+row fuzz-net
+if selected fuzz-net; then
+    echo "negative-control: fuzz [net]  -- an engine that dies on a corrupt net"
+    stub netcrash '#!/bin/bash
+cat >/dev/null
+kill -SEGV $$'
+    if EXE="$NCSTUB/netcrash" ./tests/fuzz.py --seconds 1 --harness net >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a crashing engine ran clean"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+fi
+
+rm -rf "$NCSTUB"
+
 # --------------------------------------------------------------------- verdict
 
 case " $KNOWN " in
