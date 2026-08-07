@@ -156,6 +156,10 @@ jobs:
     name: MSVC
     if: ${{ always() }}
     uses: ./.github/workflows/msvc.yml
+  PerfBudget:
+    name: Perf budget
+    if: ${{ always() }}
+    uses: ./.github/workflows/perfbudget.yml
   WASMCompilation:
     name: WASM compilation
     if: ${{ always() }}
