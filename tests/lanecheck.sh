@@ -55,6 +55,8 @@ note() { echo "lanecheck: $*"; FAIL=1; }
 dispatch_corpus() {
     for w in .github/workflows/*.yml; do
         [ -f "$w" ] || continue
+        # An unreachable workflow dispatches nothing, so it is not in the corpus.
+        case " $UNREACHABLE " in *" $(basename "$w") "*) continue ;; esac
         sed 's/[[:space:]]*#.*$//' "$w"
     done
     # Workflows only. A gate invoked solely by another LOCAL gate is not
@@ -62,8 +64,6 @@ dispatch_corpus() {
     # and the hole gets laundered into a pass. Such a gate takes an excuse
     # naming what actually runs it.
 }
-CORPUS=$(dispatch_corpus)
-
 excuse_for() {
     local n=$1 i=0
     for e in "${EXCUSED_NAMES[@]}"; do
@@ -87,6 +87,44 @@ dispatched() {
     grep -qE "[/[:space:]\"']${pat}([[:space:]\"';)|&]|$)" <<< "$CORPUS"
 }
 
+# A workflow is REACHABLE when something can start it: a push, a pull request, a
+# schedule, a manual dispatch, or a `uses:` from another reachable workflow. A
+# workflow that is only `workflow_call` and that nobody calls can never run, so
+# every script it names is dispatched by nothing.
+#
+# This is the same failure this check exists to catch, one level up, and it was
+# live: the budget lane was `workflow_call` only and no umbrella job invoked it,
+# so `perfbudget.sh` reported as dispatched by a workflow that could not start.
+echo "== workflows and their reachability =="
+UNREACHABLE=""
+for w in .github/workflows/*.yml; do
+    [ -f "$w" ] || continue
+    b=$(basename "$w")
+    # `workflow_dispatch` is deliberately NOT an automatic trigger. A workflow
+    # only a human can click does not gate a change, so a gate it names is not
+    # in a lane. Counting it as reachable is what let the budget lane report as
+    # wired while nothing on a push or a pull request could start it.
+    auto=$(sed 's/[[:space:]]*#.*$//' "$w" \
+           | grep -cE '^[[:space:]]*(push|pull_request|pull_request_target|schedule|release):')
+    manual=$(sed 's/[[:space:]]*#.*$//' "$w" | grep -cE '^[[:space:]]*workflow_dispatch:')
+    called=$(grep -l "workflows/$b" .github/workflows/*.yml 2>/dev/null \
+             | grep -v "/$b$" | wc -l)
+    if [ "$auto" -gt 0 ] || [ "$called" -gt 0 ]; then
+        echo "  reachable    $w"
+    elif [ "$manual" -gt 0 ]; then
+        echo "  MANUAL ONLY  $w"
+        note "$w runs only on a manual dispatch, so nothing it names is in a lane"
+        UNREACHABLE="$UNREACHABLE $b"
+    else
+        echo "  UNREACHABLE  $w"
+        note "$w can never start: no trigger and no workflow calls it"
+        UNREACHABLE="$UNREACHABLE $b"
+    fi
+done
+
+CORPUS=$(dispatch_corpus)
+
+echo
 echo "== gates and their dispatch =="
 for g in tests/*.sh tests/*.py scripts/*.sh; do
     [ -e "$g" ] || continue
