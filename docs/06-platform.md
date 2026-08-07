@@ -7,9 +7,13 @@ Everything the engine needs from the operating system: aligned and large-page al
 topology and thread binding, cross-process shared memory, native threads with a chosen stack
 size, and runtime ISA dispatch.
 
-It is the largest per-platform surface in the tree -- about 4,100 lines across seven files --
-and the one `bench` exercises least: a single-threaded run on one node touches the allocator
-and nothing else here.
+It is the largest per-platform surface in the tree and the one `bench` exercises least: a
+single-threaded run on one node touches the allocator and nothing else here.
+
+```sh
+wc -l src/memory.h src/memory.cpp src/numa.h src/shm.h src/shm_unix.h \
+     src/thread_native.h src/universal/entry_x86.cpp
+```
 
 Audience: anyone porting to a new OS, or changing threading, allocation or the build's
 dispatch.
@@ -94,7 +98,7 @@ base it tracks them through.
 
 `LazyNumaReplicatedSystemWide` is backed by `SystemWideSharedConstant<T>`, which is where
 `shm.h` enters. Several engine processes on one machine -- which is what a test harness
-runs -- would otherwise each load their own copy of a ~96 MB network.
+runs -- would otherwise each load their own copy of the network.
 
 `SharedMemoryBackend<T>` has three specialisations (Windows, POSIX, and a
 `SharedMemoryBackendFallback` that simply allocates locally), so a platform without shared
