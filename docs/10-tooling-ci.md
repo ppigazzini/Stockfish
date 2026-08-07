@@ -287,6 +287,39 @@ dispatched is reported as a stale excuse, and an excuse naming a script the tree
 fails too. A script named only in a comment does not count as dispatched, and the name match
 requires a separator on both sides so `net.sh` cannot be satisfied by `subnet.shx`.
 
+## `tests/depcheck.sh`
+
+Enforces the declared dependency direction of [00-architecture.md](00-architecture.md).
+
+```sh
+./tests/depcheck.sh
+```
+
+`src/` is flat, so a zone is a name list rather than a directory. That is this gate's weakness
+and the reason it also reports **files in no zone**: a new file joins no zone by default, and
+without that check it would be silently exempt from the rule rather than caught by it.
+
+Only the engine-includes-shell edge is checked, because only that one is a defect rather than a
+choice. Platform depending on engine is the intended direction, and shell depending on both is
+what a process does.
+
+`tests/depcheck.baseline` carries the edges that exist today, one per line, with the reason
+each is there. It **expires in both directions**: an edge missing from it fails as new, and an
+entry in it that no longer happens fails as stale. A baseline that only grows is not a debt
+register, it is a permanent excuse, and the second direction is what keeps it from becoming
+one.
+
+One entry is not debt. `types.h -> tune.h` is deliberate -- the include sits after `types.h`'s
+own `#endif` so the SPSA macros reach anywhere `types.h` does, and removing it would make every
+future tuning run add an include first. It is baselined with that reason rather than exempted,
+so it stays visible.
+
+**It reads includes, not the link.** A file that names no shell header but takes a shell type
+through a template parameter, or reaches one transitively through a platform header, passes.
+The sibling C port checks the same property at link time instead -- it compiles the engine
+alone and fails on any undefined symbol -- which is stronger, and is not available here while
+`src/` is one flat directory with one link step.
+
 ## `tests/docslint.sh`
 
 Five mechanical checks over this documentation set:
