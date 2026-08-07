@@ -70,6 +70,12 @@ cost. These three do, and they are not interchangeable.
 ../tests/npsab.sh      <base-rev> [<head-rev>]   # interleaved paired wall clock
 ```
 
+**PGO is the binding lane.** `perfbudget.sh` at plain `-O3` and with `--pgo` disagree about
+header restructuring on this tree, by about 0.037% consistently. `make profile-build` is what
+ships and what fishtest measures, so a refactor free under PGO and costly under plain `-O3` has
+cost no player anything: report both, let PGO decide. A regression under PGO still does not
+land.
+
 **Pick by what the change CLAIMS.**
 
 | the change claims | gate | why |
