@@ -1,0 +1,25 @@
+name: Docs
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+# Both gates read the tree and nothing else: no build, no network, seconds to run.
+# They are separate steps rather than one so a red run names which property broke.
+jobs:
+  Docs:
+    name: Documentation and lane coverage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # docslint reads the current bench signature out of the commit record, so
+      # it needs history rather than a shallow checkout.
+      - name: Documentation lint
+        run: ./tests/docslint.sh
+
+      - name: Lane coverage
+        run: ./tests/lanecheck.sh
