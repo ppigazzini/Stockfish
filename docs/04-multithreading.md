@@ -3,6 +3,8 @@
 `src/thread.h`, `src/thread.cpp`, `src/thread_native.h`, and the shared state they hand to
 `Search::Worker`.
 
+Audience: threading and NUMA.
+
 ## Lazy SMP
 
 Every thread runs the same iterative deepening loop on the same root position. Nothing splits
