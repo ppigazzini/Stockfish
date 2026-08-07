@@ -40,6 +40,7 @@ TT=16
 TOLERANCE=0.02     # percent
 REPEAT=1
 COMP=gcc
+PGO=0
 KEEP=0
 JOBS=$(nproc 2>/dev/null || echo 4)
 
@@ -59,6 +60,8 @@ Options:
   --comp COMP        compiler, gcc or clang (default: $COMP)
   --depth D          bench depth (default: $DEPTH)
   --tt MB            bench hash size (default: $TT)
+  --pgo              build both sides with profile-guided optimisation, which is
+                     what ships; roughly 3x slower to build
   --tolerance PCT    fail above this percent regression (default: $TOLERANCE)
   --repeat N         measure each side N times, report the median and the spread
   --jobs N           parallel build jobs (default: $JOBS)
@@ -93,6 +96,7 @@ while [ $# -gt 0 ]; do
         --tolerance) TOLERANCE=$2; shift 2 ;;
         --repeat)    REPEAT=$2; shift 2 ;;
         --jobs)      JOBS=$2; shift 2 ;;
+        --pgo)       PGO=1; shift ;;
         --keep)      KEEP=1; shift ;;
         -h|--help)   usage; exit 0 ;;
         -*)          die "unknown option $1" ;;
@@ -155,10 +159,16 @@ prepare_tree() {
     [ "$found" = "1" ] || skip "no .nnue in $SRC_ROOT/src -- run 'make net' there first"
 }
 
+# `make profile-build` is the shipped recipe: PGO on top of LTO, trained on the
+# engine's own bench. It is what a player runs and what a strength test
+# measures, and it is where a refactor can cost work that plain -O3 does not
+# show -- splitting a function changes what a profile can attribute to it. A
+# budget taken only at -O3 gates a binary nobody runs.
 build_side() {
-    local dir=$1 label=$2
-    echo "  building $label ..." >&2
-    ( cd "$dir/src" && make -j"$JOBS" build ARCH="$ARCH" COMP="$COMP" ) \
+    local dir=$1 label=$2 target=build
+    [ "$PGO" = "1" ] && target=profile-build
+    echo "  building $label ($target) ..." >&2
+    ( cd "$dir/src" && make -j"$JOBS" "$target" ARCH="$ARCH" COMP="$COMP" ) \
         > "$dir/build.log" 2>&1 \
         || { tail -25 "$dir/build.log" >&2; die "$label failed to build"; }
     [ -x "$dir/src/stockfish" ] || die "$label produced no binary"
@@ -236,7 +246,8 @@ measure_side() {
 
 # ---------------------------------------------------------------------- run
 
-echo "perfbudget: arch=$ARCH comp=$COMP depth=$DEPTH tt=$TT repeat=$REPEAT tolerance=${TOLERANCE}%"
+MODE=-O3; [ "$PGO" = "1" ] && MODE=PGO
+echo "perfbudget: arch=$ARCH comp=$COMP mode=$MODE depth=$DEPTH tt=$TT repeat=$REPEAT tolerance=${TOLERANCE}%"
 echo "perfbudget: base=$BASE_REV head=$HEAD_REV"
 
 prepare_tree "$BASE_REV" "$WORK/base"
