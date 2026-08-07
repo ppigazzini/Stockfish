@@ -6,6 +6,8 @@
 Everything the search stands on: the value domain, square sets, attack generation, the
 mutable board, and the move generator.
 
+Audience: board and movegen.
+
 ## `types.h` -- the value domain
 
 Fixed-width enums for the things that have a fixed range -- `Color`, `Square`, `File`,
@@ -45,15 +47,18 @@ compiles to a single `tzcnt`/`blsr` pair where the ISA has them.
 
 ## `attacks.cpp` -- slider attacks, three ways
 
-Leapers (king, knight, pawn) are a table lookup. Sliders are the interesting case, and the
-engine carries **three** implementations chosen at compile time by ISA:
+Leapers (king, knight, pawn) are a table lookup. Sliders are the interesting case, and which
+implementation compiles is decided by the macros at the top of `attacks.h`:
 
-- **Magic bitboards** -- multiply the masked occupancy by a magic constant, shift, index.
-  The magics are searched at startup on tiers that need them.
-- **PEXT** (`USE_PEXT`) -- BMI2's parallel bit extract replaces the multiply-and-shift
-  entirely, so the index is exact and the table is dense.
-- **Hyperbola quintessence** with a `DualMagic` -- at avx2 and above, file, diagonal and
-  antidiagonal attacks are computed arithmetically and rank attacks come from a small table.
+| macro | selected when | how |
+|---|---|---|
+| `USE_DUAL_HYPERBOLA_QUINT` | `USE_AVX2` | hyperbola quintessence through a `DualMagic`, returning bishop and rook sets together |
+| `USE_HYPERBOLA_QUINT` | `__aarch64__`, or 64-bit loongarch | hyperbola quintessence, one attack set at a time |
+| neither, with `USE_PEXT` | BMI2 available | PEXT extracts the occupancy index directly, so the table is dense |
+| neither, without PEXT | everything else | magic bitboards: multiply the masked occupancy, shift, index |
+
+Hyperbola quintessence computes file, diagonal and antidiagonal attacks arithmetically; rank
+attacks come from `RankAttacks` in either case.
 
 `DualMagic::both_attacks_bb` returns the bishop and rook attack sets for one square in a
 single call, `alignas(32)` so the pair of lookups sits in one cache line. Callers that need
@@ -117,13 +122,24 @@ Pseudo-legal by default: moves that leave the king in check are filtered by `leg
 point the search makes them, not at generation. Filtering earlier would cost a legality test
 on every generated move, and most generated moves are never made.
 
-`legal()` checks only the three cases that can actually go wrong -- a pinned piece moving off
-its ray, a king moving into attack, and en passant exposing the king along a rank -- rather
-than re-deriving the check status.
+`legal()` checks three cases and re-derives nothing:
 
-Generation is templated on `GenType` (`CAPTURES`, `QUIETS`, `EVASIONS`, `LEGAL`) and on
-colour, so the direction constants fold and the generator for one side has no branches on
-colour.
+- **castling** -- generation deliberately does not test whether the king's path is attacked,
+  so `legal` walks it here, plus a Chess960 test that the castling rook was not itself
+  blocking a check;
+- **a king move** -- the destination must not be attacked with the king removed from the
+  occupancy, or it would shield itself along the ray it is fleeing;
+- **anything else** -- legal if the piece is not pinned, or if it moves along the ray to or
+  from its own king.
+
+En passant is not one of them. It cannot be settled by a pin test, because the capture
+removes a pawn from a square the moving pawn never occupied, so `generate<LEGAL>`
+(`movegen.cpp:282`) routes an `EN_PASSANT` move through the full check instead of the pin
+shortcut, alongside king moves and pinned pieces.
+
+Generation is templated on `GenType` -- `CAPTURES`, `QUIETS`, `EVASIONS`, `NON_EVASIONS`,
+`LEGAL` -- and on colour, so the direction constants fold and the generator for one side has
+no branches on colour.
 
 **Under check, evasions are generated as one set.** There is no capture/quiet split, because
 there are few evasions and omitting any is unsound.
