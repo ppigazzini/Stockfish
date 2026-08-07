@@ -8,6 +8,8 @@ Alpha-beta with a transposition table, a staged move picker, history-driven orde
 pruning set. Every margin, reduction and bonus named here is a tuned constant: read the value
 from the source, which is the only place it is current.
 
+Audience: search.
+
 ## `tt.cpp` -- the transposition table
 
 A flat array of 32-byte `Cluster`s, three `TTEntry` per cluster plus two bytes of padding.

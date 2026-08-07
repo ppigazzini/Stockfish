@@ -6,12 +6,14 @@ Syzygy tablebases give a **proven** result for positions with few enough pieces:
 side to move wins, draws or loses, and under DTZ how many moves until an irreversible move
 must be made. Where a table answers, the search does not have to.
 
+Audience: tablebase probing.
+
 ## Two questions, two tables
 
 **WDL** -- win, draw or loss, five values including the cursed variants:
 
-```
-TBLoss, TBBlessedLoss, TBDraw, TBCursedWin, TBWin
+```cpp
+WDLLoss = -2, WDLBlessedLoss = -1, WDLDraw = 0, WDLCursedWin = 1, WDLWin = 2
 ```
 
 A *cursed* win is a win the fifty-move rule takes away; a *blessed* loss is a loss the rule
