@@ -157,6 +157,31 @@ outcome for anything under roughly ten percent -- which is why the instruction a
 | `scripts/check_universal_macos.sh` | the same for the macOS universal binary |
 | `scripts/check_universal_riscv.sh` | the same for riscv64 |
 
+## `tests/negative_control.sh`
+
+Breaks the engine on purpose and requires each gate to notice.
+
+```sh
+./tests/negative_control.sh            # every row
+./tests/negative_control.sh docslint   # one row
+```
+
+A gate's power to detect a defect is an assumption until something breaks the code and the
+gate is watched going red. A gate that has quietly stopped being able to fail is invisible,
+because it reports success.
+
+Every mutation perturbs a **value** rather than removing a bound: a mutant that hands the
+search an evaluation with no ceiling produces an experiment that never terminates, and a
+timeout is a rig fault rather than a detection.
+
+Three ways the rig itself can be wrong, and all three refuse rather than return a verdict: an
+anchor string that has rotted (the tree is never mutated, the gate greens, and that reads as
+a gate failing to detect), a mutation that does not compile, and a selector naming no row.
+The tree is restored from a trap, and the run ends by executing a gate green rather than by
+asserting the sources were put back.
+
+Rows that cannot run report SKIPPED and are counted separately. A skipped row proves nothing.
+
 ## `tests/docslint.sh`
 
 Five mechanical checks over this documentation set:
