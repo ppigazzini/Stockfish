@@ -293,3 +293,32 @@ that has it. That half is yours.
 `tests/perft.sh` and `tests/reprosearch.sh` run at exactly one step of `tests.yml`, gated on
 the 64-bit configurations, after an avx2 build.
 
+### Reachability
+
+A gate runs only if something can start the workflow that names it. `stockfish.yml` is the
+one entry point that fans out; `clang-format.yml` and `codeql.yml` trigger themselves. Every
+other workflow declares only `workflow_call`, so it runs when the umbrella calls it and never
+otherwise.
+
+```mermaid
+flowchart LR
+    P(["push / pull_request"]) --> SF["stockfish.yml"]
+    P --> CF["clang-format.yml"]
+    P --> CQ["codeql.yml"]
+    SF --> T["tests.yml"]
+    SF --> SAN["sanitizers.yml"]
+    SF --> PB["perfbudget.yml"]
+    SF --> OTH["iwyu, games, matetrack,<br/>arm, wasm, universal, upload"]
+    T --> G1["signature.sh<br/>perft.sh<br/>reprosearch.sh"]
+    T --> G2["docslint.sh<br/>lanecheck.sh<br/>negative_control.sh<br/>fingerprint.sh<br/>npsab.sh"]
+    SAN --> G3["instrumented.py"]
+    PB --> G4["perfbudget.sh<br/>textequal.sh"]
+    style G2 stroke-dasharray: 5 5
+```
+
+The dashed box is the point: those five gates are reached by no workflow. They run locally or
+not at all, and `tests/lanecheck.sh` holds each of them to carrying an excuse that says so.
+A workflow with only a `workflow_call` trigger and no caller is in the same position -- it
+cannot start, so nothing it names is in a lane, which is what `lanecheck` checks before it
+looks at any script.
+
