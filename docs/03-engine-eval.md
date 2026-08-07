@@ -128,8 +128,24 @@ trained on positions in check, and the search always resolves the check first.
 ## The net is a runtime input
 
 The default network name lives in `evaluate.h`, the Makefile reads it from there, and
-`scripts/net.sh` fetches and verifies it. The binary embeds it via `incbin` -- which is why a
-release binary is around 96 MB -- but `EvalFile` can point at another at runtime.
+`scripts/net.sh` fetches and verifies it. `EvalFile` can point at another at runtime.
+
+How it gets into the binary depends on which binary:
+
+| build | mechanism |
+|---|---|
+| ordinary | `INCBIN(EmbeddedNNUE, EvalFileDefaultName)` in `nnue/network.cpp` |
+| universal | `#embed EvalFileDefaultName` in `universal/nnue_embed.cpp`, guarded by `__has_embed`, falling back to a generated `network_dump.inc` |
+| macOS x86-64 slice | neither: the net is embedded only in the arm64 slice, and the x86 slice `mmap`s it out of its own executable at an offset patched in after the link |
+
+`#embed` is a C++26 feature, so the two universal objects compile at `-std=c++20` with
+`-Wno-c++26-extensions` while the rest of the engine is `-std=c++17`.
+
+The `padding` variable beside the array is not decoration: `#embed` yields exactly the file's
+bytes, while `network_dump.inc` is a C string literal with a trailing NUL, so
+`gEmbeddedNNUESize` subtracts 1 in the fallback path and 0 in the `#embed` path.
+
+Either way the net is in the image, which is why a release binary is around 96 MB.
 
 **The engine resolves `EvalFile` relative to the working directory.** Running from anywhere
 but `src/` finds no external net and produces an unrelated but entirely plausible number.

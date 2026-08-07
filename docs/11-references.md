@@ -49,11 +49,18 @@ Audience: all developers.
 
 ## C++
 
-The build is `-std=c++17` (`src/Makefile`). References are pinned to that revision except
-where a later one is noted as background.
+The engine compiles at `-std=c++17`. The universal binary's two objects do not:
+`nnue_embed.cpp` and `universal/entry_*.cpp` are built at `-std=c++20`, and the embed
+object adds `-Wno-c++26-extensions` because `#embed` is a C++26 feature used as an
+extension. Read the standard that matches the translation unit.
 
 - [cppreference][cppref] -- the day-to-day lookup, with per-revision notes.
-- [C++17 working draft, N4659][n4659] -- the standard as published.
+- [C++17 working draft, N4659][n4659] -- the standard the engine compiles at.
+- [C++20 working draft, N4861][n4861] -- what the universal binary's objects compile at.
+- [P1967, `#embed`][p1967] -- the proposal, adopted for C++26 and accepted by both compilers
+  as an extension today. `__has_embed` is what `nnue_embed.cpp` tests before using it.
+- [WG14 N3017, `#embed` in C23][n3017] -- where the directive was standardised first, which
+  is why the compilers had it before C++ adopted it.
 - [C++ Core Guidelines][core-guidelines] -- the reference for the conventions this codebase
   mostly follows; where it does not, the deviation is deliberate and the relevant page says
   so.
@@ -203,6 +210,9 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 [metamorphic]:      https://en.wikipedia.org/wiki/Metamorphic_testing
 [mutation-testing]: https://en.wikipedia.org/wiki/Mutation_testing
 [n4659]:            https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf
+[n4861]:            https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/n4861.pdf
+[p1967]:            https://wg21.link/p1967
+[n3017]:            https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3017.htm
 [nnue-doc]:         https://github.com/official-stockfish/nnue-pytorch/blob/master/docs/nnue.md
 [nnue-pytorch]:     https://github.com/official-stockfish/nnue-pytorch
 [odbl]:             https://opendatacommons.org/licenses/odbl/odbl-10.txt
