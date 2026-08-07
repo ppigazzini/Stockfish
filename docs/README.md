@@ -10,6 +10,7 @@ The index. Each page owns one part of `src/` and is the claim this set makes abo
 | [03-engine-eval.md](03-engine-eval.md) | `evaluate`, `nnue/` | evaluation and NNUE | hot |
 | [04-multithreading.md](04-multithreading.md) | `thread`, `numa`, `shm` | threading and NUMA | hot |
 | [05-tablebases.md](05-tablebases.md) | `syzygy/` | tablebase probing | hot |
+| [06-platform.md](06-platform.md) | `memory`, `numa`, `shm`, `thread_native`, `universal/` | porting, threading, allocation, dispatch | hot |
 | [07-shell.md](07-shell.md) | `main`, `uci`, `ucioption`, `engine`, `benchmark`, `tune` | the UCI surface and options | hot |
 | [09-type-design.md](09-type-design.md) | the value domain: what each quantity means and which are distinguishable | anyone adding a type or changing an encoding | cold |
 | [10-tooling-ci.md](10-tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
@@ -18,10 +19,6 @@ The index. Each page owns one part of `src/` and is the claim this set makes abo
 | [13-glossary.md](13-glossary.md) | the vocabulary, in tiers | all contributors | cold |
 
 Numbered by reading order. A contributor works down from the architecture into a zone.
-
-`06-platform` is unwritten: `src/numa.h`, `src/shm.h` and `src/memory.h` are described only
-where [04-multithreading.md](04-multithreading.md) needs them. A reader working on the
-platform layer reads the source.
 
 The wiki covers building, usage, UCI commands and terminology for users. Nothing here
 duplicates it.
