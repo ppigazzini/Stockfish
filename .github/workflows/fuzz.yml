@@ -1,0 +1,42 @@
+name: Fuzz
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'Seed to reproduce a finding'
+        required: false
+
+# Three jobs from a matrix, each with the WHOLE budget, rather than one job
+# splitting it: the harnesses run at throughputs orders of magnitude apart, so a
+# shared budget is really a budget for the fastest of them. Separate jobs also
+# mean a red UCI run still lets the other two spend their time, and the job name
+# says which harness failed without opening a log.
+#
+# NOT a merge gate. A clean run means "nothing failed inside that budget", never
+# "there is nothing to find".
+jobs:
+  Fuzz:
+    name: ${{ matrix.harness }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        harness: [uci, tb, net]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Build
+        working-directory: src
+        run: make -j build ARCH=x86-64-avx2
+      # A mirror outage must not fail a fuzz job: without tables the tb harness
+      # skips and says so, which is a visibly weaker run rather than a false green.
+      - name: Fetch the 3-man tablebases
+        if: matrix.harness == 'tb'
+        continue-on-error: true
+        run: ./tests/tbfetch.sh
+      - name: Fuzz
+        run: ./tests/fuzz.py --seconds 600 --harness ${{ matrix.harness }} ${{ github.event.inputs.seed && format('--seed {0}', github.event.inputs.seed) || '' }}
