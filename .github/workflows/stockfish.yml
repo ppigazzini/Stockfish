@@ -160,6 +160,10 @@ jobs:
     name: Perf budget
     if: ${{ always() }}
     uses: ./.github/workflows/perfbudget.yml
+  Docs:
+    name: Docs
+    if: ${{ always() }}
+    uses: ./.github/workflows/docs.yml
   WASMCompilation:
     name: WASM compilation
     if: ${{ always() }}
