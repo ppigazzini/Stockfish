@@ -41,94 +41,19 @@
     #include <immintrin.h>
 #endif
 
+#include "basetypes.h"
+#include "platform.h"
+
 #define stringify2(x) #x
 #define stringify(x) stringify2(x)
 
 namespace Stockfish {
 
-using u64 = std::uint64_t;
-using u32 = std::uint32_t;
-using u16 = std::uint16_t;
-using u8  = std::uint8_t;
-
-using i64 = std::int64_t;
-using i32 = std::int32_t;
-using i16 = std::int16_t;
-using i8  = std::int8_t;
-
-using usize = std::size_t;
-using isize = std::ptrdiff_t;
-
-#if defined(__GNUC__) && defined(IS_64BIT)
-__extension__ using u128 = unsigned __int128;
-__extension__ using i128 = signed __int128;
-#endif
 
 std::string engine_version_info();
 std::string engine_info(bool to_uci = false);
 std::string compiler_info();
 
-// Prefetch hint enums for explicit call-site control.
-enum class PrefetchRw {
-    READ,
-    WRITE
-};
-
-// NOTE: PrefetchLoc controls locality / cache level, not whether a prefetch
-//       is issued. In particular, PrefetchLoc::NONE maps to a non-temporal /
-//       lowest-locality prefetch (Intel: _MM_HINT_NTA, GCC/Clang: locality = 0)
-//       and therefore still performs a prefetch. To completely disable
-//       prefetching, define NO_PREFETCH so that prefetch() becomes a no-op.
-enum class PrefetchLoc {
-    NONE,      // Non-temporal / no cache locality (still issues a prefetch)
-    LOW,       // Low locality (e.g. T2 / L2)
-    MODERATE,  // Moderate locality (e.g. T1 / L1)
-    HIGH       // High locality (e.g. T0 / closest cache)
-};
-
-// Preloads the given address into cache. This is a non-blocking
-// function that doesn't stall the CPU waiting for data to be loaded from memory,
-// which can be quite slow.
-#ifdef NO_PREFETCH
-template<PrefetchRw RW = PrefetchRw::READ, PrefetchLoc LOC = PrefetchLoc::HIGH>
-void prefetch(const void*) {}
-#elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
-
-constexpr int get_intel_hint(PrefetchRw rw, PrefetchLoc loc) {
-    if (rw == PrefetchRw::WRITE)
-    {
-    #ifdef _MM_HINT_ET0
-        return _MM_HINT_ET0;
-    #else
-        // Fallback when write-prefetch hint is not available: use T0
-        return _MM_HINT_T0;
-    #endif
-    }
-    switch (loc)
-    {
-    case PrefetchLoc::NONE :
-        return _MM_HINT_NTA;
-    case PrefetchLoc::LOW :
-        return _MM_HINT_T2;
-    case PrefetchLoc::MODERATE :
-        return _MM_HINT_T1;
-    case PrefetchLoc::HIGH :
-        return _MM_HINT_T0;
-    default :
-        return _MM_HINT_T0;
-    }
-}
-
-template<PrefetchRw RW = PrefetchRw::READ, PrefetchLoc LOC = PrefetchLoc::HIGH>
-void prefetch(const void* addr) {
-    _mm_prefetch(static_cast<const char*>(addr), get_intel_hint(RW, LOC));
-}
-#else
-template<PrefetchRw RW = PrefetchRw::READ, PrefetchLoc LOC = PrefetchLoc::HIGH>
-void prefetch(const void* addr) {
-    __builtin_prefetch(addr, static_cast<int>(RW), static_cast<int>(LOC));
-}
-#endif
 
 void start_logger(const std::filesystem::path& fname);
 
@@ -149,13 +74,6 @@ void dbg_correl_of(i64 value1, i64 value2, int slot = 0);
 void dbg_print();
 void dbg_clear();
 
-using TimePoint = std::chrono::milliseconds::rep;  // A value in milliseconds
-static_assert(sizeof(TimePoint) == sizeof(i64), "TimePoint should be 64 bits");
-inline TimePoint now() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-             std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
 
 inline std::vector<std::string_view> split(std::string_view s, std::string_view delimiter) {
     std::vector<std::string_view> res;
@@ -194,139 +112,10 @@ std::ostream& operator<<(std::ostream&, SyncCout);
 void sync_cout_start();
 void sync_cout_end();
 
-// True if and only if the binary is compiled on a little-endian machine
-static inline const u16  Le             = 1;
-static inline const bool IsLittleEndian = *reinterpret_cast<const char*>(&Le) == 1;
 
 
-template<typename T, usize MaxSize>
-class ValueList {
-
-   public:
-    usize size() const { return size_; }
-    int   ssize() const { return int(size_); }
-    void  push_back(const T& value) {
-        assert(size_ < MaxSize);
-        values_[size_++] = value;
-    }
-    // pushes back value if value < max
-    void push_back_if_lt(const T& value, const T& max) {
-        assert(size_ < MaxSize);
-        values_[size_] = value;
-        size_ += (value < max);
-    }
-    const T* begin() const { return values_; }
-    const T* end() const { return values_ + size_; }
-    const T& operator[](int index) const { return values_[index]; }
-
-    T* make_space(usize count) {
-        T* result = &values_[size_];
-        size_ += count;
-        assert(size_ <= MaxSize);
-        return result;
-    }
-
-   private:
-    T     values_[MaxSize];
-    usize size_ = 0;
-};
 
 
-template<typename T, usize Size, usize... Sizes>
-class MultiArray;
-
-namespace Detail {
-
-template<typename T, usize Size, usize... Sizes>
-struct MultiArrayHelper {
-    using ChildType = MultiArray<T, Sizes...>;
-};
-
-template<typename T, usize Size>
-struct MultiArrayHelper<T, Size> {
-    using ChildType = T;
-};
-
-template<typename To, typename From>
-constexpr bool is_strictly_assignable_v =
-  std::is_assignable_v<To&, From> && (std::is_same_v<To, From> || !std::is_convertible_v<From, To>);
-
-}
-
-// MultiArray is a generic N-dimensional array.
-// The template parameters (Size and Sizes) encode the dimensions of the array.
-template<typename T, usize Size, usize... Sizes>
-class MultiArray {
-    using ChildType = typename Detail::MultiArrayHelper<T, Size, Sizes...>::ChildType;
-    using ArrayType = std::array<ChildType, Size>;
-    ArrayType data_;
-
-   public:
-    using value_type             = typename ArrayType::value_type;
-    using size_type              = typename ArrayType::size_type;
-    using difference_type        = typename ArrayType::difference_type;
-    using reference              = typename ArrayType::reference;
-    using const_reference        = typename ArrayType::const_reference;
-    using pointer                = typename ArrayType::pointer;
-    using const_pointer          = typename ArrayType::const_pointer;
-    using iterator               = typename ArrayType::iterator;
-    using const_iterator         = typename ArrayType::const_iterator;
-    using reverse_iterator       = typename ArrayType::reverse_iterator;
-    using const_reverse_iterator = typename ArrayType::const_reverse_iterator;
-
-    constexpr auto&       at(size_type index) { return data_.at(index); }
-    constexpr const auto& at(size_type index) const { return data_.at(index); }
-
-    constexpr auto& operator[](size_type index) noexcept {
-        assert(index < Size);
-        return data_[index];
-    }
-    constexpr const auto& operator[](size_type index) const noexcept {
-        assert(index < Size);
-        return data_[index];
-    }
-
-    constexpr auto&       front() noexcept { return data_.front(); }
-    constexpr const auto& front() const noexcept { return data_.front(); }
-    constexpr auto&       back() noexcept { return data_.back(); }
-    constexpr const auto& back() const noexcept { return data_.back(); }
-
-    auto*       data() { return data_.data(); }
-    const auto* data() const { return data_.data(); }
-
-    constexpr auto begin() noexcept { return data_.begin(); }
-    constexpr auto end() noexcept { return data_.end(); }
-    constexpr auto begin() const noexcept { return data_.begin(); }
-    constexpr auto end() const noexcept { return data_.end(); }
-    constexpr auto cbegin() const noexcept { return data_.cbegin(); }
-    constexpr auto cend() const noexcept { return data_.cend(); }
-
-    constexpr auto rbegin() noexcept { return data_.rbegin(); }
-    constexpr auto rend() noexcept { return data_.rend(); }
-    constexpr auto rbegin() const noexcept { return data_.rbegin(); }
-    constexpr auto rend() const noexcept { return data_.rend(); }
-    constexpr auto crbegin() const noexcept { return data_.crbegin(); }
-    constexpr auto crend() const noexcept { return data_.crend(); }
-
-    constexpr bool      empty() const noexcept { return data_.empty(); }
-    constexpr size_type size() const noexcept { return data_.size(); }
-    constexpr size_type max_size() const noexcept { return data_.max_size(); }
-
-    template<typename U>
-    void fill(const U& v) {
-        static_assert(Detail::is_strictly_assignable_v<T, U>,
-                      "Cannot assign fill value to entry type");
-        for (auto& ele : data_)
-        {
-            if constexpr (sizeof...(Sizes) == 0)
-                ele = v;
-            else
-                ele.fill(v);
-        }
-    }
-
-    constexpr void swap(MultiArray<T, Size, Sizes...>& other) noexcept { data_.swap(other.data_); }
-};
 
 // Wrapper around std::atomic<T> which uses relaxed accesses or plain
 // accesses, depending on the config. Intended use is e.g. wasm where

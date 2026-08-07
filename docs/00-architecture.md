@@ -35,7 +35,9 @@ ls src/universal                        # runtime ISA dispatch entry points
 | `numa.h`, `shm.h`, `shm_unix.h`, `memory.h/.cpp` | NUMA topology, replication, shared memory, aligned allocation |
 | `uci.h/.cpp`, `ucioption.h/.cpp`, `engine.h/.cpp` | the UCI transport, the option table, the session |
 | `benchmark.h/.cpp`, `perft.h`, `score.h/.cpp`, `tune.h/.cpp` | bench positions, perft, score reporting, SPSA tuning |
-| `misc.h/.cpp` | integer aliases, `prefetch`, `TimePoint`, `MultiArray`, `RelaxedAtomic`, `PRNG`, the logger, the `dbg_*` counters |
+| `basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray` |
+| `platform.h` | what the machine provides: `prefetch`, `TimePoint`/`now`, `IsLittleEndian` |
+| `misc.h/.cpp` | what is left of the utility drawer: `RelaxedAtomic`, `PRNG`, the logger, the `dbg_*` counters, `sync_cout`, `split`, `CommandLine` |
 | `universal/` | per-ISA entry points for the runtime-dispatch binary |
 
 **`src/Makefile` is the authority on what is compiled.** `SRCS` is an explicit list, not a
@@ -127,9 +129,17 @@ Concretely, at the time of writing:
   everything that includes `search.h`.
 - **`types.h` includes `tune.h` after its own `#endif`**, deliberately outside the include
   guard and commented "Global visibility to tuning setup". Anything that touches `types.h` or
-  the tunable constants has to account for it.
-- **`types.h` includes `misc.h`**, so the fundamental type header depends on the utility
-  grab bag.
+  the tunable constants has to account for it. This one is **kept on purpose**: no committed
+  file uses `TUNE(...)`, because the injection exists so that a developer tuning a parameter
+  can drop a `TUNE(...)` line beside a constant without adding an include and remove it before
+  the change lands. Removing the edge would tax every future SPSA run to buy a tidier include
+  graph, so it stays, documented rather than silently odd.
+- **`types.h` includes `basetypes.h`, not `misc.h`.** The type vocabulary it needs -- the
+  integer aliases and `ValueList` -- was split out of the utility drawer, so the fundamental
+  type header no longer pulls the logger, the `dbg_*` counters and `sync_cout` into every
+  translation unit that touches a `Square`. `misc.h` includes `basetypes.h` and `platform.h`
+  in turn, so its 27 includers were untouched by the split: the seam exists, but nothing has
+  been migrated across it yet, and `misc.h` is still a drawer.
 
 Measure the header closure rather than trusting a number here:
 
