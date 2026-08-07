@@ -78,7 +78,14 @@ Retired instructions under callgrind, base against head, built and measured in t
 ```sh
 ./tests/perfbudget.sh HEAD~1                    # this commit against its parent
 ./tests/perfbudget.sh origin/master worktree    # uncommitted work
+./tests/perfbudget.sh --pgo HEAD~1              # the build that actually ships
 ```
+
+**Measure both build modes.** `make profile-build` is the shipped recipe, and the two do
+not agree on the size of a regression: forcing `Position::adjust_key50` out of line costs
+**+0.1000% at -O3 and +0.0477% under PGO**, because the profile lets the compiler make a
+better job of the out-of-line call. The PGO binary is also about 4.8% cheaper overall on
+this bench. A budget taken only at -O3 gates a binary nobody runs.
 
 Four properties, each deliberate:
 
