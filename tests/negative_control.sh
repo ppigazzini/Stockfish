@@ -321,13 +321,12 @@ fi
 
 row perft
 if selected perft; then
-    if ! command -v expect >/dev/null; then
-        echo "negative-control: perft       SKIPPED -- expect is not installed"; SKIP=$((SKIP+1))
+    if false; then :
     else
         echo "negative-control: perft       -- no knight under-promotion"
         mutate src/movegen.cpp \
-            'for (PieceType pt : {KNIGHT, BISHOP, ROOK, QUEEN})' \
-            'for (PieceType pt : {BISHOP, ROOK, QUEEN})'
+            '*moveList++ = Move::make<PROMOTION>(from, to, KNIGHT);' \
+            ''
         if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
             if ( cd src && ../tests/perft.sh ) >/dev/null 2>&1; then
                 echo "  NOT DETECTED -- perft still matched"; FAIL=$((FAIL+1))
