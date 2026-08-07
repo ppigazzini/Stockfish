@@ -4,8 +4,6 @@ What is in `src/`, how one search flows through it, and what depends on what. Fo
 see [10-tooling-ci.md](10-tooling-ci.md); for building and usage see the
 [wiki](https://github.com/official-stockfish/Stockfish/wiki).
 
-This page states structure. Where a count would date it, it names the command instead.
-
 ## The layout
 
 `src/` is **flat**: every translation unit sits at the top level except three groups that

@@ -1,0 +1,143 @@
+# The board
+
+`src/types.h`, `src/bitboard.h`, `src/bitboard.cpp`, `src/attacks.h`, `src/attacks.cpp`,
+`src/position.h`, `src/position.cpp`, `src/movegen.h`, `src/movegen.cpp`.
+
+Everything the search stands on: the value domain, square sets, attack generation, the
+mutable board, and the move generator.
+
+## `types.h` -- the value domain
+
+Fixed-width enums for the things that have a fixed range -- `Color`, `Square`, `File`,
+`Rank`, `Piece`, `PieceType`, `Direction`, `CastlingRights`, `Bound`, `MoveType` -- and plain
+aliases for the things that are computed with: `Value`, `Key`, `Bitboard`, `Depth`.
+
+The encodings are load-bearing rather than arbitrary:
+
+- `Piece` is `colour << 3 | type`, so `type_of` is `& 7`, `color_of` is `>> 3`, and `~pc`
+  (flip colour) is `^ 8`.
+- `Square` is `rank << 3 | file`, so `flip_rank` is `^ SQ_A8` and `flip_file` is `^ SQ_H1`.
+- `relative_square(c, s)` is `s ^ (c * 56)` -- a branch-free board flip.
+- A `Move` is 16 bits: destination in 0-5, origin in 6-11, promotion type in 12-13, a
+  two-bit special flag in 14-15. `Move::none()` and `Move::null()` are sneaked in as origin
+  equal to destination, which no real move produces.
+
+`SQ_NONE` is an in-band 65th value of `Square`. `is_ok(Square)` exists to test it and appears
+almost entirely inside `assert`s -- the code is written so that a square is known to be on
+the board by construction, rather than tested at every use.
+
+`using Depth = int` is deliberate. A depth-scaled product feeds a history bonus, two score
+margins, a move count, a history magnitude and a reduction denominator -- six different
+codomains -- so a type carrying depth through arithmetic would need six output types, which
+is the same as needing none.
+
+`types.h` ends with `#include "tune.h"` placed **after** its own `#endif`, deliberately
+outside the include guard, so the tuning macros are visible anywhere `types.h` reaches. That
+is how a developer can drop a `TUNE(...)` line beside a constant without adding an include.
+
+## `bitboard.h` -- square sets
+
+A `Bitboard` is a `u64`, one bit per square, LSB = a1. Shifts and masks do the geometry:
+`shift<NORTH>` is `<< 8`, and the file masks stop a shift wrapping around the board edge.
+
+`pop_lsb` is the hottest line in the engine -- it is how every move loop advances -- so it
+compiles to a single `tzcnt`/`blsr` pair where the ISA has them.
+
+## `attacks.cpp` -- slider attacks, three ways
+
+Leapers (king, knight, pawn) are a table lookup. Sliders are the interesting case, and the
+engine carries **three** implementations chosen at compile time by ISA:
+
+- **Magic bitboards** -- multiply the masked occupancy by a magic constant, shift, index.
+  The magics are searched at startup on tiers that need them.
+- **PEXT** (`USE_PEXT`) -- BMI2's parallel bit extract replaces the multiply-and-shift
+  entirely, so the index is exact and the table is dense.
+- **Hyperbola quintessence** with a `DualMagic` -- at avx2 and above, file, diagonal and
+  antidiagonal attacks are computed arithmetically and rank attacks come from a small table.
+
+`DualMagic::both_attacks_bb` returns the bishop and rook attack sets for one square in a
+single call, `alignas(32)` so the pair of lookups sits in one cache line. Callers that need
+both -- `slider_blockers`, `see_ge` -- get them without touching two structures.
+
+`RankAttacks` is `alignas(64) constexpr`: generated at compile time rather than at startup,
+and small enough to stay resident. Shrinking it was worth measurable strength.
+
+**Which implementation is compiled changes the code but not the answer.** Every tier must
+produce the same attack sets, and the compile matrix benching one signature across roughly
+twenty architecture builds is what holds that.
+
+## `position.cpp` -- the board
+
+`Position` holds the piece placement, the by-type and by-colour bitboards, the side to move,
+the castling rights, and a pointer to a `StateInfo`.
+
+### `StateInfo` and the chain
+
+State that cannot be recomputed cheaply is copied per move; state that can be is not. The
+struct is split by that rule, with a comment marking the boundary:
+
+```
+// Not copied when making a move (will be recomputed anyhow)
+Key        key;
+Bitboard   checkersBB;
+StateInfo* previous;
+Bitboard   blockersForKing[COLOR_NB];
+...
+```
+
+`previous` chains the states backwards, and the chain is what repetition and fifty-move
+detection walk. The states live in a `std::deque` (`StateListPtr`) rather than a `vector`
+**because pointers into it must survive a resize**.
+
+`do_move` maintains the incremental state: the Zobrist key, the pawn/minor/non-pawn/material
+keys, the check information, and the NNUE dirty-piece record. It also issues the
+transposition and history prefetches from the point the child's keys become final -- inside
+`do_move` rather than at the caller, because that is where the lead time is longest.
+
+### Repetition, and why it is a cuckoo table
+
+`upcoming_repetition` answers a harder question than "have we seen this position": it asks
+whether the side to move *can force* a repetition, which lets the search cut off before
+playing it. It uses Marcel van Kervinck's cuckoo algorithm -- an 8192-entry table of the
+Zobrist keys of all reversible one-piece moves, with two hash functions, so a candidate
+repetition is found by two lookups rather than a walk.
+
+The table is a pure function of the Zobrist psq and side keys, and is built where those keys
+are drawn.
+
+### `see_ge` -- static exchange evaluation
+
+Answers "is the exchange on this square worth at least this threshold" without searching it,
+by alternately removing the least valuable attacker. It is what separates a good capture from
+a bad one in the move picker, and what several pruning rules consult before discarding a move.
+
+## `movegen.cpp` -- the generator
+
+Pseudo-legal by default: moves that leave the king in check are filtered by `legal()` at the
+point the search makes them, not at generation. Filtering earlier would cost a legality test
+on every generated move, and most generated moves are never made.
+
+`legal()` checks only the three cases that can actually go wrong -- a pinned piece moving off
+its ray, a king moving into attack, and en passant exposing the king along a rank -- rather
+than re-deriving the check status.
+
+Generation is templated on `GenType` (`CAPTURES`, `QUIETS`, `EVASIONS`, `LEGAL`) and on
+colour, so the direction constants fold and the generator for one side has no branches on
+colour.
+
+**Under check, evasions are generated as one set.** There is no capture/quiet split, because
+there are few evasions and omitting any is unsound.
+
+`MAX_MOVES` is 256, which is above the maximum number of legal moves in any reachable
+position, so a move list is a fixed array and the generator never allocates.
+
+## Chess960
+
+Castling is stored as rights plus the rook's origin square, so the king and rook may start
+anywhere on the back rank and may pass through each other's squares. A castling move is
+encoded as **king takes own rook**, which is unambiguous where "king moves two squares" is
+not.
+
+This is why `tests/perft.sh` carries Chess960 rows: standard-chess castling hides an entire
+class of bug, and the same FEN means two different positions under the two dialects.
+

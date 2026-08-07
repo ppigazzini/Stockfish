@@ -1,45 +1,32 @@
 # Stockfish developer documentation
 
-This set describes **the source tree**, for a contributor reading it cold. The
-[wiki](https://github.com/official-stockfish/Stockfish/wiki) covers building, usage, UCI
-commands and the terminology; nothing here duplicates it, because two copies of one fact
-drift apart and the wrong one gets read.
+The index. Each page owns one part of `src/` and is the claim this set makes about it.
 
-| Page | Owns |
-|---|---|
-| [00-architecture.md](00-architecture.md) | `src/` -- what each file owns, how a search flows, and what depends on what |
-| [10-tooling-ci.md](10-tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` -- every gate, what it proves, and what it cannot see |
+| Page | Owns | Audience | Temperature |
+|---|---|---|---|
+| [00-architecture.md](00-architecture.md) | the file layout, the startup order, how a search flows, what depends on what | anyone changing more than one file | hot |
+| [01-engine-board.md](01-engine-board.md) | `types.h`, `bitboard`, `attacks`, `position`, `movegen` | board and movegen | hot |
+| [02-engine-search.md](02-engine-search.md) | `search`, `tt`, `history`, `movepick`, `timeman`, `score` | search | hot |
+| [03-engine-eval.md](03-engine-eval.md) | `evaluate`, `nnue/` | evaluation and NNUE | hot |
+| [04-multithreading.md](04-multithreading.md) | `thread`, `numa`, `shm` | threading and NUMA | hot |
+| [05-tablebases.md](05-tablebases.md) | `syzygy/` | tablebase probing | hot |
+| [07-shell.md](07-shell.md) | `main`, `uci`, `ucioption`, `engine`, `benchmark`, `tune` | the UCI surface and options | hot |
+| [10-tooling-ci.md](10-tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
+| [12-writing.md](12-writing.md) | the rules for these pages and for code comments | anyone editing a page | cold |
 
-The numbering leaves room, so a page added later lands where a reader expects it rather than
-renumbering the set.
+Numbered by reading order. A contributor works down from the architecture into a zone.
 
-## Docs are part of the change, not after it
+`06-platform`, `08`, `09-type-design`, `11-references` and `13-glossary` are unwritten. The
+platform layer, the value domain and the vocabulary are undocumented; a reader needing them
+reads the source.
 
-Each page above is a live claim about code someone is about to touch. Change what a page owns,
-re-read it and fix it **in the same commit**. A doc is wrong from the moment the code lands,
-and that is how every false claim in a documentation set gets there.
-
-This is the reason the pages are in the repository rather than in the wiki. A wiki in a
-separate repository cannot be edited in the same commit, reviewed in the same pull request, or
-checked against the tree.
+The wiki covers building, usage, UCI commands and terminology for users. Nothing here
+duplicates it.
 
 ```sh
 ./tests/docslint.sh
 ```
 
-catches a dead link, a named path that does not exist, a pinned bench signature, an
-undiscoverable gate, and a reference into the untracked working area. **It cannot tell you a
-sentence has become false.** That part is yours, and it is the half that actually rots.
-
-## These pages describe the tree AS IT IS
-
-Not as it is intended to become. Where the current structure has a known problem the page
-says so as present-tense fact, without a plan attached -- a description of the tree is
-falsified by a change to the tree, which is checkable, while a description of an intention is
-falsified by nothing.
-
-## Numbers
-
-Any figure a command can compute is written as the command, not as the number. A count in
-prose is stale at the next commit and nobody greps documentation when it moves. The bench
-signature is the sharpest case and `docslint` refuses it outright.
+checks a dead link, a named path that does not exist, a pinned bench signature, a gate no
+page names, and a tracked file pointing into the untracked working area. It cannot tell you a
+sentence has become false.
