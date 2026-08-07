@@ -36,7 +36,6 @@
 #include "misc.h"
 #include "movegen.h"
 #include "syzygy/tbprobe.h"
-#include "uci.h"
 
 using std::string;
 
@@ -83,7 +82,7 @@ std::ostream& operator<<(std::ostream& os, const Position& pos) {
        << std::setw(16) << pos.key() << std::setfill(' ') << std::dec << "\nCheckers: ";
 
     for (Bitboard b = pos.checkers(); b;)
-        os << UCIEngine::square(pop_lsb(b)) << " ";
+        os << square_name(pop_lsb(b)) << " ";
 
     if (Tablebases::MaxCardinality >= popcount(pos.pieces()) && !pos.can_castle(ANY_CASTLING))
     {
@@ -615,7 +614,7 @@ string Position::fen() const {
     if (!can_castle(ANY_CASTLING))
         ss << '-';
 
-    ss << (ep_square() == SQ_NONE ? " - " : " " + UCIEngine::square(ep_square()) + " ")
+    ss << (ep_square() == SQ_NONE ? " - " : " " + square_name(ep_square()) + " ")
        << st->rule50 << " " << 1 + (gamePly - (sideToMove == BLACK)) / 2;
 
     return ss.str();
@@ -1633,6 +1632,10 @@ bool Position::pos_is_ok() const {
     assert(material_key_is_ok() && "pos_is_ok: materialKey");
 
     return true;
+}
+
+std::string square_name(Square s) {
+    return std::string{char('a' + file_of(s)), char('1' + rank_of(s))};
 }
 
 }  // namespace Stockfish
