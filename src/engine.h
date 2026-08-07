@@ -34,7 +34,7 @@
 #include "history.h"
 #include "nnue/network.h"
 #include "nnue/nnue_misc.h"
-#include "numa.h"
+#include "numa_shared.h"
 #include "position.h"
 #include "search.h"
 #include "syzygy/tbprobe.h"  // for Stockfish::Depth
