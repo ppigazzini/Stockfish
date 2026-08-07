@@ -340,6 +340,41 @@ if selected perft; then
     fi
 fi
 
+# --------------------------------------------------------------- depcheck
+
+row depcheck-new
+if selected depcheck-new; then
+    echo "negative-control: depcheck    -- an engine file reaching into the shell"
+    mutate src/bitboard.cpp \
+        '#include "bitboard.h"' \
+        '#include "bitboard.h"
+#include "uci.h"'
+    if ./tests/depcheck.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a new engine -> shell edge passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
+row depcheck-stale
+if selected depcheck-stale; then
+    # The inverse direction. A baseline that only ever grows stops being a debt
+    # register and becomes a permanent excuse, so an entry describing an edge
+    # that no longer happens has to fail too.
+    echo "negative-control: depcheck    -- a baseline entry that no longer happens"
+    mutate tests/depcheck.baseline \
+        'search.cpp -> uci.h' \
+        'search.cpp -> uci.h
+movegen.cpp -> uci.h'
+    if ./tests/depcheck.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a stale baseline entry passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- fuzz
 #
 # A fuzz harness has two ways to be useless, and only one of them is visible in

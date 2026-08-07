@@ -23,3 +23,6 @@ jobs:
 
       - name: Lane coverage
         run: ./tests/lanecheck.sh
+
+      - name: Dependency direction
+        run: ./tests/depcheck.sh
