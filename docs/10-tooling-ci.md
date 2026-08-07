@@ -112,6 +112,21 @@ model at all.
 So: **never let this gate alone veto a change whose claim is locality, prefetch or latency
 hiding.**
 
+**And the verdict on that class is compiler-dependent.** The same three commits measured
+under both compilers the tree builds with:
+
+| Commit | gcc | clang |
+|---|---|---|
+| `d70dec7d6` Optimize attacks | -0.8231% | -0.5096% |
+| `a255ad59e` Optimize evasions | -0.0778% | -0.0881% |
+| `ee72cf49f` Optimize RankAttacks | **+0.1628%** | **-0.1427%** |
+
+The two changes that genuinely retire fewer instructions agree in sign under both compilers.
+The locality change does not -- gcc calls it a regression and clang calls it an improvement.
+That gives a usable rule: **a sign that flips between gcc and clang means the change is not
+an instruction-count change at all**, and the instruction axis is the wrong instrument for
+it.
+
 callgrind implements no AVX-512 and dies on the first instruction it does not know, so the
 instruction axis stops at avx2/bmi2 -- below the tier a player builds. The script refuses
 such an `--arch` rather than producing a number.
