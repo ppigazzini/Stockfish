@@ -35,7 +35,7 @@ ENGINE="attacks basetypes bitboard evaluate history movegen movepick position
         affine_transform_sparse_input sqr_clipped_relu"
 
 # The OS runtime that hosts it: clock, memory, threads, NUMA, shared memory.
-PLATFORM="memory misc numa platform shm shm_unix thread thread_native
+PLATFORM="memory misc numa numa_shared platform shm shm_unix thread thread_native
           entry_arm64 entry_riscv64 entry_x86 nnue_embed"
 
 # Vendored third-party code. It is in the tree but not ours to zone.
