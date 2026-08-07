@@ -110,11 +110,26 @@ table, the accumulator stack and the refresh cache are allocated once outside an
 
 ## What depends on what
 
-**There is no declared dependency direction and nothing enforces one.** That is the single
-most useful thing to know before moving code, so it is stated plainly rather than left to be
-discovered.
+`src/` is flat, so a zone is a **name list rather than a directory**, and the stack is
+`shell -> platform -> engine` with the engine at the bottom:
 
-Concretely, at the time of writing:
+| Zone | Owns | May include |
+| --- | --- | --- |
+| **engine** | the chess library: types, bitboards, position, movegen, search, per-worker state, the TT, evaluation | nothing outside the engine |
+| **platform** | the OS runtime: the clock, memory, threads, NUMA, shared memory | engine |
+| **shell** | the process: `main`, the UCI loop, the option table, bench, tuning | engine, platform |
+
+`platform` is not a layer *beneath* the engine: it is the runtime that hosts the engine, so it
+may depend on engine types and not the other way round.
+
+**One edge is checked, because only one is a defect rather than a choice**: an engine file that
+includes a shell header. `./tests/depcheck.sh` fails on a new one, and
+`tests/depcheck.baseline` lists the ones that exist today. The baseline expires in both
+directions -- an entry describing an edge that no longer happens fails too, so a fixed edge
+cannot quietly stay listed as debt.
+
+The direction is now declared and checked; it was neither until recently, and the baseline is
+the honest measure of how far the tree is from it. Concretely, at the time of writing:
 
 - **`search.cpp` still depends on the UCI frontend**, for `UCIEngine::wdl` and
   `UCIEngine::format_score` on the `info` line. That edge is string rendering and remains.
