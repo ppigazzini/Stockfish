@@ -19,6 +19,7 @@
 #include "search.h"
 
 #include "output_sink.h"
+#include "worker_set.h"
 
 #include "../platform/numa_shared.h"
 
@@ -293,7 +294,7 @@ void Search::Worker::start_searching() {
     }
 
     // Main thread starts non-main threads, and begins own search.
-    threads.start_searching();
+    worker_set().start_searching(worker_set().ctx);
     bool uciPvSent = iterative_deepening();
 
     // When we reach the maximum depth, we can arrive here without a raise of
@@ -309,12 +310,12 @@ void Search::Worker::start_searching() {
     threads.stop = true;
 
     // Wait until all threads have finished
-    threads.wait_for_search_finished();
+    worker_set().wait_for_search_finished(worker_set().ctx);
 
     // When playing in 'nodes as time' mode, subtract the searched nodes from
     // the available ones before exiting.
     if (limits.npmsec)
-        main_manager()->tm.advance_nodes_time(threads.nodes_searched()
+        main_manager()->tm.advance_nodes_time(worker_set().nodes_searched(worker_set().ctx)
                                               - limits.inc[rootPos.side_to_move()]);
 
     Worker* bestThread = this;
@@ -1970,7 +1971,7 @@ int Search::Worker::reduction(bool i, Depth d, int mn, int delta) const {
 // instead. This function is called to check whether the search should be
 // stopped based on predefined thresholds like time limits or nodes searched.
 TimePoint Search::Worker::elapsed() const {
-    return main_manager()->tm.elapsed([this]() { return threads.nodes_searched(); });
+    return main_manager()->tm.elapsed([this]() { return worker_set().nodes_searched(worker_set().ctx); });
 }
 
 Value Search::Worker::evaluate(const Position& pos) {
@@ -2181,7 +2182,7 @@ void SearchManager::check_time(Search::Worker& worker) {
 
     static TimePoint lastInfoTime = now();
 
-    TimePoint elapsed = tm.elapsed([&worker]() { return worker.threads.nodes_searched(); });
+    TimePoint elapsed = tm.elapsed([&worker]() { return worker_set().nodes_searched(worker_set().ctx); });
     TimePoint tick    = worker.limits.startTime + elapsed;
 
     if (tick - lastInfoTime >= 1000)
@@ -2196,7 +2197,7 @@ void SearchManager::check_time(Search::Worker& worker) {
 
     if ((worker.limits.use_time_management() && (elapsed > tm.maximum() || stopOnPonderhit))
         || (worker.limits.movetime && elapsed >= worker.limits.movetime)
-        || (worker.limits.nodes && worker.threads.nodes_searched() >= worker.limits.nodes))
+        || (worker.limits.nodes && worker_set().nodes_searched(worker_set().ctx) >= worker.limits.nodes))
         worker.threads.stop = true;
 }
 
@@ -2340,11 +2341,11 @@ void SearchManager::output_pv(Search::Worker&           worker,
                               const TranspositionTable& tt,
                               Depth                     depth) {
 
-    const auto nodes     = threads.nodes_searched();
+    const auto nodes     = worker_set().nodes_searched(worker_set().ctx);
     auto&      rootMoves = worker.rootMoves;
     auto&      pos       = worker.rootPos;
     usize      multiPV   = std::min(worker.options.multiPV, rootMoves.size());
-    u64        tbHits    = threads.tb_hits() + (worker.tbConfig.rootInTB ? rootMoves.size() : 0);
+    u64        tbHits    = worker_set().tb_hits(worker_set().ctx) + (worker.tbConfig.rootInTB ? rootMoves.size() : 0);
 
     for (usize i = 0; i < multiPV; ++i)
     {
