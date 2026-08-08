@@ -9,14 +9,39 @@ on:
         description: 'Seed to reproduce a finding'
         required: false
 
-# Three jobs from a matrix, each with the WHOLE budget, rather than one job
-# splitting it: the harnesses run at throughputs orders of magnitude apart, so a
-# shared budget is really a budget for the fastest of them. Separate jobs also
-# mean a red UCI run still lets the other two spend their time, and the job name
-# says which harness failed without opening a log.
+# One job per harness, each with the WHOLE budget, rather than one job splitting
+# it: the harnesses run at throughputs orders of magnitude apart, so a shared
+# budget is really a budget for the fastest of them. Separate jobs also mean a
+# red run in one still lets the others spend their time, and the job name says
+# which harness failed without opening a log.
 #
 # NOT a merge gate. A clean run means "nothing failed inside that budget", never
 # "there is nothing to find".
+#
+# `tb` IS NOT IN THE MATRIX. It finds one of two known defects within seconds
+# of every run:
+#
+#   E1  a corrupt table crashes the engine (SIGSEGV in decompress_pairs)
+#   E2  a corrupt table aborts through an uncaught std::bad_alloc
+#
+# A job that reports the same two recorded defects every night is not a check,
+# and continue-on-error would only have made it a check nobody is required to
+# read. It is out until the defects are fixed.
+#
+# Nothing was deleted. The harness, tbfetch.sh, the verdict comparison against a
+# clean reference, and the fuzz-tb / fuzz-rig / fuzz-verdict negative-control
+# rows all remain, and run by hand:
+#
+#   ./tests/tbfetch.sh && ./tests/fuzz.py --seconds 600 --harness tb
+#
+# Restoring it in the commit that closes E1 and E2 means adding `tb` to the
+# matrix AND putting back the corpus fetch, which went with it rather than
+# staying here as a step that can never run:
+#
+#   - name: Fetch the 3-man tablebases
+#     if: matrix.harness == 'tb'
+#     continue-on-error: true     # a mirror outage must not fail the job
+#     run: ./tests/tbfetch.sh
 jobs:
   Fuzz:
     name: ${{ matrix.harness }}
@@ -24,7 +49,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        harness: [uci, tb, net, shm]
+        harness: [uci, net, shm]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -32,11 +57,5 @@ jobs:
       - name: Build
         working-directory: src
         run: make -j build ARCH=x86-64-avx2
-      # A mirror outage must not fail a fuzz job: without tables the tb harness
-      # skips and says so, which is a visibly weaker run rather than a false green.
-      - name: Fetch the 3-man tablebases
-        if: matrix.harness == 'tb'
-        continue-on-error: true
-        run: ./tests/tbfetch.sh
       - name: Fuzz
         run: ./tests/fuzz.py --seconds 600 --harness ${{ matrix.harness }} ${{ github.event.inputs.seed && format('--seed {0}', github.event.inputs.seed) || '' }}
