@@ -18,6 +18,8 @@
 
 #include "search.h"
 
+#include "output_sink.h"
+
 #include "../platform/numa_shared.h"
 
 #include <algorithm>
@@ -51,7 +53,6 @@
 #include "types.h"
 #include "../platform/platform.h"
 #include "basetypes.h"
-#include "../shell/console.h"
 
 namespace Stockfish {
 
@@ -2119,7 +2120,7 @@ void SearchManager::check_time(Search::Worker& worker) {
     if (tick - lastInfoTime >= 1000)
     {
         lastInfoTime = tick;
-        dbg_print();
+        output_sink().debug_dump();
     }
 
     // We should not stop pondering until told so by the GUI
@@ -2268,9 +2269,8 @@ void syzygy_extend_pv(const SearchOptions&      options,
 
     // Inform if we couldn't get a full extension in time
     if (time_abort())
-        sync_cout
-          << "info string Syzygy based PV extension requires more time, increase Move Overhead as needed."
-          << sync_endl;
+        emit_line(
+          "info string Syzygy based PV extension requires more time, increase Move Overhead as needed.");
 }
 
 void SearchManager::output_pv(Search::Worker&           worker,

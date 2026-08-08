@@ -1,15 +1,9 @@
 # Engine files that include a shell header.
 #
-# types.h -> tune.h is DELIBERATE: the include sits after types.h's own #endif
-# so the SPSA macros reach anywhere types.h does, and removing it would make
-# every future tuning run add an include first.
+# ONE, and it is not debt. types.h -> tune.h is deliberate: the include sits
+# after types.h's own #endif so the SPSA macros reach anywhere types.h does, and
+# removing it would make every future tuning run add an include first.
 #
-# The other two are engine code printing, and they are new only in the sense
-# that they became VISIBLE: sync_cout and dbg_print used to live in misc.h, a
-# platform file, so an engine file calling them produced an engine-to-platform
-# edge that the shell check could not see. Moving the console half to
-# shell/console.h put them where the rule can read them. They are the output
-# sink seam B7 describes and does not build.
-network.cpp -> console.h
-search.cpp -> console.h
+# The console includes went with the output sink: the engine no longer prints,
+# it emits through a seam.
 types.h -> tune.h
