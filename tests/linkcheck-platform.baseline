@@ -1,0 +1,43 @@
+# Engine objects that reference a symbol only a platform object defines.
+#
+# The declared stack says the engine depends on nothing outside itself, so every
+# line here is a violation -- and together they are the reason engine/ still
+# cannot be linked alone. B7's seams closed the engine-to-SHELL edge; this is
+# the other half and it is untouched.
+#
+# Three groups, and they need different fixes:
+#   Tablebases::*        the Syzygy prober, reached from position.o and search.o
+#   NumaConfig::*        topology, reached from search.o
+#   hash_bytes, sync_cout, and other misc.h/platform.h helpers
+#
+# The first two want injection seams of the shape mcfish uses: the engine
+# declares a function pointer, the composition root registers an implementation.
+# The third is mostly D1 -- misc.h is a drawer, and half of what engine files
+# reach for in it is not platform at all.
+network.o _ZN9Stockfish10hash_bytesEPKcm
+network.o _ZN9StockfishlsERSoNS_8SyncCoutE
+position.o _ZN9Stockfish10Tablebases14MaxCardinalityE
+position.o _ZN9Stockfish10Tablebases9probe_dtzERNS_8PositionEPNS0_10ProbeStateE
+position.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
+search.o _ZN9Stockfish10NumaConfig11from_systemERKSt7variantIJNS_16SystemNumaPolicyENS_15L3DomainsPolicyENS_15BundledL3PolicyEEEb
+search.o _ZN9Stockfish10Tablebases15rank_root_movesERKNS_13SearchOptionsERNS_8PositionERSt6vectorINS_6Search8RootMoveESaIS8_EEbRKSt8functionIFbvEE
+search.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
+search.o _ZN9Stockfish10ThreadPool15start_searchingEv
+search.o _ZN9Stockfish10hash_bytesEPKcm
+search.o _ZN9Stockfish24aligned_large_pages_freeEPv
+search.o _ZN9Stockfish25aligned_large_pages_allocEm
+search.o _ZN9Stockfish9dbg_printEv
+search.o _ZN9StockfishlsERSoNS_8SyncCoutE
+search.o _ZNK9Stockfish10NumaConfig32bind_current_thread_to_numa_nodeEm
+search.o _ZNK9Stockfish10NumaConfig9to_stringB5cxx11Ev
+search.o _ZNK9Stockfish10ThreadPool14nodes_searchedEv
+search.o _ZNK9Stockfish10ThreadPool15get_best_threadEv
+search.o _ZNK9Stockfish10ThreadPool24wait_for_search_finishedEv
+search.o _ZNK9Stockfish10ThreadPool7tb_hitsEv
+tt.o _ZN9Stockfish10ThreadPool13run_on_threadEmSt8functionIFvvEE
+tt.o _ZN9Stockfish10ThreadPool14wait_on_threadEm
+tt.o _ZN9Stockfish24aligned_large_pages_freeEPv
+tt.o _ZN9Stockfish35aligned_large_pages_alloc_with_hintEmb
+tt.o _ZNK9Stockfish10ThreadPool10numa_nodesEv
+tt.o _ZNK9Stockfish10ThreadPool11num_threadsEv
+tt.o _ZNK9Stockfish10ThreadPool29get_bound_thread_to_numa_nodeEv
