@@ -26,6 +26,7 @@
 #include "position.h"
 #include "types.h"
 #include "uci.h"
+#include "misc.h"
 
 namespace Stockfish::Benchmark {
 

@@ -21,9 +21,9 @@
 #ifndef NNUE_FEATURES_K32Q2_H_INCLUDED
 #define NNUE_FEATURES_K32Q2_H_INCLUDED
 
-#include "../../misc.h"
 #include "../../types.h"
 #include "../nnue_common.h"
+#include "../../basetypes.h"
 
 namespace Stockfish::Eval::NNUE::Features {
 
