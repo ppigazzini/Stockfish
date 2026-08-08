@@ -19,17 +19,15 @@
 #ifndef MEMORY_H_INCLUDED
 #define MEMORY_H_INCLUDED
 
-#include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <memory>
 #include <new>
 #include <type_traits>
 #include <utility>
 
+#include "../engine/arena.h"
 #include "../engine/types.h"
 #include "../engine/basetypes.h"
 
@@ -67,10 +65,6 @@ namespace Stockfish {
 
 constexpr usize HugePageSize = usize(1) << 30;
 
-[[noreturn]] inline void report_failed_allocation(usize bytes) {
-    std::cerr << "Failed to allocate " << bytes << " bytes." << std::endl;
-    std::exit(EXIT_FAILURE);
-}
 
 void* std_aligned_alloc(usize alignment, usize size);
 void  std_aligned_free(void* ptr);
@@ -84,77 +78,13 @@ bool has_large_pages();
 
 // Frees memory which was placed there with placement new.
 // Works for both single objects and arrays of unknown bound.
-template<typename T, typename FREE_FUNC>
-void memory_deleter(T* ptr, FREE_FUNC free_func) {
-    if (!ptr)
-        return;
-
-    // Explicitly needed to call the destructor
-    if constexpr (!std::is_trivially_destructible_v<T>)
-        ptr->~T();
-
-    free_func(ptr);
-}
 
 // Frees memory which was placed there with placement new.
 // Works for both single objects and arrays of unknown bound.
-template<typename T, typename FREE_FUNC>
-void memory_deleter_array(T* ptr, FREE_FUNC free_func) {
-    if (!ptr)
-        return;
-
-
-    // Move back on the pointer to where the size is allocated
-    const usize array_offset = std::max(sizeof(usize), alignof(T));
-    char*       raw_memory   = reinterpret_cast<char*>(ptr) - array_offset;
-
-    if constexpr (!std::is_trivially_destructible_v<T>)
-    {
-        const usize size = *reinterpret_cast<usize*>(raw_memory);
-
-        // Explicitly call the destructor for each element in reverse order
-        for (usize i = size; i-- > 0;)
-            ptr[i].~T();
-    }
-
-    free_func(raw_memory);
-}
 
 // Allocates memory for a single object and places it there with placement new
-template<typename T, typename ALLOC_FUNC, typename... Args>
-inline std::enable_if_t<!std::is_array_v<T>, T*> memory_allocator(ALLOC_FUNC alloc_func,
-                                                                  Args&&... args) {
-    void* raw_memory = alloc_func(sizeof(T));
-    if (raw_memory == nullptr)
-        report_failed_allocation(sizeof(T));
-    ASSERT_ALIGNED(raw_memory, alignof(T));
-    return new (raw_memory) T(std::forward<Args>(args)...);
-}
 
 // Allocates memory for an array of unknown bound and places it there with placement new
-template<typename T, typename ALLOC_FUNC>
-inline std::enable_if_t<std::is_array_v<T>, std::remove_extent_t<T>*>
-memory_allocator(ALLOC_FUNC alloc_func, usize num) {
-    using ElementType = std::remove_extent_t<T>;
-
-    const usize array_offset = std::max(sizeof(usize), alignof(ElementType));
-
-    // Save the array size in the memory location
-    const usize bytes      = array_offset + num * sizeof(ElementType);
-    char*       raw_memory = reinterpret_cast<char*>(alloc_func(bytes));
-    if (raw_memory == nullptr)
-        report_failed_allocation(bytes);
-    ASSERT_ALIGNED(raw_memory, alignof(T));
-
-    new (raw_memory) usize(num);
-
-    for (usize i = 0; i < num; ++i)
-        new (raw_memory + array_offset + i * sizeof(ElementType)) ElementType();
-
-    // Need to return the pointer at the start of the array so that
-    // the indexing in unique_ptr<T[]> works.
-    return reinterpret_cast<ElementType*>(raw_memory + array_offset);
-}
 
 //
 //

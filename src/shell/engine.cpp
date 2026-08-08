@@ -18,6 +18,8 @@
 
 #include "engine.h"
 
+#include "../engine/arena.h"
+
 #include <algorithm>
 #include <cassert>
 #include <filesystem>
@@ -57,7 +59,22 @@ int MaxThreads = std::max(1024, 4 * int(get_hardware_concurrency()));
 // PR#6526). The user can always explicitly override this behavior.
 constexpr NumaAutoPolicy DefaultNumaPolicy = BundledL3Policy{32};
 
+// The host's arena: large pages where the OS will give them.
+//
+// INSTALLED FIRST. This tag is the Engine's first member, so its constructor
+// runs before every member declared after it -- and therefore before the
+// transposition table or any history bank exists. A block taken from the
+// engine's default allocator and released by this one is heap corruption with no
+// diagnostic, so the ordering is a correctness requirement, not a preference.
+Engine::ArenaInstallerTag::ArenaInstallerTag() {
+    set_arena({aligned_large_pages_alloc, aligned_large_pages_alloc_with_hint,
+               aligned_large_pages_free});
+}
+
 Engine::Engine(std::optional<std::filesystem::path> path) :
+    // The arena is installed by this member's constructor, which runs before
+    // every member declared after it -- see the note above.
+    arenaInstaller(),
     binaryDirectory(path ? CommandLine::get_binary_directory(*path) : std::filesystem::path{}),
     numaContext(NumaConfig::from_system(DefaultNumaPolicy)),
     states(new std::deque<StateInfo>(1)),
