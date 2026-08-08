@@ -32,6 +32,7 @@
 #include "../platform/memory.h"
 #include "../platform/misc.h"
 #include "position.h"
+#include "arena.h"
 #include "basetypes.h"
 
 namespace Stockfish {
@@ -96,7 +97,7 @@ template<typename T, int SizeMultiplier>
 struct DynStats {
     explicit DynStats(usize s) {
         size = s * SizeMultiplier;
-        data = make_unique_large_page<T[]>(size);
+        data = make_arena_unique<T[]>(size);
     }
     // Sets all values in the range to 0
     void clear_range(int value, usize threadIdx, usize numaTotal) {
@@ -119,7 +120,7 @@ struct DynStats {
 
    private:
     usize             size;
-    LargePagePtr<T[]> data;
+    ArenaPtr<T[]> data;
 };
 
 // ButterflyHistory records how often quiet moves have been successful or unsuccessful
