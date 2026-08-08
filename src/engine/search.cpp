@@ -184,8 +184,7 @@ Search::Worker::Worker(SharedState&                    sharedState,
     options(sharedState.options),
     threads(sharedState.threads),
     tt(sharedState.tt),
-    network(sharedState.network),
-    refreshTable(network[token]) {
+      refreshTable() {
     clear();
 }
 
@@ -252,9 +251,11 @@ Search::Worker* Search::best_worker(const std::vector<Search::Worker*>& workers)
     return bestWorker;
 }
 
-void Search::Worker::ensure_network_replicated() {
-    // Access once to force lazy initialization, avoiding initialization during search
-    (void) (network[numaAccessToken]);
+void Search::Worker::ensure_network_replicated(const Eval::NNUE::Network& net) {
+    // Runs after the net is resident. The worker is legal before this, but
+    // cannot evaluate until it has run -- see the member's declaration.
+    network = &net;
+    refreshTable.clear(net);
 }
 
 void Search::Worker::start_searching() {
@@ -787,7 +788,13 @@ void Search::Worker::clear() {
     for (usize i = 1; i < reductions.size(); ++i)
         reductions[i] = int(2872 / 128.0 * std::log(i));
 
-    refreshTable.clear(network[numaAccessToken]);
+    // Null only between construction and ensure_network_replicated. The refresh
+    // cache is seeded from the network's feature-transformer biases, so it
+    // cannot be filled before a net is resident, and clear() is reached from the
+    // constructor -- Engine sizes the pool while no net has been loaded yet.
+    // ensure_network_replicated seeds it, so skipping here loses nothing.
+    if (network != nullptr)
+        refreshTable.clear(*network);
 }
 
 
@@ -1974,7 +1981,7 @@ TimePoint Search::Worker::elapsed() const {
 // Evaluate the current position of the game tree, from the point of view of
 // the side to move.
 Value Search::Worker::evaluate(const Position& pos) {
-    return Eval::evaluate(network[numaAccessToken], pos, accumulatorStack, refreshTable,
+    return Eval::evaluate(*network, pos, accumulatorStack, refreshTable,
                           optimism[pos.side_to_move()]);
 }
 

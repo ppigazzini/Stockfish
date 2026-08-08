@@ -46,11 +46,6 @@
 
 namespace Stockfish {
 
-// Held only by reference here; engine.h owns one by value and includes
-// numa_shared.h for the definition.
-template<typename T>
-class LazyNumaReplicatedSystemWide;
-
 // Different node types, used as a template parameter
 enum NodeType {
     NonPV,
@@ -200,22 +195,19 @@ struct LimitsType {
 // The options arrive as a VALUE rather than a reference into the UCI layer, so
 // nothing here reaches ucioption.h -- see searchoptions.h.
 struct SharedState {
-    SharedState(const SearchOptions&                                     opts,
-                ThreadPool&                                              threadPool,
-                TranspositionTable&                                      transpositionTable,
-                std::map<NumaIndex, SharedHistories>&                    sharedHists,
-                const LazyNumaReplicatedSystemWide<Eval::NNUE::Network>& net) :
+    SharedState(const SearchOptions&                  opts,
+                ThreadPool&                           threadPool,
+                TranspositionTable&                   transpositionTable,
+                std::map<NumaIndex, SharedHistories>& sharedHists) :
         options(opts),
         threads(threadPool),
         tt(transpositionTable),
-        sharedHistories(sharedHists),
-        network(net) {}
+        sharedHistories(sharedHists) {}
 
-    const SearchOptions&                                     options;
-    ThreadPool&                                              threads;
-    TranspositionTable&                                      tt;
-    std::map<NumaIndex, SharedHistories>&                    sharedHistories;
-    const LazyNumaReplicatedSystemWide<Eval::NNUE::Network>& network;
+    const SearchOptions&                  options;
+    ThreadPool&                           threads;
+    TranspositionTable&                   tt;
+    std::map<NumaIndex, SharedHistories>& sharedHistories;
 };
 
 class Worker;
@@ -355,7 +347,7 @@ class Worker {
 
     bool is_mainthread() const { return threadIdx == 0; }
 
-    void ensure_network_replicated();
+    void ensure_network_replicated(const Eval::NNUE::Network& net);
 
     // Public because they need to be updatable by the stats
     ButterflyHistory mainHistory;
@@ -429,7 +421,19 @@ class Worker {
     const SearchOptions&                                     options;
     ThreadPool&                                              threads;
     TranspositionTable&                                      tt;
-    const LazyNumaReplicatedSystemWide<Eval::NNUE::Network>& network;
+    // The replica for THIS worker's NUMA node. A POINTER, null until the net is
+    // resident, and set by ensure_network_replicated.
+    //
+    // A worker is deliberately constructible before a net exists: Engine's
+    // constructor sizes the pool while networkFile is still empty. A worker
+    // built then is complete EXCEPT for the refresh cache, which is seeded from
+    // the net's feature-transformer biases; ensure_network_replicated finishes
+    // the job after the load. Resolving eagerly in the constructor instead was
+    // tried, and crashed here on a replica list that had no entries yet.
+    //
+    // The platform resolves WHICH replica and hands it in, so the engine never
+    // learns the network is replicated at all.
+    const Eval::NNUE::Network* network = nullptr;
 
     // Used by NNUE
     Eval::NNUE::AccumulatorStack  accumulatorStack;

@@ -38,6 +38,11 @@
 
 namespace Stockfish {
 
+// Defined in numa_shared.h. Held only by reference in the signature below; a
+// forward declaration keeps the shared-memory machinery out of this header.
+template<typename T>
+class LazyNumaReplicatedSystemWide;
+
 
 using Value = int;
 
@@ -87,7 +92,8 @@ class Thread {
     void clear_worker();
     void run_custom_job(std::function<void()> f);
 
-    void ensure_network_replicated();
+    NumaReplicatedAccessToken numa_access_token() const { return numaAccessToken; }
+    void ensure_network_replicated(const Eval::NNUE::Network& net);
 
     // Thread has been slightly altered to allow running custom jobs, so
     // this name is no longer correct. However, this class (and ThreadPool)
@@ -158,7 +164,8 @@ class ThreadPool {
     std::vector<usize> get_bound_thread_count_by_numa_node() const;
     usize              numa_nodes() const;
 
-    void ensure_network_replicated();
+    void ensure_network_replicated(
+      const LazyNumaReplicatedSystemWide<Eval::NNUE::Network>& net);
 
     std::atomic_bool stop, increaseDepth;
 

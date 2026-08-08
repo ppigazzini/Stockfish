@@ -123,18 +123,24 @@ class Engine {
     std::string                          thread_binding_information_as_string() const;
 
    private:
+    // Declared FIRST so its constructor installs the arena before any member
+    // below it allocates. Member initialisation order is the mechanism, and it
+    // follows DECLARATION order, not the order of the constructor's init list --
+    // this sat eighth with the init list naming it first, which compiled, warned
+    // under -Wreorder, and ran the installer after four members had already been
+    // built. A block taken from the engine's fallback allocator and released by
+    // the host's is heap corruption with no diagnostic, so the position of this
+    // line is the whole guarantee.
+    struct ArenaInstallerTag {
+        ArenaInstallerTag();
+    } arenaInstaller;
+
     const std::filesystem::path binaryDirectory;
 
     NumaReplicationContext numaContext;
 
     Position     pos;
     StateListPtr states;
-
-    // Declared FIRST so its constructor installs the arena before any member
-    // below it allocates. Member initialisation order is the mechanism.
-    struct ArenaInstallerTag {
-        ArenaInstallerTag();
-    } arenaInstaller;
 
     OptionsMap                                        options;
     // The snapshot handed to the engine. A member rather than a local because

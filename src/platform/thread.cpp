@@ -123,7 +123,9 @@ void Thread::run_custom_job(std::function<void()> f) {
     cv.notify_one();
 }
 
-void Thread::ensure_network_replicated() { worker->ensure_network_replicated(); }
+void Thread::ensure_network_replicated(const Eval::NNUE::Network& net) {
+    worker->ensure_network_replicated(net);
+}
 
 // Thread gets parked here, blocked on the condition variable
 // when the thread has no work to do.
@@ -406,9 +408,12 @@ usize ThreadPool::numa_nodes() const {
     return std::max(seen.size(), usize(1));
 }
 
-void ThreadPool::ensure_network_replicated() {
+void ThreadPool::ensure_network_replicated(
+  const LazyNumaReplicatedSystemWide<Eval::NNUE::Network>& net) {
+    // Resolve each worker's replica here and hand it in: the engine never
+    // learns the network is replicated, and this runs after the net is resident.
     for (auto&& th : threads)
-        th->ensure_network_replicated();
+        th->ensure_network_replicated(net[th->numa_access_token()]);
 }
 
 }  // namespace Stockfish
