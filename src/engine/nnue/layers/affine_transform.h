@@ -28,6 +28,7 @@
 #include "../../../platform/platform.h"
 #include "../nnue_common.h"
 #include "../simd.h"
+#include "../../hashing.h"
 
 /*
   This file contains the definition for a fully connected layer (aka affine transform).

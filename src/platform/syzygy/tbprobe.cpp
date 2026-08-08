@@ -50,6 +50,7 @@
 #include "../../shell/ucioption.h"
 #include "../../engine/basetypes.h"
 #include "../platform.h"
+#include "../../shell/console.h"
 
 #ifndef _WIN32
     #include <fcntl.h>

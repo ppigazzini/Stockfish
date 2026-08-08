@@ -42,6 +42,7 @@
 #include "../engine/types.h"
 #include "uci.h"
 #include "ucioption.h"
+#include "console.h"
 
 namespace Stockfish {
 

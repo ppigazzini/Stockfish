@@ -43,6 +43,7 @@
 #include "ucioption.h"
 #include "../platform/platform.h"
 #include "../platform/misc.h"
+#include "console.h"
 
 namespace Stockfish {
 
