@@ -1113,10 +1113,17 @@ void Position::do_move(Move m, bool givesCheck, Dirties& dirties, const SharedHi
     if (history)
     {
         prefetch(&history->pawn_entry(*this)[pc][to]);
-        prefetch(&history->pawn_correction_entry(*this));
-        prefetch(&history->minor_piece_correction_entry(*this));
-        prefetch(&history->nonpawn_correction_entry<WHITE>(*this));
-        prefetch(&history->nonpawn_correction_entry<BLACK>(*this));
+        // Each names the counter its correction lookup will read, so these ask
+        // for exactly the cache lines those lookups touch.
+        //
+        // Written out here rather than wrapped in a helper on SharedHistories:
+        // a function whose only effect is prefetching reads as having no effect
+        // at all, and gcc deleted the call outright -- four prefetches silently
+        // absent from do_move, which callgrind scores as an IMPROVEMENT.
+        prefetch(&history->pawn_correction(*this));
+        prefetch(&history->minor_piece_correction(*this));
+        prefetch(&history->nonpawn_correction<WHITE>(*this));
+        prefetch(&history->nonpawn_correction<BLACK>(*this));
     }
 
     // Move the piece. The tricky Chess960 castling is handled earlier
