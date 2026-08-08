@@ -1011,10 +1011,19 @@ void Position::do_move(Move                      m,
     if (history)
     {
         prefetch(&history->pawn_entry(*this)[pc][to]);
-        prefetch(&history->pawn_correction_entry(*this));
-        prefetch(&history->minor_piece_correction_entry(*this));
-        prefetch(&history->nonpawn_correction_entry<WHITE>(*this));
-        prefetch(&history->nonpawn_correction_entry<BLACK>(*this));
+        // The row's first counter shares its address, so these ask for exactly
+        // the cache lines the correction lookups will touch. WHITE names the
+        // first bundle in the row rather than a side: the line is what is
+        // wanted, not the counter.
+        //
+        // Written out here rather than wrapped in a helper on SharedHistories:
+        // a function whose only effect is prefetching reads as having no effect
+        // at all, and gcc deleted the call outright -- four prefetches silently
+        // absent from do_move, which callgrind scores as an IMPROVEMENT.
+        prefetch(&history->pawn_correction(*this, WHITE));
+        prefetch(&history->minor_piece_correction(*this, WHITE));
+        prefetch(&history->nonpawn_correction<WHITE>(*this, WHITE));
+        prefetch(&history->nonpawn_correction<BLACK>(*this, WHITE));
     }
 
     // Move the piece. The tricky Chess960 castling is handled earlier
