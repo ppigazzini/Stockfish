@@ -1,22 +1,21 @@
-# Engine files that include a shell header, as of today. Each line is a debt,
-# not a permission: the gate fails on a NEW edge and fails again on an entry
-# here that no longer happens, so a fixed edge cannot quietly stay listed.
+# Engine files that include a shell header. Each line is a debt, not a
+# permission: the gate fails on a NEW edge and fails again on an entry here that
+# no longer happens, so a fixed edge cannot quietly stay listed.
 #
-# search.* -> uci.h        UCIEngine::wdl and format_score on the info line.
-#                          Rendering, reached from the search that produces it.
-# search.* -> ucioption.h  Search::Worker holds const OptionsMap&; there is no
-#                          way to drive a search without a process around it.
-# search.* -> timeman.h    the time manager is a search input, zoned to the
-#                          shell because the process owns the clock.
-# tbprobe.cpp -> ucioption.h   the prober reads SyzygyPath and probe limits.
-# types.h -> tune.h        DELIBERATE, and the only entry here that is not debt.
-#                          Placed after types.h's own #endif so the SPSA macros
-#                          are visible anywhere types.h reaches. Removing it
-#                          would make every future tuning run add an include
-#                          first. See docs/00-architecture.md.
-search.cpp -> timeman.h
+# After B7 the zones are directories, so these are the edges that survived the
+# move rather than an artefact of a name list.
+#
+# search.cpp -> uci.h        UCIEngine::wdl and format_score on the info line.
+# search.cpp -> ucioption.h  Search::Worker holds const OptionsMap&; there is no
+#                            way to drive a search without a process around it.
+# timeman.cpp -> ucioption.h the time manager reads the clock-related options.
+#                            Exposed BY the move: timeman is engine and
+#                            ucioption is shell, which the old name lists put on
+#                            the same side.
+# types.h -> tune.h          DELIBERATE, and the only entry here that is not
+#                            debt. Placed after types.h's own #endif so the SPSA
+#                            macros reach anywhere types.h does.
 search.cpp -> uci.h
 search.cpp -> ucioption.h
-search.h -> timeman.h
-tbprobe.cpp -> ucioption.h
+timeman.cpp -> ucioption.h
 types.h -> tune.h

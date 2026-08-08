@@ -1,7 +1,7 @@
 # The platform layer
 
-`src/memory.h`, `src/memory.cpp`, `src/numa.h`, `src/numa.cpp`, `src/numa_shared.h`,
-`src/shm.h`, `src/shm_unix.h`, `src/thread_native.h`, `src/universal/`.
+`src/platform/memory.h`, `src/platform/memory.cpp`, `src/platform/numa.h`, `src/platform/numa.cpp`, `src/platform/numa_shared.h`,
+`src/platform/shm.h`, `src/platform/shm_unix.h`, `src/platform/thread_native.h`, `src/universal/`.
 
 Everything the engine needs from the operating system: aligned and large-page allocation, CPU
 topology and thread binding, cross-process shared memory, native threads with a chosen stack
@@ -11,8 +11,8 @@ It is the largest per-platform surface in the tree and the one `bench` exercises
 single-threaded run on one node touches the allocator and nothing else here.
 
 ```sh
-wc -l src/memory.h src/memory.cpp src/numa.h src/numa.cpp src/numa_shared.h \
-     src/shm.h src/shm_unix.h src/thread_native.h src/universal/entry_x86.cpp
+wc -l src/platform/memory.h src/platform/memory.cpp src/platform/numa.h src/platform/numa.cpp src/platform/numa_shared.h \
+     src/platform/shm.h src/platform/shm_unix.h src/platform/thread_native.h src/universal/entry_x86.cpp
 ```
 
 Audience: anyone porting to a new OS, or changing threading, allocation or the build's

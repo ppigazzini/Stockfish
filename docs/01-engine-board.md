@@ -1,7 +1,7 @@
 # The board
 
-`src/types.h`, `src/bitboard.h`, `src/bitboard.cpp`, `src/attacks.h`, `src/attacks.cpp`,
-`src/position.h`, `src/position.cpp`, `src/movegen.h`, `src/movegen.cpp`.
+`src/engine/types.h`, `src/engine/bitboard.h`, `src/engine/bitboard.cpp`, `src/engine/attacks.h`, `src/engine/attacks.cpp`,
+`src/engine/position.h`, `src/engine/position.cpp`, `src/engine/movegen.h`, `src/engine/movegen.cpp`.
 
 Everything the search stands on: the value domain, square sets, attack generation, the
 mutable board, and the move generator.
