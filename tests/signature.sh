@@ -25,6 +25,18 @@ signature=$(grep "Nodes searched  : " "$STDERR_FILE" | awk '{print $4}')
 rm -f "$STDOUT_FILE" "$STDERR_FILE"
 
 if [ $# -gt 0 ]; then
+   # An EMPTY reference is the caller's lookup having failed, not a mismatch.
+   # `git log -20 ... | grep -m1 'Bench:'` yields nothing on a branch with more
+   # than twenty non-functional commits, and reporting that as "reference
+   # obtained: N" sends the reader hunting a behaviour change that did not
+   # happen.
+   case "$1" in
+      *[!0-9]*|"")
+         echo "signature: refusing a non-numeric reference: '$1'" >&2
+         echo "  the caller's anchor lookup produced nothing; widen the git log window" >&2
+         exit 2
+         ;;
+   esac
    # compare to given reference
    if [ "$1" != "$signature" ]; then
       if [ -z "$signature" ]; then
