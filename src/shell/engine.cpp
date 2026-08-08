@@ -154,7 +154,8 @@ void Engine::go(Search::LimitsType& limits) {
     assert(limits.perft == 0);
     verify_network();
 
-    threads.start_thinking(options, pos, states, limits);
+    searchOptions = search_options();
+    threads.start_thinking(searchOptions, pos, states, limits);
 }
 void Engine::stop() { threads.stop = true; }
 
@@ -244,9 +245,34 @@ bool Engine::set_numa_config_from_option(const std::string& o) {
     return true;
 }
 
+// The composition root fills the engine's option snapshot. This is the seam:
+// everything below Engine reads a value, so nothing in engine/ or platform/
+// reaches ucioption.h. A search driven from anywhere else fills this directly.
+//
+// Taken fresh on every use, so a setoption between searches is seen.
+SearchOptions Engine::search_options() const {
+    SearchOptions o;
+    o.threads          = usize(int(options["Threads"]));
+    o.numaPolicy       = std::string(options["NumaPolicy"]);
+    o.multiPV          = usize(int(options["MultiPV"]));
+    o.skillLevel       = int(options["Skill Level"]);
+    o.limitStrength    = bool(options["UCI_LimitStrength"]);
+    o.elo              = int(options["UCI_Elo"]);
+    o.moveOverhead     = int(options["Move Overhead"]);
+    o.syzygy50MoveRule = bool(options["Syzygy50MoveRule"]);
+    o.syzygyProbeDepth = int(options["SyzygyProbeDepth"]);
+    o.syzygyProbeLimit = int(options["SyzygyProbeLimit"]);
+    o.showWDL          = bool(options["UCI_ShowWDL"]);
+    o.nodestime        = int(options["nodestime"]);
+    o.ponder           = bool(options["Ponder"]);
+    return o;
+}
+
 void Engine::resize_threads() {
     threads.wait_for_search_finished();
-    threads.set(numaContext.get_numa_config(), {options, threads, tt, sharedHists, network},
+    searchOptions = search_options();
+    threads.set(numaContext.get_numa_config(),
+                {searchOptions, threads, tt, sharedHists, network},
                 updateContext);
 
     // Reallocate the hash with the new threadpool size

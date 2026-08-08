@@ -88,7 +88,7 @@ bool root_probe(Position&, Search::RootMoves&, bool, bool, const std::function<b
 bool root_probe_wdl(Position&, Search::RootMoves&, bool) { return false; }
 
 Config rank_root_moves(
-  const OptionsMap&, Position&, Search::RootMoves&, bool, const std::function<bool()>&) {
+  const SearchOptions&, Position&, Search::RootMoves&, bool, const std::function<bool()>&) {
     return Config{};
 }
 
@@ -1902,7 +1902,7 @@ bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, boo
     return true;
 }
 
-Config Tablebases::rank_root_moves(const OptionsMap&            options,
+Config Tablebases::rank_root_moves(const SearchOptions&            options,
                                    Position&                    pos,
                                    Search::RootMoves&           rootMoves,
                                    bool                         rankDTZ,
@@ -1913,9 +1913,9 @@ Config Tablebases::rank_root_moves(const OptionsMap&            options,
         return config;
 
     config.rootInTB    = false;
-    config.useRule50   = bool(options["Syzygy50MoveRule"]);
-    config.probeDepth  = int(options["SyzygyProbeDepth"]);
-    config.cardinality = int(options["SyzygyProbeLimit"]);
+    config.useRule50   = options.syzygy50MoveRule;
+    config.probeDepth  = options.syzygyProbeDepth;
+    config.cardinality = options.syzygyProbeLimit;
 
     bool dtz_available = true;
 
@@ -1934,13 +1934,13 @@ Config Tablebases::rank_root_moves(const OptionsMap&            options,
 
         // Rank moves using DTZ tables, bail out if time_abort flags zeitnot
         config.rootInTB =
-          root_probe(pos, rootMoves, options["Syzygy50MoveRule"], rankDTZ, time_abort);
+          root_probe(pos, rootMoves, options.syzygy50MoveRule, rankDTZ, time_abort);
 
         if (!config.rootInTB && !time_abort())
         {
             // DTZ tables are missing; try to rank moves using WDL tables
             dtz_available   = false;
-            config.rootInTB = root_probe_wdl(pos, rootMoves, options["Syzygy50MoveRule"]);
+            config.rootInTB = root_probe_wdl(pos, rootMoves, options.syzygy50MoveRule);
         }
     }
 

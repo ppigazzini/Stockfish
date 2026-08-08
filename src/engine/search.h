@@ -38,6 +38,7 @@
 #include "position.h"
 #include "score.h"
 #include "../platform/syzygy/tbprobe.h"
+#include "searchoptions.h"
 #include "timeman.h"
 #include "types.h"
 #include "basetypes.h"
@@ -59,7 +60,6 @@ enum NodeType {
 
 class TranspositionTable;
 class ThreadPool;
-class OptionsMap;
 
 namespace Eval::NNUE {
 class Network;
@@ -198,21 +198,22 @@ struct LimitsType {
 };
 
 
-// The UCI stores the uci options, thread pool, and transposition table.
-// This struct is used to easily forward data to the Search::Worker class.
+// A snapshot of the options, plus the thread pool and transposition table.
+// The options arrive as a VALUE rather than a reference into the UCI layer, so
+// nothing here reaches ucioption.h -- see searchoptions.h.
 struct SharedState {
-    SharedState(const OptionsMap&                                        optionsMap,
+    SharedState(const SearchOptions&                                     opts,
                 ThreadPool&                                              threadPool,
                 TranspositionTable&                                      transpositionTable,
                 std::map<NumaIndex, SharedHistories>&                    sharedHists,
                 const LazyNumaReplicatedSystemWide<Eval::NNUE::Network>& net) :
-        options(optionsMap),
+        options(opts),
         threads(threadPool),
         tt(transpositionTable),
         sharedHistories(sharedHists),
         network(net) {}
 
-    const OptionsMap&                                        options;
+    const SearchOptions&                                     options;
     ThreadPool&                                              threads;
     TranspositionTable&                                      tt;
     std::map<NumaIndex, SharedHistories>&                    sharedHistories;
@@ -422,7 +423,7 @@ class Worker {
 
     Tablebases::Config tbConfig;
 
-    const OptionsMap&                                        options;
+    const SearchOptions&                                     options;
     ThreadPool&                                              threads;
     TranspositionTable&                                      tt;
     const LazyNumaReplicatedSystemWide<Eval::NNUE::Network>& network;

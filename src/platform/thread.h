@@ -34,10 +34,11 @@
 #include "thread_native.h"
 #include "../engine/basetypes.h"
 
+#include "../engine/searchoptions.h"
+
 namespace Stockfish {
 
 
-class OptionsMap;
 using Value = int;
 
 // Sometimes we don't want to actually bind the threads, but the recipient still
@@ -132,7 +133,7 @@ class ThreadPool {
     ThreadPool& operator=(const ThreadPool&) = delete;
     ThreadPool& operator=(ThreadPool&&)      = delete;
 
-    void  start_thinking(const OptionsMap&, Position&, StateListPtr&, Search::LimitsType);
+    void  start_thinking(const SearchOptions&, Position&, StateListPtr&, Search::LimitsType);
     void  run_on_thread(usize threadId, std::function<void()> f);
     void  wait_on_thread(usize threadId);
     usize num_threads() const;

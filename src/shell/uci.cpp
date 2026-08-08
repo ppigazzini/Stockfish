@@ -547,38 +547,8 @@ std::string UCIEngine::format_score(const Score& s) {
 }
 
 
-std::string UCIEngine::wdl(Value v, const Position& pos) {
-    std::stringstream ss;
-
-    int wdl_w = win_rate_model(v, pos);
-    int wdl_l = win_rate_model(-v, pos);
-    int wdl_d = 1000 - wdl_w - wdl_l;
-    ss << wdl_w << " " << wdl_d << " " << wdl_l;
-
-    return ss.str();
-}
 
 
-std::string UCIEngine::move(Move m, bool chess960) {
-    if (m == Move::none())
-        return "(none)";
-
-    if (m == Move::null())
-        return "0000";
-
-    Square from = m.from_sq();
-    Square to   = m.to_sq();
-
-    if (m.type_of() == CASTLING && !chess960)
-        to = make_square(to > from ? FILE_G : FILE_C, rank_of(from));
-
-    std::string move = square_name(from) + square_name(to);
-
-    if (m.type_of() == PROMOTION)
-        move += " pnbrqk"[m.promotion_type()];
-
-    return move;
-}
 
 
 std::string UCIEngine::to_lower(std::string str) {
@@ -592,7 +562,7 @@ Move UCIEngine::to_move(const Position& pos, std::string str) {
     str = to_lower(str);
 
     for (const auto& m : MoveList<LEGAL>(pos))
-        if (str == move(m, pos.is_chess960()))
+        if (str == move_to_uci(m, pos.is_chess960()))
             return m;
 
     return Move::none();

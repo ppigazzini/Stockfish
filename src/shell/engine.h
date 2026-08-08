@@ -45,6 +45,8 @@
 #include "../engine/basetypes.h"
 #include "../platform/numa.h"
 
+#include "../engine/searchoptions.h"
+
 namespace Stockfish {
 
 constexpr int MaxHashMB = Is64Bit ? 33554432 : 2048;
@@ -82,7 +84,8 @@ class Engine {
     // modifiers
 
     bool set_numa_config_from_option(const std::string& o);
-    void resize_threads();
+    SearchOptions search_options() const;
+    void          resize_threads();
     void set_tt_size(usize mb);
     void set_ponderhit(bool);
     void search_clear();
@@ -128,6 +131,9 @@ class Engine {
     StateListPtr states;
 
     OptionsMap                                        options;
+    // The snapshot handed to the engine. A member rather than a local because
+    // SharedState holds a reference to it for the life of the thread pool.
+    SearchOptions                                     searchOptions;
     ThreadPool                                        threads;
     TranspositionTable                                tt;
     Eval::NNUE::EvalFile                              networkFile;
