@@ -206,7 +206,7 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
       }));
 
     threads.clear();
-    threads.ensure_network_replicated();
+    threads.ensure_network_replicated(network);
     resize_threads();
 }
 
@@ -308,7 +308,7 @@ bool Engine::set_numa_config_from_option(const std::string& o) {
 
     // Force reallocation of threads in case affinities need to change.
     resize_threads();
-    threads.ensure_network_replicated();
+    threads.ensure_network_replicated(network);
     return true;
 }
 
@@ -339,7 +339,7 @@ void Engine::resize_threads() {
     threads.wait_for_search_finished();
     searchOptions = search_options();
     threads.set(numaContext.get_numa_config(),
-                {searchOptions, threads, tt, sharedHists, network},
+                {searchOptions, threads, tt, sharedHists},
                 updateContext);
 
     // ORDER: the pool must exist before it is installed, and be installed before
@@ -355,7 +355,7 @@ void Engine::resize_threads() {
 
     // Reallocate the hash with the new threadpool size
     set_tt_size(options["Hash"]);
-    threads.ensure_network_replicated();
+    threads.ensure_network_replicated(network);
 }
 
 void Engine::set_tt_size(usize mb) {
@@ -414,13 +414,22 @@ std::unique_ptr<Eval::NNUE::Network> Engine::get_default_network() {
 void Engine::load_network(const std::filesystem::path& file) {
     network.modify_and_replicate(
       [this, &file](NN::Network& network_) { network_.load(binaryDirectory, file, networkFile); });
+    // ORDER: re-hand the replicas BEFORE clearing. modify_and_replicate destroys
+    // and rebuilds every replica, so each worker's network pointer dangles the
+    // moment it returns, and ThreadPool::clear runs Worker::clear, which reads
+    // that pointer to reseed the refresh cache. Clearing first read freed memory
+    // and killed the process on the first `setoption name EvalFile`.
+    threads.ensure_network_replicated(network);
     threads.clear();
-    threads.ensure_network_replicated();
 }
 
 void Engine::save_network(const std::optional<std::filesystem::path>& file) {
     network.modify_and_replicate(
       [&file, this](NN::Network& network_) { network_.save(networkFile, file); });
+    // Saving replicates too, so the workers' pointers dangle here just as they do
+    // after a load -- with no crash to announce it, because nothing in this path
+    // evaluates. The next search would. Re-hand them.
+    threads.ensure_network_replicated(network);
 }
 
 // utility functions
