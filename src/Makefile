@@ -91,7 +91,7 @@ HEADERS = engine/attacks.h shell/benchmark.h engine/bitboard.h engine/evaluate.h
 		engine/nnue/layers/clipped_relu.h engine/nnue/layers/sqr_clipped_relu.h engine/nnue/nnue_accumulator.h \
 		engine/nnue/nnue_architecture.h engine/nnue/nnue_common.h engine/nnue/nnue_feature_transformer.h engine/nnue/simd.h \
 		engine/nnue/nnz_helper.h engine/position.h engine/search.h platform/syzygy/tbprobe.h platform/thread.h platform/thread_native.h engine/timeman.h \
-		engine/tt.h shell/tune.h engine/types.h shell/uci.h shell/ucioption.h shell/perft.h engine/nnue/network.h shell/engine.h engine/score.h platform/numa.h platform/numa_shared.h platform/memory.h platform/shm.h platform/shm_unix.h \
+		engine/tt.h shell/tune.h engine/types.h shell/uci.h shell/ucioption.h shell/perft.h engine/nnue/network.h shell/engine.h engine/score.h engine/searchoptions.h platform/numa.h platform/numa_shared.h platform/memory.h platform/shm.h platform/shm_unix.h \
 		engine/basetypes.h platform/platform.h
 
 OBJS = $(notdir $(SRCS:.cpp=.o))

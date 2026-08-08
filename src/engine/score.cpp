@@ -23,6 +23,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <cmath>
+#include <sstream>
 #include <algorithm>
 
 
@@ -97,6 +98,17 @@ Score::Score(Value v, const Position& pos) {
         auto distance = VALUE_MATE - std::abs(v);
         score         = (v > 0) ? Mate{distance} : Mate{-distance};
     }
+}
+
+std::string wdl_to_string(Value v, const Position& pos) {
+    std::stringstream ss;
+
+    int wdl_w = win_rate_model(v, pos);
+    int wdl_l = win_rate_model(-v, pos);
+    int wdl_d = 1000 - wdl_w - wdl_l;
+    ss << wdl_w << " " << wdl_d << " " << wdl_l;
+
+    return ss.str();
 }
 
 }
