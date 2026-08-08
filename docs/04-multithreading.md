@@ -116,4 +116,3 @@ same node limit from the same position must produce the same node count, twice, 
 **A multi-threaded search is not deterministic and is not meant to be.** The divergence is
 the mechanism -- threads that searched identically would contribute nothing to each other.
 The bench signature is therefore a single-threaded number.
-
