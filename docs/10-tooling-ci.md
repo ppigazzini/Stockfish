@@ -140,11 +140,19 @@ such an `--arch` rather than producing a number.
 `perfbudget.sh` can be run at plain `-O3` or with `--pgo`, and on this tree they do not agree
 about header restructuring. Measured twice, on changes with identical node counts:
 
-| change | gcc -O3 | gcc PGO | clang -O3 |
-| --- | --- | --- | --- |
-| the win-rate model moved into the core | +0.0377% | +0.0000% | +0.0005% |
-| shared memory taken out of the NUMA header | +0.0367% | +0.0008% | **-0.0124%** |
-| `NumaConfig`'s cold half moved to a `.cpp` | -0.0009% | +0.0002% | -0.0008% |
+Three changes, each measured on six lanes -- two tiers, two compilers, both build modes. The
+tolerance is 0.02%, and **F** marks the only readings above it:
+
+| change | avx2 gcc -O3 | avx2 gcc PGO | avx2 clang -O3 | avx2 clang PGO | bmi2 gcc -O3 | bmi2 gcc PGO |
+| --- | --- | --- | --- | --- | --- | --- |
+| the win-rate model moved into the core | **+0.0377% F** | +0.0000% | +0.0005% | +0.0008% | +0.0010% | +0.0006% |
+| shared memory taken out of the NUMA header | **+0.0367% F** | +0.0008% | -0.0124% | +0.0000% | +0.0006% | -0.0001% |
+| `NumaConfig`'s cold half moved to a `.cpp` | -0.0009% | +0.0002% | -0.0008% | -0.0137% | **+0.0243% F** | +0.0001% |
+
+**Every PGO lane is clean, and each `-O3` failure occurs at exactly one (tier, compiler) pair
+and nowhere else.** The two changes that read as regressions at avx2/gcc are free at bmi2/gcc;
+the change that is free at avx2/gcc is the one that fails at bmi2/gcc. Node counts are
+identical throughout, so all six lanes measure the same search.
 
 **PGO is the binding lane.** It is upstream's own recipe, it is what ships, and it is what
 fishtest measures; a refactor that is free there and costs under a build nobody distributes has
@@ -154,17 +162,16 @@ investigate it when it is large, and do not let it alone veto a change.
 That is a decision about which measurement answers the question, not a licence to skip one. A
 change still reports both, and a regression under PGO still does not land.
 
-**Measure with gcc AND clang, always.** One compiler cannot tell a change from its own
-codegen, and the second column of evidence is what turns an unexplained number into a
-diagnosis. Row two is the worked example: gcc -O3 called it a +0.0367% regression, and clang
-called the same source **0.0124% faster**. A sign that flips between the two compilers means
-the change is not an instruction-count change at all -- it is one compiler's layout, measured.
-That row sat unexplained until clang was run against it.
+**Measure with gcc AND clang, and at more than one tier.** One compiler at one tier cannot
+tell a change from its own code layout. Row two is the worked example: avx2/gcc -O3 called it a
++0.0367% regression, clang called the same source **0.0124% faster**, and bmi2/gcc called it
++0.0006%. A reading that changes sign or vanishes when the compiler or the tier changes is not
+an instruction-count change at all.
 
-Row three is the other half of the argument. It is the largest of the three and the only one
-that moved definitions out of a header entirely, and it is free on all three lanes. So the
-+0.037% seen twice is not a general tax on restructuring, and a future change reading that way
-deserves the clang run rather than a shrug -- or a veto.
+Row three is what stops that from becoming a reason to ignore `-O3` entirely: it is the one
+change that is free at avx2 and above tolerance at bmi2. Whichever single lane you had picked,
+one of these three would have looked like a regression and a different one would have looked
+clean. **The lane is not evidence; the pattern across lanes is.**
 
 The first of those two is a worked example of the gate misreporting rather than the compiler:
 the whole process retired 1832789 FEWER instructions, while the separately measured startup
