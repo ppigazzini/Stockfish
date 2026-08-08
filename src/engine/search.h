@@ -331,7 +331,12 @@ class NullSearchManager: public ISearchManager {
 // Search::Worker is the class that does the actual search.
 // It is instantiated once per thread, and it is responsible for keeping track
 // of the search history, and storing data required for the search.
+// Defined in search.cpp; see the note there on why the vote is engine policy.
+class Worker;
+Worker* best_worker(const std::vector<Worker*>& workers);
+
 class Worker {
+    friend Worker* best_worker(const std::vector<Worker*>& workers);
    public:
     Worker(SharedState&,
            std::unique_ptr<ISearchManager>,

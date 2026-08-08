@@ -187,6 +187,69 @@ Search::Worker::Worker(SharedState&                    sharedState,
     clear();
 }
 
+// Pick the worker whose line the engine will play.
+//
+// THIS IS CHESS POLICY, NOT DISPATCH. It reads root moves, scores, principal
+// variations and mate distances, and votes; the only thing it wants from the
+// host is the set of workers to read. It lived in the thread pool because that
+// is where the workers are stored, which is a reason about plumbing rather than
+// about meaning -- the same misplacement misc.h and memory_deleter had.
+//
+// Keeping it here is what lets the worker-set seam carry only lifecycle and
+// dispatch: count and at, nothing that knows what a good move is.
+Search::Worker* Search::best_worker(const std::vector<Search::Worker*>& workers) {
+
+    Worker* bestWorker = workers.front();
+    Value   minScore   = VALUE_INFINITE;
+
+    std::unordered_map<Move, i64, Move::MoveHash> votes(
+      2 * std::min(workers.size(), bestWorker->rootMoves.size()));
+
+    for (auto* th : workers)
+        minScore = std::min(minScore, th->rootMoves[0].score);
+
+    // Vote according to score, and select the best thread
+    for (auto* th : workers)
+        votes[th->rootMoves[0].pv[0]] += th->rootMoves[0].score - minScore + 14;
+
+    for (auto* th : workers)
+    {
+        const auto& bestWorkerMove = bestWorker->rootMoves[0];
+        const auto& newWorkerMove  = th->rootMoves[0];
+
+        const auto bestWorkerMoveVote = votes[bestWorkerMove.pv[0]];
+        const auto newWorkerMoveVote  = votes[newWorkerMove.pv[0]];
+
+        // Aborted (d1) searches may lead to inexact win (or loss) scores.
+        const bool bestWorkerDecisive = bestWorkerMove.score != -VALUE_INFINITE
+                                     && is_decisive(bestWorkerMove.score)
+                                     && !bestWorkerMove.is_inexact();
+        const bool newWorkerDecisive = newWorkerMove.score != -VALUE_INFINITE
+                                    && is_decisive(newWorkerMove.score)
+                                    && !newWorkerMove.is_inexact();
+
+        if (bestWorkerDecisive)
+        {
+            // Make sure we pick the shortest mate / TB conversion.
+            if (newWorkerDecisive && std::abs(newWorkerMove.score) > std::abs(bestWorkerMove.score))
+            {
+                assert((is_win(bestWorkerMove.score) && is_win(newWorkerMove.score))
+                       || (is_loss(bestWorkerMove.score) && is_loss(newWorkerMove.score)));
+
+                bestWorker = th;
+            }
+        }
+        else if (newWorkerDecisive
+                 || (!is_loss(newWorkerMove.score)
+                     && (newWorkerMoveVote > bestWorkerMoveVote
+                         || (newWorkerMoveVote == bestWorkerMoveVote
+                             && newWorkerMove.pv.size() > bestWorkerMove.pv.size()))))
+            bestWorker = th;
+    }
+
+    return bestWorker;
+}
+
 void Search::Worker::ensure_network_replicated() {
     // Access once to force lazy initialization, avoiding initialization during search
     (void) (network[numaAccessToken]);
@@ -246,7 +309,13 @@ void Search::Worker::start_searching() {
       Skill(options.skillLevel, options.limitStrength ? options.elo : 0);
 
     if (!limits.depth && !skill.enabled())
-        bestThread = threads.get_best_thread()->worker.get();
+        {
+            std::vector<Worker*> all;
+            all.reserve(threads.worker_count());
+            for (usize i = 0; i < threads.worker_count(); ++i)
+                all.push_back(threads.worker_at(i));
+            bestThread = best_worker(all);
+        }
 
     main_manager()->bestPreviousScore        = bestThread->rootMoves[0].score;
     main_manager()->bestPreviousAverageScore = bestThread->rootMoves[0].averageScore;
