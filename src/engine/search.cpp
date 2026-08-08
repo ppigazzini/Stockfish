@@ -19,6 +19,7 @@
 #include "search.h"
 
 #include "output_sink.h"
+#include "tb_source.h"
 #include "worker_set.h"
 
 #include "../platform/numa_shared.h"
@@ -1003,7 +1004,7 @@ Value Search::Worker::search(
             && pos.rule50_count() == 0 && !pos.can_castle(ANY_CASTLING))
         {
             TB::ProbeState err;
-            TB::WDLScore   wdl = TB::probe_wdl(pos, &err);
+            TB::WDLScore   wdl = TB::tb_source().probe_wdl(TB::tb_source().ctx, pos, &err);
 
             // Force check of time on the next occasion
             if (is_mainthread())
@@ -2246,7 +2247,8 @@ void syzygy_extend_pv(const SearchOptions&      options,
         for (const auto& m : MoveList<LEGAL>(pos))
             legalMoves.emplace_back(m);
 
-        TB::Config config = TB::rank_root_moves(options, pos, legalMoves, false, time_abort);
+        TB::Config config = TB::tb_source().rank_root_moves(TB::tb_source().ctx, options, pos,
+                                                            legalMoves, false, time_abort);
         RootMove&  rm     = *std::find(legalMoves.begin(), legalMoves.end(), pvMove);
 
         if (legalMoves[0].tbRank != rm.tbRank)
@@ -2306,7 +2308,8 @@ void syzygy_extend_pv(const SearchOptions&      options,
           [](const Search::RootMove& a, const Search::RootMove& b) { return a.tbRank > b.tbRank; });
 
         // The winning side tries to minimize DTZ, the losing side maximizes it
-        TB::Config config = TB::rank_root_moves(options, pos, legalMoves, true, time_abort);
+        TB::Config config = TB::tb_source().rank_root_moves(TB::tb_source().ctx, options, pos,
+                                                            legalMoves, true, time_abort);
 
         // If DTZ is not available we might not find a mate, so we bail out
         if (!config.rootInTB || config.cardinality > 0)
