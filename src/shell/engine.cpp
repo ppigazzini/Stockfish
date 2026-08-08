@@ -20,6 +20,7 @@
 
 #include "../engine/arena.h"
 #include "../engine/output_sink.h"
+#include "../engine/parallel.h"
 
 #include <algorithm>
 #include <cassert>
@@ -69,6 +70,19 @@ constexpr NumaAutoPolicy DefaultNumaPolicy = BundledL3Policy{32};
 // diagnostic, so the ordering is a correctness requirement, not a preference.
 namespace {
 void host_line(std::string_view text) { sync_cout << text << sync_endl; }
+
+// The pool the engine's parallel-for runs on. A raw pointer at file scope
+// because a function pointer cannot capture, which is the same reason mcfish's
+// worker_pool_install takes a registration call rather than a closure.
+//
+// Written on the main thread inside resize_threads, before anything reads it.
+ThreadPool* hostPool = nullptr;
+
+usize              pool_num_threads() { return hostPool->num_threads(); }
+usize              pool_numa_nodes() { return hostPool->numa_nodes(); }
+std::vector<usize> pool_thread_numa_map() { return hostPool->get_bound_thread_to_numa_node(); }
+void pool_run_on(usize t, std::function<void()> fn) { hostPool->run_on_thread(t, std::move(fn)); }
+void pool_wait_on(usize t) { hostPool->wait_on_thread(t); }
 }  // namespace
 
 Engine::ArenaInstallerTag::ArenaInstallerTag() {
@@ -186,7 +200,7 @@ void Engine::stop() { threads.stop = true; }
 void Engine::search_clear() {
     wait_for_search_finished();
 
-    tt.clear(threads);
+    tt.clear();
     threads.clear();
 
     // TODO: does not work with multiple instances
@@ -299,6 +313,15 @@ void Engine::resize_threads() {
                 {searchOptions, threads, tt, sharedHists, network},
                 updateContext);
 
+    // ORDER: the pool must exist before it is installed, and be installed before
+    // set_tt_size, which clears the table THROUGH the parallel-for. Installing
+    // after would clear a resized table single-threaded on the first call and
+    // multi-threaded on every later one -- correct either way, and a silent
+    // performance cliff on exactly the path that allocates gigabytes.
+    hostPool = &threads;
+    set_parallel_for({pool_num_threads, pool_numa_nodes, pool_thread_numa_map, pool_run_on,
+                      pool_wait_on});
+
     // Reallocate the hash with the new threadpool size
     set_tt_size(options["Hash"]);
     threads.ensure_network_replicated();
@@ -306,7 +329,7 @@ void Engine::resize_threads() {
 
 void Engine::set_tt_size(usize mb) {
     wait_for_search_finished();
-    tt.resize(mb, threads);
+    tt.resize(mb);
 }
 
 void Engine::set_ponderhit(bool b) { threads.main_manager()->ponder = b; }

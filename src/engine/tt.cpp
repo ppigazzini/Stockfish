@@ -19,6 +19,7 @@
 #include "tt.h"
 
 #include "arena.h"
+#include "parallel.h"
 
 #include <algorithm>
 #include <cassert>
@@ -166,7 +167,7 @@ static_assert(sizeof(Cluster) == 32, "Suboptimal Cluster size");
 // Sets the size of the transposition table,
 // measured in megabytes. Transposition table consists
 // of clusters and each cluster consists of ClusterSize number of TTEntry.
-void TranspositionTable::resize(usize mbSize, ThreadPool& threads) {
+void TranspositionTable::resize(usize mbSize) {
     arena().free(table);
 
     clusterCount  = mbSize * 1024 * 1024 / sizeof(Cluster);
@@ -174,7 +175,7 @@ void TranspositionTable::resize(usize mbSize, ThreadPool& threads) {
 
     // Request 1GB pages if we'd get at least eight per NUMA node, to avoid
     // memory oversubscription
-    bool hugePageHint = ttBytes >= threads.numa_nodes() * HugePageSize * 8;
+    bool hugePageHint = ttBytes >= parallel_for().numa_nodes() * HugePageSize * 8;
 
     table = static_cast<Cluster*>(arena().alloc_hinted(ttBytes, hugePageHint));
 
@@ -184,17 +185,17 @@ void TranspositionTable::resize(usize mbSize, ThreadPool& threads) {
         exit(EXIT_FAILURE);
     }
 
-    clear(threads);
+    clear();
 }
 
 
 // Initializes the entire transposition table to zero,
 // in a multi-threaded way.
-void TranspositionTable::clear(ThreadPool& threads) {
+void TranspositionTable::clear() {
     generation8             = 0;
-    const usize threadCount = threads.num_threads();
+    const usize threadCount = parallel_for().num_threads();
 
-    std::vector<usize> threadToNuma = threads.get_bound_thread_to_numa_node();
+    std::vector<usize> threadToNuma = parallel_for().thread_numa_map();
 
     std::vector<usize> order(threadCount);
     std::iota(order.begin(), order.end(), 0);
@@ -210,7 +211,7 @@ void TranspositionTable::clear(ThreadPool& threads) {
 
     for (usize i = 0; i < threadCount; ++i)
     {
-        threads.run_on_thread(order[i], [this, i, threadCount]() {
+        parallel_for().run_on(order[i], [this, i, threadCount]() {
             // Each thread will zero its part of the hash table
             const usize stride = clusterCount / threadCount;
             const usize start  = stride * i;
@@ -221,7 +222,7 @@ void TranspositionTable::clear(ThreadPool& threads) {
     }
 
     for (usize i = 0; i < threadCount; ++i)
-        threads.wait_on_thread(i);
+        parallel_for().wait_on(i);
 }
 
 
