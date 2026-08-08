@@ -24,6 +24,12 @@ jobs:
       - name: Lane coverage
         run: ./tests/lanecheck.sh
 
+      # Cheap, and the prerequisite for trusting the two zone checks below: a
+      # source the build names nowhere produces no object for them to reason
+      # about.
+      - name: Build coverage
+        run: ./tests/buildcoverage.sh
+
       - name: Dependency direction, by include
         run: ./tests/depcheck.sh
 

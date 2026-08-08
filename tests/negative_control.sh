@@ -582,6 +582,33 @@ if selected b5-swap; then
     fi
 fi
 
+# --------------------------------------------------------------- buildcoverage
+
+row buildcoverage
+if selected buildcoverage; then
+    # SRCS is an explicit list, so a file can be in the tree and in no build.
+    # It is then not compiled, not linked, and covered by no gate -- while still
+    # looking maintained. It also blinds linkcheck.sh, which reasons about
+    # OBJECTS: a source compiled by nothing produces none, so it could call
+    # straight into the shell with the zone check green.
+    echo "negative-control: buildcov    -- a source the build names nowhere"
+    printf '// negative control\nnamespace Stockfish { int nc_unbuilt() { return 0; } }\n' \
+        > src/engine/zzz_unbuilt.cpp
+    git add -N src/engine/zzz_unbuilt.cpp >/dev/null 2>&1
+    if ./tests/buildcoverage.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- an uncompiled source passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    # And the inverse: linkcheck stays GREEN, which is why this gate is its
+    # prerequisite rather than a duplicate of it.
+    if ./tests/depcheck.sh >/dev/null 2>&1; then
+        echo "  depcheck green, as expected -- it reasons about files, not builds"
+    fi
+    git rm -q --cached src/engine/zzz_unbuilt.cpp >/dev/null 2>&1
+    rm -f src/engine/zzz_unbuilt.cpp
+fi
+
 # --------------------------------------------------------------- linkcheck
 
 row linkcheck
