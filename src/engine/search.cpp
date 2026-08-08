@@ -51,6 +51,7 @@
 #include "types.h"
 #include "../platform/platform.h"
 #include "basetypes.h"
+#include "../shell/console.h"
 
 namespace Stockfish {
 

@@ -27,6 +27,7 @@
 
 #include "../nnue_common.h"
 #include "../simd.h"
+#include "../../hashing.h"
 
 namespace Stockfish::Eval::NNUE::Layers {
 

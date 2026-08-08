@@ -1,9 +1,19 @@
 # Engine objects that reference a symbol only a shell object defines.
 #
-# EMPTY. B7's seams closed the last six: the option snapshot (searchoptions.h)
-# replaced OptionsMap in search, timeman, the thread pool and the Syzygy prober,
-# and the two UCI renderers moved into the engine beside the domain knowledge
-# they already used.
+# THREE, and all three are the same thing: engine code printing. They became
+# visible when misc.h's console half moved to shell/console.h -- before that
+# sync_cout and dbg_print lived in a PLATFORM file, so an engine file calling
+# them produced an engine-to-platform edge and the shell check could not see it.
+# The misplacement was hiding the violation, which is the argument for zoning by
+# meaning rather than by where a helper happens to sit.
 #
-# A new entry here is a new edge. There is no debt left to grandfather, so the
-# next one to appear is the first.
+#   search.o  -> dbg_print       the periodic debug-counter dump
+#   search.o  -> operator<<(SyncCout)  the Syzygy PV-extension warning
+#   network.o -> operator<<(SyncCout)  the net export/save messages
+#
+# These are what B7 calls the OUTPUT SINK seam, and it is not built: the engine
+# should declare a sink and the composition root register one, so that an
+# engine driven without a UCI layer still has somewhere to say things.
+network.o _ZN9StockfishlsERSoNS_8SyncCoutE
+search.o _ZN9Stockfish9dbg_printEv
+search.o _ZN9StockfishlsERSoNS_8SyncCoutE

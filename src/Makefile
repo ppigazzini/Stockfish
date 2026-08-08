@@ -76,7 +76,7 @@ BINDIR = $(PREFIX)/bin
 PGOBENCH = $(RUN_PREFIX) ./$(EXE) bench
 
 ### Source and object files
-SRCS = engine/attacks.cpp shell/benchmark.cpp engine/bitboard.cpp engine/evaluate.cpp shell/main.cpp \
+SRCS = engine/attacks.cpp shell/benchmark.cpp shell/console.cpp engine/bitboard.cpp engine/evaluate.cpp shell/main.cpp \
 	platform/misc.cpp engine/movegen.cpp engine/movepick.cpp engine/position.cpp \
 	engine/search.cpp platform/thread.cpp platform/numa.cpp engine/timeman.cpp engine/tt.cpp shell/uci.cpp shell/ucioption.cpp shell/tune.cpp platform/syzygy/tbprobe.cpp \
 	engine/nnue/nnue_accumulator.cpp engine/nnue/nnue_misc.cpp engine/nnue/network.cpp \
@@ -85,13 +85,13 @@ SRCS = engine/attacks.cpp shell/benchmark.cpp engine/bitboard.cpp engine/evaluat
 
 OTHER_SRCS = universal/entry_x86.cpp universal/entry_arm64.cpp universal/entry_riscv64.cpp universal/nnue_embed.cpp
 
-HEADERS = engine/attacks.h shell/benchmark.h engine/bitboard.h engine/evaluate.h platform/misc.h engine/movegen.h engine/movepick.h engine/history.h \
+HEADERS = engine/attacks.h shell/benchmark.h shell/console.h engine/bitboard.h engine/evaluate.h platform/misc.h engine/movegen.h engine/movepick.h engine/history.h \
 		engine/nnue/nnue_misc.h engine/nnue/features/half_ka_v2_hm.h engine/nnue/features/full_threats.h \
 		engine/nnue/features/pp_3wide.h engine/nnue/layers/affine_transform.h engine/nnue/layers/affine_transform_sparse_input.h \
 		engine/nnue/layers/clipped_relu.h engine/nnue/layers/sqr_clipped_relu.h engine/nnue/nnue_accumulator.h \
 		engine/nnue/nnue_architecture.h engine/nnue/nnue_common.h engine/nnue/nnue_feature_transformer.h engine/nnue/simd.h \
 		engine/nnue/nnz_helper.h engine/position.h engine/search.h platform/syzygy/tbprobe.h platform/thread.h platform/thread_native.h engine/timeman.h \
-		engine/tt.h shell/tune.h engine/types.h shell/uci.h shell/ucioption.h shell/perft.h engine/nnue/network.h shell/engine.h engine/score.h engine/searchoptions.h platform/numa.h platform/numa_shared.h platform/memory.h platform/shm.h platform/shm_unix.h \
+		engine/tt.h shell/tune.h engine/types.h shell/uci.h shell/ucioption.h shell/perft.h engine/nnue/network.h shell/engine.h engine/score.h engine/searchoptions.h engine/hashing.h platform/numa.h platform/numa_shared.h platform/memory.h platform/shm.h platform/shm_unix.h \
 		engine/basetypes.h platform/platform.h
 
 OBJS = $(notdir $(SRCS:.cpp=.o))
