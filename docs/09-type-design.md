@@ -80,8 +80,34 @@ and the unused rows are the price.
 
 A page that omits its own boundary invites over-trust.
 
-**Six key spaces share one alias.** `using Key = u64` covers the transposition key and the
-pawn, minor-piece, material and two non-pawn keys, reached through six accessors --
+**Five of the six key spaces are distinct types.** `pawn_key()`, `minor_piece_key()`,
+`material_key()` and `non_pawn_key(Color)` return `TypedKey<KeySpace>` values, so one cannot
+stand in for another, for a `Bitboard`, or for the transposition key:
+
+```sh
+./tests/negative_control.sh b5-keyspace
+# tt.probe(pos.pawn_key())                    -- cannot convert
+# Bitboard b = pos.pawn_key()                 -- cannot convert
+# pos.pawn_key() == pos.minor_piece_key()     -- no match for operator==
+```
+
+The algebra is deliberately tiny: produce, store, pass, mask to an index, truncate to a tag.
+**There is no `operator^`.** Keys are *built* by xor-ing Zobrist words, and
+`Zobrist::psq[pc][s]` is xor-ed into the position, pawn, non-pawn and minor-piece keys alike
+(`position.cpp:501-515`), so a public xor would let any space absorb any other's material --
+the mixing the type exists to prevent. Construction stays on the raw `u64` inside
+`position.cpp`, which is the only file that reads one, and the type begins at the accessors.
+
+Two limits, both by design. **Masking does not distinguish spaces**: `key & mask` yields an
+index for any of them, because that is how the history tables are indexed, so a swap at an
+indexing site still compiles. And **the transposition key is still a bare `Key`**: typing it
+cost +0.0212% and +0.0241% on two PGO lanes, because `posKey` is live across `search()` and the
+wrapper perturbs register allocation there -- the cost rule's own prediction, measured. The
+guarantee that matters survives anyway, since passing a typed key where the bare one belongs is
+still rejected.
+
+**One key space shares the alias.** `using Key = u64` is now the transposition key alone, reached through
+`key()` and `prefetch_key()`. The other four accessors are typed --
 `key()`, `prefetch_key()`, `material_key()`, `pawn_key()`, `minor_piece_key()` and
 `non_pawn_key(Color)`, the last being one accessor over two spaces. The raw position key is
 not among them: it is `StateInfo::key`, reached through `Position::state()`, and no file
