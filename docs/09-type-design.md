@@ -106,18 +106,25 @@ wrapper perturbs register allocation there -- the cost rule's own prediction, me
 guarantee that matters survives anyway, since passing a typed key where the bare one belongs is
 still rejected.
 
-**One key space shares the alias.** `using Key = u64` is now the transposition key alone, reached through
-`key()` and `prefetch_key()`. The other four accessors are typed --
-`key()`, `prefetch_key()`, `material_key()`, `pawn_key()`, `minor_piece_key()` and
-`non_pawn_key(Color)`, the last being one accessor over two spaces. The raw position key is
-not among them: it is `StateInfo::key`, reached through `Position::state()`, and no file
-outside `position.cpp` reads it. `Bitboard` is the same underlying type, so a `Key` where a
-`Bitboard` belongs also compiles.
+**One key space still shares the alias.** `using Key = u64` is now the transposition key alone,
+reached through `key()` and `prefetch_key()`. `Bitboard` is the same underlying type, so a
+transposition key where a `Bitboard` belongs still compiles -- and so does the reverse.
 
-The sharpest pair is the position key and the transposition key. `Position::adjust_key50`
-mixes the halfmove clock in only at and above a threshold, so **below it the two words are
-identical** -- a confusion between them passes every position where the clock is low and is
-wrong only later in a game. No perft can see it.
+The raw position key is not an accessor at all: it is `StateInfo::key`, reached through the
+public `Position::state()`, and no file outside `position.cpp` reads it.
+
+The sharpest pair is the raw position key and the transposition key, and the type does not
+separate them -- both are `Key`. `Position::adjust_key50` mixes the halfmove clock in only at
+and above a threshold, so **below it the two words are identical**: a confusion between them
+passes every position where the clock is low and is wrong only later in a game, and no perft
+can see it, because perft counts leaves and a key that desyncs and resyncs produces the same
+count.
+
+What limits the exposure is scope rather than typing. `adjust_key50` is templated on
+`AfterMove` for exactly this reason, and both call sites choose correctly: the prefetch inside
+`do_move` takes the default, because `st->rule50` has already been advanced there, and
+`prefetch_key` takes `<true>` because it runs before the move -- and returns the key unadjusted
+on a capture or a pawn move, where the child's clock resets below the threshold.
 
 **Two arguments of the same type transpose in silence.** `Move(from, to)` takes two
 `Square`s and is reversible, and so is any pair of `Color`s or same-typed keys. No type in
