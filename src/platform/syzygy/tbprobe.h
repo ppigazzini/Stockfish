@@ -25,6 +25,7 @@
 
 
 #include "../../engine/searchoptions.h"
+#include "../../engine/tb_source.h"
 
 namespace Stockfish {
 class Position;
@@ -39,29 +40,8 @@ using RootMoves = std::vector<RootMove>;
 
 namespace Stockfish::Tablebases {
 
-struct Config {
-    int   cardinality = 0;
-    bool  rootInTB    = false;
-    bool  useRule50   = false;
-    Depth probeDepth  = 0;
-};
-
-enum WDLScore {
-    WDLLoss        = -2,  // Loss
-    WDLBlessedLoss = -1,  // Loss, but draw under 50-move rule
-    WDLDraw        = 0,   // Draw
-    WDLCursedWin   = 1,   // Win, but draw under 50-move rule
-    WDLWin         = 2,   // Win
-};
-
-// Possible states after a probing operation
-enum ProbeState {
-    FAIL              = 0,   // Probe failed (missing file table)
-    OK                = 1,   // Probe successful
-    CHANGE_STM        = -1,  // DTZ should check the other side
-    ZEROING_BEST_MOVE = 2    // Best move zeroes DTZ (capture or pawn move)
-};
-
+// Config, WDLScore and ProbeState are search-facing values and live in
+// engine/tb_source.h; this header re-exports them by including it.
 extern int MaxCardinality;
 
 

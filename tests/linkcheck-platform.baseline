@@ -33,13 +33,14 @@
 # three Tablebases symbols in position.o for the sake of a debug view -- a
 # misplacement, not a dependency.
 #
+# 5. The tablebase seam (engine/tb_source.h) took rank_root_moves and the Step 6
+# probe. Measured ON A PROBING WORKLOAD, not on the bench: -0.0040%.
+#
 # What remains needs injection seams rather than re-zoning:
 #   Tablebases::*   the Syzygy prober, from position.o and search.o
 #   NumaConfig::*   topology, from search.o
 #   ThreadPool::*   from search.o and tt.o
 search.o _ZN9Stockfish10NumaConfig11from_systemERKSt7variantIJNS_16SystemNumaPolicyENS_15L3DomainsPolicyENS_15BundledL3PolicyEEEb
-search.o _ZN9Stockfish10Tablebases15rank_root_movesERKNS_13SearchOptionsERNS_8PositionERSt6vectorINS_6Search8RootMoveESaIS8_EEbRKSt8functionIFbvEE
-search.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
 search.o _ZN9Stockfish24aligned_large_pages_freeEPv
 search.o _ZN9Stockfish25aligned_large_pages_allocEm
 search.o _ZNK9Stockfish10NumaConfig32bind_current_thread_to_numa_nodeEm
