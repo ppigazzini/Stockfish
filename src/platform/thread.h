@@ -143,10 +143,14 @@ class ThreadPool {
               const Search::SearchManager::UpdateContext&);
 
     Search::SearchManager* main_manager();
+    // The engine's view of the set: count and at, and nothing that knows what a
+    // good move is. Search::best_worker does the vote on the engine side.
+    usize           worker_count() const { return threads.size(); }
+    Search::Worker* worker_at(usize i) const { return threads[i]->worker.get(); }
+
     Thread*                main_thread() const { return threads.front().get(); }
     u64                    nodes_searched() const;
     u64                    tb_hits() const;
-    Thread*                get_best_thread() const;
     void                   start_searching();
     void                   wait_for_search_finished() const;
 
