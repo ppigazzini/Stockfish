@@ -21,6 +21,7 @@ Exit codes:  0 no finding   1 a finding   2 skipped
 """
 
 import argparse
+import contextlib
 import os
 import random
 import shutil
@@ -163,10 +164,49 @@ def harness_uci(rng, deadline, findings):
     return n
 
 
+def tb_verdict(out):
+    """The engine's answer, as the pair a caller would act on."""
+    best = next(
+        (
+            line.split()[1]
+            for line in out.splitlines()
+            if line.startswith("bestmove") and len(line.split()) > 1
+        ),
+        None,
+    )
+    hits = 0
+    for line in out.splitlines():
+        if " tbhits " in line:
+            with contextlib.suppress(IndexError, ValueError):
+                hits = int(line.split(" tbhits ")[1].split()[0])
+    return best, hits
+
+
 def harness_tb(rng, deadline, findings):
     src = [f for f in sorted(os.listdir(TB))] if os.path.isdir(TB) else []
     if not src:
         return None
+
+    # The reference answer, from the UNMUTATED tables. Without it the harness can
+    # only ask whether the engine survived; with it, it can ask whether the
+    # engine was RIGHT -- which is the failure that does not announce itself. A
+    # corrupt table that still answers, still reports tbhits, and returns a
+    # different move than the clean tables did is a confident wrong verdict, and
+    # nothing else in this tree looks for one.
+    rc, out = run(
+        [
+            f"setoption name SyzygyPath value {TB}",
+            "isready",
+            f"position fen {TB_FEN}",
+            "go depth 8",
+        ]
+    )
+    if rc != 0 or "bestmove" not in out:
+        raise SystemExit("fuzz: RIG FAULT -- the clean tables gave no reference verdict")
+    ref_move, ref_hits = tb_verdict(out)
+    if not ref_hits:
+        raise SystemExit("fuzz: RIG FAULT -- the reference run probed no tablebase")
+
     n = 0
     with tempfile.TemporaryDirectory() as d:
         while time.time() < deadline:
@@ -209,7 +249,36 @@ def harness_tb(rng, deadline, findings):
             if "bestmove" not in out:
                 findings.append(("tb", "no bestmove", victim))
                 return n
+
+            # The property that matters. If the engine still probed a table and
+            # still answered, the answer must be the one the clean tables gave:
+            # this position's value does not depend on the bytes we corrupted
+            # being right, only on them being READ right. A different move here
+            # is the search believing a table that lied to it.
+            move, hits = tb_verdict(out)
+            if hits and move != ref_move:
+                findings.append(
+                    (
+                        "tb",
+                        f"wrong verdict from a corrupt table: {move}, clean tables say {ref_move}"
+                        f" (tbhits {hits})",
+                        victim,
+                    )
+                )
+                return n
     return n
+
+
+def net_eval(out):
+    """The static evaluation the engine reports, in its own units."""
+    for line in out.splitlines():
+        if line.startswith("Final evaluation"):
+            for tok in line.split():
+                try:
+                    return float(tok)
+                except ValueError:
+                    continue
+    return None
 
 
 def harness_net(rng, deadline, findings):
@@ -221,6 +290,17 @@ def harness_net(rng, deadline, findings):
     if not nets:
         return None
     smallest = nets[0][1]
+
+    # The reference evaluation, from the SHIPPED net. The property here is not
+    # "did it crash" -- it is that a corrupt net must be REFUSED rather than
+    # loaded into an evaluation that looks plausible. Without a reference there
+    # is no way to tell a refused net from an accepted one that lies, because
+    # both print a number.
+    rc, out = run(["position startpos", "eval"])
+    ref = net_eval(out)
+    if rc != 0 or ref is None:
+        raise SystemExit("fuzz: RIG FAULT -- no reference evaluation from the shipped net")
+
     n = 0
     with tempfile.TemporaryDirectory() as d:
         victim = os.path.join(d, "fuzz.nnue")
@@ -232,11 +312,12 @@ def harness_net(rng, deadline, findings):
                 for _ in range(rng.randint(1, 6)):
                     fh.seek(rng.randrange(size))
                     fh.write(bytes([rng.randrange(256)]))
-            rc, _out = run(
+            rc, out = run(
                 [
                     f"setoption name EvalFile value {victim}",
                     "isready",
                     "position startpos",
+                    "eval",
                     "go depth 4",
                 ]
             )
@@ -245,6 +326,23 @@ def harness_net(rng, deadline, findings):
                 return n
             if rc < 0:
                 findings.append(("net", f"killed by signal {-rc}", victim))
+                return n
+
+            # Three outcomes are fine and one is not. Refusing the file is fine.
+            # Failing to load it and keeping the old net is fine. Loading it and
+            # reporting the same evaluation is fine -- the mutated bytes did not
+            # reach this position. Loading it, saying nothing, and reporting a
+            # DIFFERENT evaluation is the engine passing off a corrupt network
+            # as an opinion.
+            got = net_eval(out)
+            if got is not None and got != ref and "ERROR" not in out:
+                findings.append(
+                    (
+                        "net",
+                        f"corrupt net accepted silently: eval {got}, shipped net says {ref}",
+                        victim,
+                    )
+                )
                 return n
     return n
 
