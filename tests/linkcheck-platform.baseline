@@ -1,47 +1,9 @@
-# Engine objects that reference a symbol only a platform object defines.
+# Engine objects referencing a PLATFORM-defined symbol.
 #
-# The declared stack says the engine depends on nothing outside itself, so every
-# line here is a violation, and together they are why engine/ cannot link alone.
+# EMPTY, and that is the point. Every host service the engine needs -- the
+# arena, the output sink, the parallel-for, the worker set, the tablebase
+# prober, the NUMA network replica -- arrives through an injection seam that the
+# engine declares and the host registers before the first search.
 #
-# Down from 27: hash_bytes moved to engine/hashing.h, where arithmetic over
-# bytes belongs, and the console half of misc.h moved to the shell, which turned
-# three of these into honest engine-to-shell edges instead of hidden ones.
-#
-# 20 now: the arena seam (engine/arena.h) took the transposition table and the
-# history banks off the platform allocator. The two aligned_large_pages_*
-# references left in search.o are NOT the engine allocating -- they are
-# platform/thread.h holding LargePagePtr<Search::Worker>, whose deleter
-# instantiates in every engine TU that includes thread.h. They go with the
-# ThreadPool seam, not this one.
-#
-# 15 now. The parallel-for seam (engine/parallel.h) took the transposition
-# table's five ThreadPool references, and tt.o is free of the platform entirely.
-#
-# 14. get_best_thread went to the engine as Search::best_worker -- it was chess
-# policy (root moves, scores, PVs, mate distance) living in the thread pool
-# because that is where the workers are stored. The pool now exposes only
-# worker_count and worker_at, which is mcfish worker_set.h's split: lifecycle
-# and dispatch cross over, the vote does not.
-#
-# 10. The worker-set seam (engine/worker_set.h) took start_searching,
-# wait_for_search_finished, nodes_searched and tb_hits. Its shape is mcfish's:
-# a ctx pointer rather than a global, and the stop flag handed over as a POINTER
-# so the seventeen per-node reads stay direct atomic loads.
-#
-# 7. The d command's tablebase rows moved to Engine::visualize, in the shell.
-# A probe is disk I/O, so printing one from the board's own display operator put
-# three Tablebases symbols in position.o for the sake of a debug view -- a
-# misplacement, not a dependency.
-#
-# 5. The tablebase seam (engine/tb_source.h) took rank_root_moves and the Step 6
-# probe. Measured ON A PROBING WORKLOAD, not on the bench: -0.0040%.
-#
-# What remains needs injection seams rather than re-zoning:
-#   Tablebases::*   the Syzygy prober, from position.o and search.o
-#   NumaConfig::*   topology, from search.o
-#   ThreadPool::*   from search.o and tt.o
-search.o _ZN9Stockfish10NumaConfig11from_systemERKSt7variantIJNS_16SystemNumaPolicyENS_15L3DomainsPolicyENS_15BundledL3PolicyEEEb
-search.o _ZN9Stockfish24aligned_large_pages_freeEPv
-search.o _ZN9Stockfish25aligned_large_pages_allocEm
-search.o _ZNK9Stockfish10NumaConfig32bind_current_thread_to_numa_nodeEm
-search.o _ZNK9Stockfish10NumaConfig9to_stringB5cxx11Ev
+# Keep it empty. The next host dependency added to engine/ fails this gate
+# rather than joining a list.
