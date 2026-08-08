@@ -1,19 +1,9 @@
 # Engine objects that reference a symbol only a shell object defines.
 #
-# THREE, and all three are the same thing: engine code printing. They became
-# visible when misc.h's console half moved to shell/console.h -- before that
-# sync_cout and dbg_print lived in a PLATFORM file, so an engine file calling
-# them produced an engine-to-platform edge and the shell check could not see it.
-# The misplacement was hiding the violation, which is the argument for zoning by
-# meaning rather than by where a helper happens to sit.
+# EMPTY, and it stays that way. B7's seams closed the last three: the option
+# snapshot, the two renderers that were engine code all along, and the output
+# sink -- the engine now says things through a function pointer the host
+# registers, with a printing default.
 #
-#   search.o  -> dbg_print       the periodic debug-counter dump
-#   search.o  -> operator<<(SyncCout)  the Syzygy PV-extension warning
-#   network.o -> operator<<(SyncCout)  the net export/save messages
-#
-# These are what B7 calls the OUTPUT SINK seam, and it is not built: the engine
-# should declare a sink and the composition root register one, so that an
-# engine driven without a UCI layer still has somewhere to say things.
-network.o _ZN9StockfishlsERSoNS_8SyncCoutE
-search.o _ZN9Stockfish9dbg_printEv
-search.o _ZN9StockfishlsERSoNS_8SyncCoutE
+# There is no debt left to grandfather here, so the next entry to appear is the
+# first, and it fails the gate rather than joining a list.

@@ -19,6 +19,7 @@
 #include "engine.h"
 
 #include "../engine/arena.h"
+#include "../engine/output_sink.h"
 
 #include <algorithm>
 #include <cassert>
@@ -66,7 +67,12 @@ constexpr NumaAutoPolicy DefaultNumaPolicy = BundledL3Policy{32};
 // transposition table or any history bank exists. A block taken from the
 // engine's default allocator and released by this one is heap corruption with no
 // diagnostic, so the ordering is a correctness requirement, not a preference.
+namespace {
+void host_line(std::string_view text) { sync_cout << text << sync_endl; }
+}  // namespace
+
 Engine::ArenaInstallerTag::ArenaInstallerTag() {
+    set_output_sink({host_line, dbg_print});
     set_arena({aligned_large_pages_alloc, aligned_large_pages_alloc_with_hint,
                aligned_large_pages_free});
 }
