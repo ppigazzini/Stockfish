@@ -58,8 +58,8 @@ cd src && ../tests/signature.sh $(git log -20 --format=%b | grep -m1 -oE 'Bench:
 
 ```sh
 ../tests/signature.sh <ref>   # the anchor, per arch
-../tests/perft.sh             # movegen, incl. 5 Chess960 rows (needs `expect`)
-../tests/reprosearch.sh       # node counts repeat across ucinewgame (needs `expect`)
+../tests/perft.sh             # movegen, incl. 5 Chess960 rows
+../tests/reprosearch.sh       # node counts repeat across ucinewgame
 python3 ../tests/instrumented.py --none ./stockfish
 ```
 
