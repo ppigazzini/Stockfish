@@ -12,7 +12,10 @@ Audience: board and movegen.
 
 Fixed-width enums for the things that have a fixed range -- `Color`, `Square`, `File`,
 `Rank`, `Piece`, `PieceType`, `Direction`, `CastlingRights`, `Bound`, `MoveType` -- and plain
-aliases for the things that are computed with: `Value`, `Key`, `Bitboard`, `Depth`.
+aliases for the things that are computed with: `Value`, `Bitboard`, `Depth`, and `Key` --
+which is now the transposition key alone. The pawn, minor-piece, material and non-pawn keys
+are `TypedKey<KeySpace>` values and cannot substitute for one another; see
+[09-type-design.md](09-type-design.md).
 
 The encodings are load-bearing rather than arbitrary:
 
