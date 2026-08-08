@@ -30,6 +30,7 @@
 #include <iosfwd>
 #include <memory>
 #include <ostream>
+#include <iomanip>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -428,6 +429,25 @@ std::optional<PositionSetError> Engine::flip() { return pos.flip(); }
 std::string Engine::visualize() const {
     std::stringstream ss;
     ss << pos;
+
+    // The tablebase rows of the `d` board. A probe is disk I/O -- a platform
+    // service -- so they belong with the command rather than inside the board's
+    // own display operator, which is where they were: three Tablebases symbols
+    // in position.o for the sake of a debug view.
+    if (Tablebases::MaxCardinality >= popcount(pos.pieces()) && !pos.can_castle(ANY_CASTLING))
+    {
+        StateInfo st;
+        Position  p;
+        p.set(pos.fen(), pos.is_chess960(), &st);
+
+        Tablebases::ProbeState s1, s2;
+        Tablebases::WDLScore   wdl = Tablebases::probe_wdl(p, &s1);
+        int                    dtz = Tablebases::probe_dtz(p, &s2);
+
+        ss << "\nTablebases WDL: " << std::setw(4) << wdl << " (" << s1 << ")"
+           << "\nTablebases DTZ: " << std::setw(4) << dtz << " (" << s2 << ")";
+    }
+
     return ss.str();
 }
 

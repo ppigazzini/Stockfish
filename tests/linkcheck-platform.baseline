@@ -28,13 +28,15 @@
 # a ctx pointer rather than a global, and the stop flag handed over as a POINTER
 # so the seventeen per-node reads stay direct atomic loads.
 #
+# 7. The d command's tablebase rows moved to Engine::visualize, in the shell.
+# A probe is disk I/O, so printing one from the board's own display operator put
+# three Tablebases symbols in position.o for the sake of a debug view -- a
+# misplacement, not a dependency.
+#
 # What remains needs injection seams rather than re-zoning:
 #   Tablebases::*   the Syzygy prober, from position.o and search.o
 #   NumaConfig::*   topology, from search.o
 #   ThreadPool::*   from search.o and tt.o
-position.o _ZN9Stockfish10Tablebases14MaxCardinalityE
-position.o _ZN9Stockfish10Tablebases9probe_dtzERNS_8PositionEPNS0_10ProbeStateE
-position.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
 search.o _ZN9Stockfish10NumaConfig11from_systemERKSt7variantIJNS_16SystemNumaPolicyENS_15L3DomainsPolicyENS_15BundledL3PolicyEEEb
 search.o _ZN9Stockfish10Tablebases15rank_root_movesERKNS_13SearchOptionsERNS_8PositionERSt6vectorINS_6Search8RootMoveESaIS8_EEbRKSt8functionIFbvEE
 search.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
