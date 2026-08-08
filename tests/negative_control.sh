@@ -340,6 +340,34 @@ if selected perft; then
     fi
 fi
 
+# --------------------------------------------------------------- reprosearch
+
+row reprosearch
+if selected reprosearch; then
+    # reprosearch is a merge gate -- tests.yml runs it and AGENTS.md lists it --
+    # and until this row nothing had ever watched it go red. What it asserts is
+    # that ucinewgame resets the search completely: the same two short games,
+    # replayed after it, must return the same node counts. Leaving the
+    # transposition table warm across the reset is the smallest change that
+    # breaks exactly that and nothing else.
+    echo "negative-control: reprosearch -- ucinewgame leaves the TT warm"
+    mutate src/engine.cpp \
+        '    tt.clear(threads);
+    threads.clear();' \
+        '    threads.clear();'
+    if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
+        if ( cd src && ../tests/reprosearch.sh ) >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- node counts still repeated across ucinewgame"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+    else
+        restore; die "the reprosearch mutant did not compile"
+    fi
+    restore
+    ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
+fi
+
 # --------------------------------------------------------------- depcheck
 
 row depcheck-new
