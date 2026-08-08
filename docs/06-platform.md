@@ -1,7 +1,7 @@
 # The platform layer
 
-`src/memory.h`, `src/memory.cpp`, `src/numa.h`, `src/shm.h`, `src/shm_unix.h`,
-`src/thread_native.h`, `src/universal/`.
+`src/memory.h`, `src/memory.cpp`, `src/numa.h`, `src/numa.cpp`, `src/numa_shared.h`,
+`src/shm.h`, `src/shm_unix.h`, `src/thread_native.h`, `src/universal/`.
 
 Everything the engine needs from the operating system: aligned and large-page allocation, CPU
 topology and thread binding, cross-process shared memory, native threads with a chosen stack
@@ -11,8 +11,8 @@ It is the largest per-platform surface in the tree and the one `bench` exercises
 single-threaded run on one node touches the allocator and nothing else here.
 
 ```sh
-wc -l src/memory.h src/memory.cpp src/numa.h src/shm.h src/shm_unix.h \
-     src/thread_native.h src/universal/entry_x86.cpp
+wc -l src/memory.h src/memory.cpp src/numa.h src/numa.cpp src/numa_shared.h \
+     src/shm.h src/shm_unix.h src/thread_native.h src/universal/entry_x86.cpp
 ```
 
 Audience: anyone porting to a new OS, or changing threading, allocation or the build's
@@ -41,14 +41,18 @@ request succeeded; the engine runs either way.
 heap corruption with no diagnostic**, which is why the pairing is a template rather than a
 convention.
 
-## `numa.h` -- topology, binding and replication
+## `numa.h`, `numa.cpp` -- topology, binding and replication
 
-The largest single header in the tree, and entirely a header.
+Still the largest single header in the tree, but no longer all of it: the cold half of
+`NumaConfig` is in `numa.cpp`. The split is by temperature, not by subject -- everything that
+runs before the first search is in the `.cpp`, and what stays in the header is template-bound
+and could not move, including the namespace-scope `STARTUP_PROCESSOR_AFFINITY` initializer,
+whose initialisation order is a property of living there.
 
 ### Discovering the topology
 
-`NumaConfig::from_system(policy, respectProcessAffinity, is_cpu_allowed)` builds the map of
-which CPUs belong to which node. The policy is a variant:
+`NumaConfig::from_system(policy, respectProcessAffinity)` builds the map of which CPUs belong
+to which node; `respectProcessAffinity` defaults to true. The policy is a variant:
 
 | policy | grouping |
 |---|---|
