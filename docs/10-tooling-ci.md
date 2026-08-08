@@ -375,6 +375,33 @@ The sibling C port checks the same property at link time instead -- it compiles 
 alone and fails on any undefined symbol -- which is stronger, and is not available here while
 `src/` is one flat directory with one link step.
 
+## `tests/linkcheck.sh`
+
+The same rule as `depcheck.sh`, asked of the linker instead of the preprocessor.
+
+```sh
+./tests/linkcheck.sh
+```
+
+`depcheck.sh` reads `#include` lines, so it sees only edges an include spells. This one compiles
+the tree with LTO off, then asks whether any object built from an engine file references a
+symbol that only a shell object defines. An edge reached through a template parameter, or
+through a forward declaration with no include at all, is invisible to the first check and
+plain to this one -- `tests/negative_control.sh linkcheck` injects exactly that case and
+asserts **both** halves: `depcheck` stays green, and `linkcheck` goes red.
+
+The zone table lives in `tests/zones.sh` and is sourced by both, because two checks that
+disagreed about which file is engine would be worse than either alone.
+
+`tests/linkcheck.baseline` records the symbols today, and expires in both directions like the
+other baselines. It is finer-grained than the include baseline on purpose: the two files that
+reach the shell already have their includes listed, so only a symbol-level record makes a *new*
+call visible when the include that would have announced it is there already.
+
+**It describes the non-LTO build.** Under `-flto` an object holds IR and its symbol table is
+not the one the real link resolves, so the check builds with `-fno-lto` and its answer is about
+that build. That is the same limit `textequal.sh` carries, for the same reason.
+
 ## `tests/docslint.sh`
 
 Five mechanical checks over this documentation set:
