@@ -177,6 +177,56 @@ class MultiArray {
     constexpr void swap(MultiArray<T, Size, Sizes...>& other) noexcept { data_.swap(other.data_); }
 };
 
+
+// A key is a hashed summary of some SLICE of the position, and the engine keeps
+// six of them. They are all u64, so before this type any one could stand in for
+// any other -- and for a Bitboard, which is the same alias again.
+//
+// The space is a template parameter rather than a field: it costs no register
+// and it makes two spaces different TYPES, which is the whole point.
+//
+// The algebra is deliberately tiny. A key is produced, stored, passed, masked
+// to an index and truncated to a tag, and nothing else. In particular there is
+// no operator^: keys are BUILT by xor-ing Zobrist words, and the same word is
+// xor-ed into several spaces, so a public xor would let any space absorb any
+// other's material -- exactly the mixing the type exists to prevent.
+// Construction stays inside position.cpp, on the raw u64, and the type begins
+// at the accessors.
+enum class KeySpace : u8 {
+    Pawn,
+    MinorPiece,
+    Material,
+    NonPawn
+};
+
+template<KeySpace S>
+class TypedKey {
+   public:
+    TypedKey() = default;
+    constexpr explicit TypedKey(u64 v) :
+        v(v) {}
+
+    constexpr u64 raw() const { return v; }
+
+    // Index into a power-of-two table. Returns the index, not a key: the result
+    // has left the key domain and must not be mistaken for one.
+    constexpr usize operator&(usize mask) const { return usize(v) & mask; }
+
+    // The low bits a transposition entry stores as its tag.
+    constexpr u16 tag() const { return u16(v); }
+
+    constexpr bool operator==(const TypedKey& o) const { return v == o.v; }
+    constexpr bool operator!=(const TypedKey& o) const { return v != o.v; }
+
+   private:
+    u64 v = 0;
+};
+
+using PawnKey     = TypedKey<KeySpace::Pawn>;
+using MinorKey    = TypedKey<KeySpace::MinorPiece>;
+using MaterialKey = TypedKey<KeySpace::Material>;
+using NonPawnKey  = TypedKey<KeySpace::NonPawn>;
+
 }  // namespace Stockfish
 
 #endif  // #ifndef BASETYPES_H_INCLUDED
