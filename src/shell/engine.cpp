@@ -21,6 +21,7 @@
 #include "../engine/arena.h"
 #include "../engine/output_sink.h"
 #include "../engine/parallel.h"
+#include "../engine/worker_set.h"
 
 #include <algorithm>
 #include <cassert>
@@ -77,6 +78,17 @@ void host_line(std::string_view text) { sync_cout << text << sync_endl; }
 //
 // Written on the main thread inside resize_threads, before anything reads it.
 ThreadPool* hostPool = nullptr;
+
+// The worker set, with the pool itself as ctx -- no second global, which is
+// what mcfish's void *ctx buys.
+void  ws_start_searching(void* c) { static_cast<ThreadPool*>(c)->start_searching(); }
+void  ws_wait_finished(void* c) { static_cast<ThreadPool*>(c)->wait_for_search_finished(); }
+u64   ws_nodes_searched(void* c) { return static_cast<ThreadPool*>(c)->nodes_searched(); }
+u64   ws_tb_hits(void* c) { return static_cast<ThreadPool*>(c)->tb_hits(); }
+usize ws_count(void* c) { return static_cast<ThreadPool*>(c)->worker_count(); }
+Search::Worker* ws_at(void* c, usize i) { return static_cast<ThreadPool*>(c)->worker_at(i); }
+std::atomic<bool>* ws_stop(void* c) { return &static_cast<ThreadPool*>(c)->stop; }
+std::atomic<bool>* ws_increase_depth(void* c) { return &static_cast<ThreadPool*>(c)->increaseDepth; }
 
 usize              pool_num_threads() { return hostPool->num_threads(); }
 usize              pool_numa_nodes() { return hostPool->numa_nodes(); }
@@ -321,6 +333,8 @@ void Engine::resize_threads() {
     hostPool = &threads;
     set_parallel_for({pool_num_threads, pool_numa_nodes, pool_thread_numa_map, pool_run_on,
                       pool_wait_on});
+    set_worker_set({&threads, ws_start_searching, ws_wait_finished, ws_nodes_searched, ws_tb_hits,
+                    ws_count, ws_at, ws_stop, ws_increase_depth});
 
     // Reallocate the hash with the new threadpool size
     set_tt_size(options["Hash"]);

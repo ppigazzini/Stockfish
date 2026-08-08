@@ -76,7 +76,7 @@ BINDIR = $(PREFIX)/bin
 PGOBENCH = $(RUN_PREFIX) ./$(EXE) bench
 
 ### Source and object files
-SRCS = engine/arena.cpp engine/output_sink.cpp engine/parallel.cpp engine/attacks.cpp shell/benchmark.cpp shell/console.cpp engine/bitboard.cpp engine/evaluate.cpp shell/main.cpp \
+SRCS = engine/arena.cpp engine/output_sink.cpp engine/parallel.cpp engine/worker_set.cpp engine/attacks.cpp shell/benchmark.cpp shell/console.cpp engine/bitboard.cpp engine/evaluate.cpp shell/main.cpp \
 	platform/misc.cpp engine/movegen.cpp engine/movepick.cpp engine/position.cpp \
 	engine/search.cpp platform/thread.cpp platform/numa.cpp engine/timeman.cpp engine/tt.cpp shell/uci.cpp shell/ucioption.cpp shell/tune.cpp platform/syzygy/tbprobe.cpp \
 	engine/nnue/nnue_accumulator.cpp engine/nnue/nnue_misc.cpp engine/nnue/network.cpp \
@@ -85,7 +85,7 @@ SRCS = engine/arena.cpp engine/output_sink.cpp engine/parallel.cpp engine/attack
 
 OTHER_SRCS = universal/entry_x86.cpp universal/entry_arm64.cpp universal/entry_riscv64.cpp universal/nnue_embed.cpp
 
-HEADERS = engine/arena.h engine/output_sink.h engine/parallel.h engine/attacks.h shell/benchmark.h shell/console.h engine/bitboard.h engine/evaluate.h platform/misc.h engine/movegen.h engine/movepick.h engine/history.h \
+HEADERS = engine/arena.h engine/output_sink.h engine/parallel.h engine/worker_set.h engine/attacks.h shell/benchmark.h shell/console.h engine/bitboard.h engine/evaluate.h platform/misc.h engine/movegen.h engine/movepick.h engine/history.h \
 		engine/nnue/nnue_misc.h engine/nnue/features/half_ka_v2_hm.h engine/nnue/features/full_threats.h \
 		engine/nnue/features/pp_3wide.h engine/nnue/layers/affine_transform.h engine/nnue/layers/affine_transform_sparse_input.h \
 		engine/nnue/layers/clipped_relu.h engine/nnue/layers/sqr_clipped_relu.h engine/nnue/nnue_accumulator.h \
