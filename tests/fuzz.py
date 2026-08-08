@@ -347,11 +347,87 @@ def harness_net(rng, deadline, findings):
     return n
 
 
+def feed(p, text):
+    """Write to a child that may already be gone, and may have no stdin at all."""
+    if p.stdin is None:
+        return
+    try:
+        p.stdin.write(text)
+        p.stdin.flush()
+    except (BrokenPipeError, ValueError):
+        pass
+
+
+def harness_shm(rng, deadline, findings):
+    """Concurrent engines contending for the shared network segment.
+
+    The only input here that is not a file. shm_unix.h hands one process's
+    network to another over a Unix socket and an mmapped memfd, so its failures
+    need a SECOND PROCESS rather than a mutated byte: two creators racing, and a
+    peer dying mid-transfer. The one defect this layer is known to have produced
+    -- a client disappearing killing the server with SIGPIPE -- is exactly that
+    shape, and it came from production rather than from testing.
+
+    The property is survivorship. A process that dies because a PEER died is the
+    defect; a process killed on purpose is the stimulus.
+    """
+    n = 0
+    while time.time() < deadline:
+        n += 1
+        k = rng.randint(2, 5)
+        procs = []
+        for _ in range(k):
+            procs.append(
+                subprocess.Popen(
+                    [EXE],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    cwd=os.path.join(ROOT, "src"),
+                )
+            )
+        for p in procs:
+            feed(p, "uci\nisready\nposition startpos\ngo depth 6\n")
+
+        # Kill a strict subset, at a random moment during startup, so at least
+        # one survivor is always left to make a claim about.
+        victims = rng.sample(range(k), rng.randint(1, k - 1))
+        time.sleep(rng.uniform(0.0, 0.30))
+        for i in victims:
+            procs[i].kill()
+
+        for i, p in enumerate(procs):
+            if i in victims:
+                p.wait(timeout=20)
+                continue
+            feed(p, "quit\n")
+            try:
+                out, _ = p.communicate(timeout=40)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                findings.append(("shm", f"a survivor hung after {len(victims)} peer(s) died", EXE))
+                return n
+            if p.returncode < 0:
+                why = f"died by signal {-p.returncode} after {len(victims)} peer kill(s)"
+                findings.append(("shm", f"a survivor {why}", EXE))
+                return n
+            if "bestmove" not in out:
+                findings.append(
+                    ("shm", f"a survivor stopped answering after {len(victims)} peer(s) died", EXE)
+                )
+                return n
+            if "Unknown status" in out:
+                findings.append(("shm", "the allocator reported an unknown status", EXE))
+                return n
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=int, default=30)
     ap.add_argument("--seed", type=int, default=None)
-    ap.add_argument("--harness", choices=["uci", "tb", "net", "all"], default="all")
+    ap.add_argument("--harness", choices=["uci", "tb", "net", "shm", "all"], default="all")
     a = ap.parse_args()
 
     seed = a.seed if a.seed is not None else random.randrange(1 << 30)
@@ -360,7 +436,7 @@ def main():
         print(f"fuzz: SKIPPED -- no engine at {EXE}", file=sys.stderr)
         return 2
 
-    chosen = ["uci", "tb", "net"] if a.harness == "all" else [a.harness]
+    chosen = ["uci", "tb", "net", "shm"] if a.harness == "all" else [a.harness]
     # Locally the budget is split; the workflow gives each harness a job of its
     # own with the whole budget, because they run at throughputs orders of
     # magnitude apart and one shared budget is really a budget for the fastest.
@@ -369,7 +445,7 @@ def main():
 
     for name in chosen:
         rng = random.Random(seed)
-        fn = {"uci": harness_uci, "tb": harness_tb, "net": harness_net}[name]
+        fn = {"uci": harness_uci, "tb": harness_tb, "net": harness_net, "shm": harness_shm}[name]
         n = fn(rng, time.time() + per, findings)
         if n is None:
             skipped.append(name)
