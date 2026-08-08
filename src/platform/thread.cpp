@@ -348,58 +348,6 @@ void ThreadPool::start_thinking(const SearchOptions&  options,
     main_thread()->start_searching();
 }
 
-Thread* ThreadPool::get_best_thread() const {
-
-    Thread* bestThread = threads.front().get();
-    Value   minScore   = VALUE_INFINITE;
-
-    std::unordered_map<Move, i64, Move::MoveHash> votes(
-      2 * std::min(size(), bestThread->worker->rootMoves.size()));
-
-    for (auto&& th : threads)
-        minScore = std::min(minScore, th->worker->rootMoves[0].score);
-
-    // Vote according to score, and select the best thread
-    for (auto&& th : threads)
-        votes[th->worker->rootMoves[0].pv[0]] += th->worker->rootMoves[0].score - minScore + 14;
-
-    for (auto&& th : threads)
-    {
-        const auto& bestThreadMove = bestThread->worker->rootMoves[0];
-        const auto& newThreadMove  = th->worker->rootMoves[0];
-
-        const auto bestThreadMoveVote = votes[bestThreadMove.pv[0]];
-        const auto newThreadMoveVote  = votes[newThreadMove.pv[0]];
-
-        // Aborted (d1) searches may lead to inexact win (or loss) scores.
-        const bool bestThreadDecisive = bestThreadMove.score != -VALUE_INFINITE
-                                     && is_decisive(bestThreadMove.score)
-                                     && !bestThreadMove.score_is_bound();
-        const bool newThreadDecisive = newThreadMove.score != -VALUE_INFINITE
-                                    && is_decisive(newThreadMove.score)
-                                    && !newThreadMove.score_is_bound();
-
-        if (bestThreadDecisive)
-        {
-            // Make sure we pick the shortest mate / TB conversion.
-            if (newThreadDecisive && std::abs(newThreadMove.score) > std::abs(bestThreadMove.score))
-            {
-                assert((is_win(bestThreadMove.score) && is_win(newThreadMove.score))
-                       || (is_loss(bestThreadMove.score) && is_loss(newThreadMove.score)));
-
-                bestThread = th.get();
-            }
-        }
-        else if (newThreadDecisive
-                 || (!is_loss(newThreadMove.score)
-                     && (newThreadMoveVote > bestThreadMoveVote
-                         || (newThreadMoveVote == bestThreadMoveVote
-                             && newThreadMove.pv.size() > bestThreadMove.pv.size()))))
-            bestThread = th.get();
-    }
-
-    return bestThread;
-}
 
 
 // Start non-main threads.
