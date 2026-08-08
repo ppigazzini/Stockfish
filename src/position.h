@@ -162,10 +162,10 @@ class Position {
     // Accessing hash keys
     Key key() const;
     Key prefetch_key(Move m) const;
-    Key material_key() const;
-    Key pawn_key() const;
-    Key minor_piece_key() const;
-    Key non_pawn_key(Color c) const;
+    MaterialKey material_key() const;
+    PawnKey pawn_key() const;
+    MinorKey minor_piece_key() const;
+    NonPawnKey non_pawn_key(Color c) const;
 
     // Other properties of the position
     Color side_to_move() const;
@@ -325,13 +325,13 @@ inline Key Position::adjust_key50(Key k) const {
     return st->rule50 < 14 - AfterMove ? k : k ^ make_key((st->rule50 - (14 - AfterMove)) / 8);
 }
 
-inline Key Position::pawn_key() const { return st->pawnKey; }
+inline PawnKey Position::pawn_key() const { return PawnKey(st->pawnKey); }
 
-inline Key Position::material_key() const { return st->materialKey; }
+inline MaterialKey Position::material_key() const { return MaterialKey(st->materialKey); }
 
-inline Key Position::minor_piece_key() const { return st->minorPieceKey; }
+inline MinorKey Position::minor_piece_key() const { return MinorKey(st->minorPieceKey); }
 
-inline Key Position::non_pawn_key(Color c) const { return st->nonPawnKey[c]; }
+inline NonPawnKey Position::non_pawn_key(Color c) const { return NonPawnKey(st->nonPawnKey[c]); }
 
 inline Value Position::non_pawn_material(Color c) const { return st->nonPawnMaterial[c]; }
 
