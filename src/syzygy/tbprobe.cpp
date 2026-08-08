@@ -405,8 +405,8 @@ struct TBTable {
     void*            baseAddress;
     u8*              map;
     u64              mapping;
-    Key              key;
-    Key              key2;
+    MaterialKey key;
+    MaterialKey      key2;
     int              pieceCount;
     bool             hasPawns;
     bool             hasUniquePieces;
@@ -493,7 +493,7 @@ TBTable<DTZ>::TBTable(const TBTable<WDL>& wdl) :
 class TBTables {
 
     struct Entry {
-        Key           key;
+        MaterialKey key;
         TBTable<WDL>* wdl;
         TBTable<DTZ>* dtz;
 
@@ -513,14 +513,14 @@ class TBTables {
     usize                    foundDTZFiles = 0;
     usize                    foundWDLFiles = 0;
 
-    void insert(Key key, TBTable<WDL>* wdl, TBTable<DTZ>* dtz) {
-        u32   homeBucket = u32(key) & (Size - 1);
+    void insert(MaterialKey key, TBTable<WDL>* wdl, TBTable<DTZ>* dtz) {
+        u32   homeBucket = u32(key.raw()) & (Size - 1);
         Entry entry{key, wdl, dtz};
 
         // Ensure last element is empty to avoid overflow when looking up
         for (u32 bucket = homeBucket; bucket < Size + Overflow - 1; ++bucket)
         {
-            Key otherKey = hashTable[bucket].key;
+            MaterialKey otherKey = hashTable[bucket].key;
             if (otherKey == key || !hashTable[bucket].get<WDL>())
             {
                 hashTable[bucket] = entry;
@@ -529,7 +529,7 @@ class TBTables {
 
             // Robin Hood hashing: If we've probed for longer than this element,
             // insert here and search for a new spot for the other element instead.
-            u32 otherHomeBucket = u32(otherKey) & (Size - 1);
+            u32 otherHomeBucket = u32(otherKey.raw()) & (Size - 1);
             if (otherHomeBucket > homeBucket)
             {
                 std::swap(entry, hashTable[bucket]);
@@ -543,8 +543,8 @@ class TBTables {
 
    public:
     template<TBType Type>
-    TBTable<Type>* get(Key key) {
-        for (const Entry* entry = &hashTable[u32(key) & (Size - 1)];; ++entry)
+    TBTable<Type>* get(MaterialKey key) {
+        for (const Entry* entry = &hashTable[u32(key.raw()) & (Size - 1)];; ++entry)
         {
             if (entry->key == key || !entry->get<Type>())
                 return entry->get<Type>();

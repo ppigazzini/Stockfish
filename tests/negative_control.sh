@@ -522,6 +522,34 @@ CPP
     rm -f /tmp/nc_b5_mismatch.cpp /tmp/nc_b5_ok.cpp
 fi
 
+row b5-keyspace
+if selected b5-keyspace; then
+    # The other inverse row: the compiler must REFUSE a key from one space where
+    # another belongs. Three shapes, because one alone would pass if the header
+    # simply stopped compiling.
+    echo "negative-control: b5 [keys]   -- a key from the wrong space must not compile"
+    ok=1
+    mk() { printf '#include "position.h"\n#include "tt.h"\nusing namespace Stockfish;\n%s\n' "$1" > /tmp/nc_b5_key.cpp; }
+    for probe in \
+        'auto f(TranspositionTable& t, const Position& p) { return t.probe(p.pawn_key()); }' \
+        'Bitboard f(const Position& p) { return p.pawn_key(); }' \
+        'bool f(const Position& p) { return p.pawn_key() == p.minor_piece_key(); }'
+    do
+        mk "$probe"
+        if ( cd src && g++ -std=c++20 -I. -fsyntax-only /tmp/nc_b5_key.cpp ) >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- accepted: $probe"; ok=0
+        fi
+    done
+    # and the legal form must still build, so a broken header cannot pass this row
+    mk 'usize f(const Position& p, usize m) { return p.pawn_key() & m; }'
+    if ! ( cd src && g++ -std=c++20 -I. -fsyntax-only /tmp/nc_b5_key.cpp ) >/dev/null 2>&1; then
+        echo "  RIG FAULT -- the legal form does not compile either"; ok=0
+    fi
+    if [ "$ok" = 1 ]; then echo "  ok, rejected by the compiler"; PASS=$((PASS+1));
+    else FAIL=$((FAIL+1)); fi
+    rm -f /tmp/nc_b5_key.cpp
+fi
+
 row b5-swap
 if selected b5-swap; then
     # What the type does NOT buy, recorded as a test so the page cannot imply
