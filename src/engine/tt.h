@@ -22,6 +22,7 @@
 #include <tuple>
 
 #include "../platform/memory.h"
+#include "arena.h"
 #include "types.h"
 #include "basetypes.h"
 
@@ -83,7 +84,7 @@ struct TTWriter {
 class TranspositionTable {
 
    public:
-    ~TranspositionTable() { aligned_large_pages_free(table); }
+    ~TranspositionTable() { arena().free(table); }
 
     // Set TT size in MiB
     void resize(usize mbSize, ThreadPool& threads);
