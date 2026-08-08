@@ -42,7 +42,7 @@ behaves differently at one vector width.
 
 ### `tests/perft.sh`
 
-Move generation, by node count at depth, including five Chess960 rows. Needs `expect`.
+Move generation, by node count at depth, including five Chess960 rows.
 
 The counts are **facts about chess**, not a golden. A mismatch is always a movegen bug and
 never an update candidate.
@@ -51,7 +51,7 @@ It cannot see a key that desyncs and resyncs, because perft counts leaves.
 
 ### `tests/reprosearch.sh`
 
-Node counts repeat across `ucinewgame` at varying node limits. Needs `expect`.
+Node counts repeat across `ucinewgame` at varying node limits.
 
 ### `tests/instrumented.py`
 
