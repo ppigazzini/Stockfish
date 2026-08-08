@@ -21,4 +21,13 @@ __pycache__/
 tests/syzygy
 tests/bench_tmp.epd
 
+# The 3-man corpus tests/tbfetch.sh fetches for the fuzz harness. Deliberately
+# NOT tests/syzygy above: instrumented.py skips its own 4-man download when that
+# directory exists, and would then wait 300s for tables nobody fetched.
+tests/syzygy-3man
+
+# uv's virtualenv; uv.lock IS tracked.
+.venv/
+.ruff_cache/
+
 __DEV/
