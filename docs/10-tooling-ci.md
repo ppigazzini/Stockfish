@@ -449,7 +449,24 @@ another:
 
 The `tb` harness matters most because its bad outcome is not a crash. An index computed one off
 returns a **confident wrong verdict** the search believes, so "did not crash" is not the
-property that matters there.
+property that matters there -- and so neither harness stops at liveness.
+
+Each takes a **reference from the clean input first**, and compares against it:
+
+| harness | the property, beyond surviving |
+|---|---|
+| `tb` | if the engine still probes a table (`tbhits` above zero) and still answers, the move must be the one the unmutated tables gave. A different move is the search believing a table that lied to it. |
+| `net` | a corrupt network must be refused, not loaded. Reporting an evaluation that differs from the shipped net's, with no error, is the engine passing off a corrupt network as an opinion. |
+
+The reference is what makes these checkable at all: without it there is no way to tell a
+refused input from an accepted one that lies, because both leave the engine alive and both
+print a number. It also means a harness that cannot obtain its reference stops with a rig
+fault rather than reporting the whole run clean.
+
+The `net` property passes today because the loader validates: corrupt a net's weights and the
+engine answers `ERROR: Network evaluation parameters compatible with the engine must be
+available` and does not load it. That is the engine being correct, not the check being weak,
+and the check is what tells the two apart.
 
 **The seed prints first, and every finding prints the seed that produced it.** A fuzz run whose
 failure cannot be replayed is an anecdote.
