@@ -446,6 +446,14 @@ another:
 | `uci` | mutated command text | the parser, and essentially never the search behind it -- a mutated line is rejected at the first token |
 | `tb` | mutated Syzygy bytes | the decoder, the highest-consequence reader in the tree |
 | `net` | a mutated file through `EvalFile` | the loader, whose failure mode is a *replacement* net rather than a missing one |
+| `shm` | concurrent engine processes, some killed mid-startup | the cross-process path, whose failures need a second process rather than a mutated byte |
+
+`shm` is the odd one: its input is not a file. `shm_unix.h` hands one process's network to
+another over a Unix socket and an mmapped memfd, so its failure modes are two creators racing
+and a peer dying mid-transfer. The one defect this layer is known to have produced -- a client
+disappearing killing the server with `SIGPIPE` -- is exactly that shape, and it came from
+production rather than from testing. The property is **survivorship**: a process that dies
+because a *peer* died is the defect; a process killed on purpose is the stimulus.
 
 The `tb` harness matters most because its bad outcome is not a crash. An index computed one off
 returns a **confident wrong verdict** the search believes, so "did not crash" is not the
