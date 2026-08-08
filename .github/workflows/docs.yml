@@ -24,5 +24,11 @@ jobs:
       - name: Lane coverage
         run: ./tests/lanecheck.sh
 
-      - name: Dependency direction
+      - name: Dependency direction, by include
         run: ./tests/depcheck.sh
+
+      # Symbol-level, so it builds. It stays in this workflow rather than a
+      # lane of its own because it answers the same question depcheck does and
+      # a reader looking for one should find the other beside it.
+      - name: Dependency direction, by symbol
+        run: ./tests/linkcheck.sh
