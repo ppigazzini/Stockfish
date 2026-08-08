@@ -22,7 +22,8 @@
 
 #include <limits>
 
-#include "misc.h"
+#include "basetypes.h"
+#include "platform.h"
 
 namespace Stockfish {
 

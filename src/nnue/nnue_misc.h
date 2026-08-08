@@ -24,10 +24,10 @@
 #include <optional>
 #include <filesystem>
 
-#include "../misc.h"
 #include "../types.h"
 #include "nnue_architecture.h"
 #include "../evaluate.h"
+#include "../basetypes.h"
 
 namespace Stockfish {
 
