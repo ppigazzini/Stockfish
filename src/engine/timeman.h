@@ -22,6 +22,7 @@
 
 #include <limits>
 
+#include "clock.h"
 #include "basetypes.h"
 #include "../platform/platform.h"
 
