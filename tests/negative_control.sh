@@ -591,6 +591,36 @@ exit 0'
     fi
 fi
 
+row fuzz-verdict
+if selected fuzz-verdict; then
+    if [ -z "$(ls tests/syzygy-3man 2>/dev/null)" ]; then
+        echo "negative-control: fuzz [vrd] SKIPPED -- no corpus; run tests/tbfetch.sh"
+        SKIP=$((SKIP+1))
+    else
+        # The property that is not liveness: an engine that survives a corrupt
+        # table, still probes it, and returns a DIFFERENT move than the clean
+        # tables gave. No mutation of a real table reliably produces that -- the
+        # prober rejects most corruption and crashes on the rest -- so the
+        # detector is driven directly, the way the other fuzz rows drive theirs.
+        echo "negative-control: fuzz [vrd]  -- a corrupt table answering with the wrong move"
+        stub verdict '#!/bin/bash
+C="$(dirname "$0")/count"
+n=$(cat "$C" 2>/dev/null || echo 0); echo $((n+1)) > "$C"
+echo "info string Found 5 WDL and 5 DTZ tablebase files (up to 3-man)."
+cat >/dev/null
+echo "info depth 8 tbhits 4"
+if [ "$n" = "0" ]; then echo "bestmove d2d4"; else echo "bestmove h1h8"; fi'
+        out=$(EXE="$NCSTUB/verdict" ./tests/fuzz.py --seconds 1 --harness tb 2>&1)
+        if printf '%s' "$out" | grep -q 'wrong verdict'; then
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        elif printf '%s' "$out" | grep -q 'RIG FAULT'; then
+            echo "  NOT DETECTED -- the reference run itself was refused"; FAIL=$((FAIL+1))
+        else
+            echo "  NOT DETECTED -- a changed verdict from a corrupt table ran clean"; FAIL=$((FAIL+1))
+        fi
+    fi
+fi
+
 row fuzz-net
 if selected fuzz-net; then
     echo "negative-control: fuzz [net]  -- an engine that dies on a corrupt net"
