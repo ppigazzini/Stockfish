@@ -52,6 +52,7 @@
 
 #include "memory.h"
 #include "misc.h"
+#include "../engine/hashing.h"
 
 #if defined(__linux__) && !defined(MADV_COLLAPSE)
     #define MADV_COLLAPSE 25

@@ -61,13 +61,6 @@ std::filesystem::path path_from_utf8(const std::string& path);
 // Returns std::nullopt if the file does not exist.
 std::optional<std::string> read_file_to_string(const std::string& path);
 
-void dbg_hit_on(bool cond, int slot = 0);
-void dbg_mean_of(i64 value, int slot = 0);
-void dbg_stdev_of(i64 value, int slot = 0);
-void dbg_extremes_of(i64 value, int slot = 0);
-void dbg_correl_of(i64 value1, i64 value2, int slot = 0);
-void dbg_print();
-void dbg_clear();
 
 
 inline std::vector<std::string_view> split(std::string_view s, std::string_view delimiter) {
@@ -95,17 +88,6 @@ inline std::vector<std::string_view> split(std::string_view s, std::string_view 
 void remove_whitespace(std::string& s);
 bool is_whitespace(std::string_view s);
 
-enum SyncCout {
-    IO_LOCK,
-    IO_UNLOCK
-};
-std::ostream& operator<<(std::ostream&, SyncCout);
-
-#define sync_cout std::cout << IO_LOCK
-#define sync_endl std::endl << IO_UNLOCK
-
-void sync_cout_start();
-void sync_cout_end();
 
 
 
@@ -272,29 +254,7 @@ inline constexpr T2 interpolate(T1 x, T1 x0, T1 x1, T2 y0, T2 y1) {
     return T2(y0 + (y1 - y0) * (x - x0) / (x1 - x0));
 }
 
-u64 hash_bytes(const char*, usize);
 
-template<typename T>
-inline usize get_raw_data_hash(const T& value) {
-    // We must have no padding bytes because we're reinterpreting as char
-    static_assert(std::has_unique_object_representations<T>());
-
-    return static_cast<usize>(hash_bytes(reinterpret_cast<const char*>(&value), sizeof(value)));
-}
-
-template<typename T>
-inline void hash_combine(usize& seed, const T& v) {
-    usize x;
-    // For primitive types we avoid using the default hasher, which may be
-    // nondeterministic across program invocations
-    if constexpr (std::is_integral<T>())
-        x = v;
-    else
-        x = std::hash<T>{}(v);
-    seed ^= x + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
-
-inline u64 hash_string(const std::string& sv) { return hash_bytes(sv.data(), sv.size()); }
 
 struct CommandLine {
    public:
