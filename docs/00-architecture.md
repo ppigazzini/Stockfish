@@ -143,10 +143,16 @@ the honest measure of how far the tree is from it. Concretely, at the time of wr
   rather than protocol, so it lives in `score.h/.cpp`, and coordinate notation is
   `square_name` in `position.h/.cpp`. `evaluate.cpp`, `position.cpp`, `score.cpp` and
   `nnue/nnue_misc.cpp` include neither.
-- **`Search::Worker` holds the frontend as members**: `const OptionsMap&`, `ThreadPool&`,
-  `TranspositionTable&` and the network reference (`src/engine/search.h`). Linking the search means
-  linking the option model and the thread pool; there is no way to drive a search without a
-  process around it.
+- **`Search::Worker` no longer holds the option model.** It takes a `const SearchOptions&` --
+  a snapshot of the thirteen values the engine reads, filled by the composition root before each
+  search (`src/engine/searchoptions.h`). So the search can be driven without a UCI layer, and
+  `tests/linkcheck.baseline` is empty: no engine object references a shell-defined symbol.
+- **It still holds `ThreadPool&` and reaches the platform.** 27 symbol references, listed in
+  `tests/linkcheck-platform.baseline` -- the Syzygy prober from `position.o` and `search.o`, the
+  NUMA topology from `search.o`, and a handful of `misc.h` helpers. The declared stack says the
+  engine depends on nothing outside itself, so these are violations, and **they are why
+  `engine/` still cannot be linked alone.** Closing the shell edge was a value snapshot; closing
+  this one needs injection seams.
 - **`numa.h` no longer carries all of its implementation.** The cold half of `NumaConfig` --
   topology discovery, the string forms, thread binding, 452 lines that all run before the
   first search -- is in `numa.cpp`. What stays is template-bound and cannot move.
