@@ -33,10 +33,11 @@
 #include "thread_native.h"
 #include "../engine/basetypes.h"
 
+#include "../engine/searchoptions.h"
+
 namespace Stockfish {
 
 
-class OptionsMap;
 class Position;
 using Value = int;
 
@@ -132,7 +133,7 @@ class ThreadPool {
     ThreadPool& operator=(const ThreadPool&) = delete;
     ThreadPool& operator=(ThreadPool&&)      = delete;
 
-    void  start_thinking(const OptionsMap&, Position&, Search::LimitsType);
+    void  start_thinking(const SearchOptions&, Position&, Search::LimitsType);
     void  run_on_thread(usize threadId, std::function<void()> f);
     void  wait_on_thread(usize threadId);
     usize num_threads() const;
