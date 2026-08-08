@@ -33,6 +33,7 @@
 #include "layers/sqr_clipped_relu.h"
 #include "nnue_common.h"
 #include "nnz_helper.h"
+#include "../hashing.h"
 
 namespace Stockfish::Eval::NNUE {
 

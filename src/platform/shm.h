@@ -45,6 +45,7 @@
 #include "../engine/types.h"
 
 #include "memory.h"
+#include "../engine/hashing.h"
 
 #if defined(_WIN32)
 

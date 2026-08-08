@@ -29,6 +29,7 @@
 #include "../engine/basetypes.h"
 #include "numa.h"
 #include "shm.h"
+#include "../engine/hashing.h"
 
 namespace Stockfish {
 

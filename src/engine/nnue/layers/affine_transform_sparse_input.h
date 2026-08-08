@@ -32,6 +32,7 @@
 #include "../simd.h"
 #include "../nnue_common.h"
 #include "../nnz_helper.h"
+#include "../../hashing.h"
 
 /*
   This file contains the definition for a fully connected layer (aka affine transform) with block sparse input.
