@@ -63,6 +63,21 @@ int MaxThreads = std::max(1024, 4 * int(get_hardware_concurrency()));
 // PR#6526). The user can always explicitly override this behavior.
 constexpr NumaAutoPolicy DefaultNumaPolicy = BundledL3Policy{32};
 
+namespace {
+// The Syzygy prober, installed by the host. Unlike the worker set, this seam is
+// correct unregistered -- "no tablebases" is exactly true then -- so the
+// registration is about capability, not correctness.
+Tablebases::WDLScore tb_probe_wdl(void*, Position& pos, Tablebases::ProbeState* r) {
+    return Tablebases::probe_wdl(pos, r);
+}
+int tb_max_cardinality(void*) { return Tablebases::MaxCardinality; }
+Tablebases::Config tb_rank_root(void*, const SearchOptions& o, Position& pos,
+                                Search::RootMoves& rm, bool rankDTZ,
+                                const std::function<bool()>& abort) {
+    return Tablebases::rank_root_moves(o, pos, rm, rankDTZ, abort);
+}
+}  // namespace
+
 // The host's arena: large pages where the OS will give them.
 //
 // INSTALLED FIRST. This tag is the Engine's first member, so its constructor
@@ -100,6 +115,7 @@ void pool_wait_on(usize t) { hostPool->wait_on_thread(t); }
 
 Engine::ArenaInstallerTag::ArenaInstallerTag() {
     set_output_sink({host_line, dbg_print});
+    Tablebases::set_tb_source({nullptr, tb_max_cardinality, tb_probe_wdl, tb_rank_root});
     set_arena({aligned_large_pages_alloc, aligned_large_pages_alloc_with_hint,
                aligned_large_pages_free});
 }
