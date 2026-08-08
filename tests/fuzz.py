@@ -31,7 +31,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXE = os.environ.get("EXE", os.path.join(ROOT, "src", "stockfish"))
-TB = os.path.join(ROOT, "tests", "syzygy")
+TB = os.path.join(ROOT, "tests", "syzygy-3man")
 
 # Hash and Threads are the only options whose fuzzed value the engine turns
 # straight into an allocation, so they are the only ones whose value can exhaust
@@ -53,11 +53,43 @@ VERBATIM = (
 )
 
 TOKENS = [
-    "uci", "isready", "ucinewgame", "position", "startpos", "fen", "moves",
-    "go", "stop", "ponderhit", "setoption", "name", "value", "d", "eval",
-    "flip", "compiler", "depth", "nodes", "movetime", "wtime", "btime",
-    "winc", "binc", "movestogo", "searchmoves", "perft", "infinite", "mate",
-    "e2e4", "e7e5", "0", "-1", "99999999999999999999", "", "@#$", "1e9",
+    "uci",
+    "isready",
+    "ucinewgame",
+    "position",
+    "startpos",
+    "fen",
+    "moves",
+    "go",
+    "stop",
+    "ponderhit",
+    "setoption",
+    "name",
+    "value",
+    "d",
+    "eval",
+    "flip",
+    "compiler",
+    "depth",
+    "nodes",
+    "movetime",
+    "wtime",
+    "btime",
+    "winc",
+    "binc",
+    "movestogo",
+    "searchmoves",
+    "perft",
+    "infinite",
+    "mate",
+    "e2e4",
+    "e7e5",
+    "0",
+    "-1",
+    "99999999999999999999",
+    "",
+    "@#$",
+    "1e9",
 ]
 
 # A LEGAL 3-man position the fetched tables cover (tbhits 4 on a clean run).
@@ -74,8 +106,14 @@ def run(cmds, timeout=25, extra_env=None):
         env.update(extra_env)
     try:
         p = subprocess.run(
-            [EXE], input="\n".join(cmds) + "\nquit\n", capture_output=True,
-            text=True, timeout=timeout, cwd=os.path.join(ROOT, "src"), env=env)
+            [EXE],
+            input="\n".join(cmds) + "\nquit\n",
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=os.path.join(ROOT, "src"),
+            env=env,
+        )
         return p.returncode, p.stdout + p.stderr
     except subprocess.TimeoutExpired:
         return None, "TIMEOUT"
@@ -141,12 +179,14 @@ def harness_tb(rng, deadline, findings):
                 for _ in range(rng.randint(1, 8)):
                     fh.seek(rng.randrange(size))
                     fh.write(bytes([rng.randrange(256)]))
-            rc, out = run([
-                f"setoption name SyzygyPath value {d}",
-                "isready",
-                f"position fen {TB_FEN}",
-                "go depth 8",
-            ])
+            rc, out = run(
+                [
+                    f"setoption name SyzygyPath value {d}",
+                    "isready",
+                    f"position fen {TB_FEN}",
+                    "go depth 8",
+                ]
+            )
             if rc is None:
                 findings.append(("tb", "hang on a corrupt table", victim))
                 return n
@@ -159,7 +199,9 @@ def harness_tb(rng, deadline, findings):
             # them as a finding credits the harness for an experiment it did
             # not run.
             if "CRITICAL ERROR" in out:
-                raise SystemExit(f"fuzz: RIG FAULT -- the engine refused the fixture:\n{out.strip()[-300:]}")
+                raise SystemExit(
+                    f"fuzz: RIG FAULT -- the engine refused the fixture:\n{out.strip()[-300:]}"
+                )
             if "Found 0 WDL" in out:
                 raise SystemExit("fuzz: RIG FAULT -- no tablebase was loaded")
             # Refusing a corrupt file is correct. Answering from it is correct
@@ -171,8 +213,11 @@ def harness_tb(rng, deadline, findings):
 
 
 def harness_net(rng, deadline, findings):
-    nets = sorted((os.path.getsize(os.path.join(ROOT, "src", f)), f)
-                  for f in os.listdir(os.path.join(ROOT, "src")) if f.endswith(".nnue"))
+    nets = sorted(
+        (os.path.getsize(os.path.join(ROOT, "src", f)), f)
+        for f in os.listdir(os.path.join(ROOT, "src"))
+        if f.endswith(".nnue")
+    )
     if not nets:
         return None
     smallest = nets[0][1]
@@ -187,12 +232,14 @@ def harness_net(rng, deadline, findings):
                 for _ in range(rng.randint(1, 6)):
                     fh.seek(rng.randrange(size))
                     fh.write(bytes([rng.randrange(256)]))
-            rc, out = run([
-                f"setoption name EvalFile value {victim}",
-                "isready",
-                "position startpos",
-                "go depth 4",
-            ])
+            rc, _out = run(
+                [
+                    f"setoption name EvalFile value {victim}",
+                    "isready",
+                    "position startpos",
+                    "go depth 4",
+                ]
+            )
             if rc is None:
                 findings.append(("net", "hang on a corrupt net", victim))
                 return n
