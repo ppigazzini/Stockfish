@@ -24,9 +24,10 @@
 #include <vector>
 
 
+#include "../../engine/searchoptions.h"
+
 namespace Stockfish {
 class Position;
-class OptionsMap;
 
 using Depth = int;
 
@@ -74,7 +75,7 @@ bool     root_probe(Position&                    pos,
                     const std::function<bool()>& time_abort);
 bool     root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, bool rule50);
 Config   rank_root_moves(
-    const OptionsMap&            options,
+    const SearchOptions&            options,
     Position&                    pos,
     Search::RootMoves&           rootMoves,
     bool                         rankDTZ    = false,
