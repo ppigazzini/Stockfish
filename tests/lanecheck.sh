@@ -30,6 +30,7 @@ EXCUSED_NAMES=(
   testing.py
   get_native_properties.sh
   net.sh
+  tbfetch.sh
   fingerprint.sh
   zones.sh
 )
@@ -39,6 +40,7 @@ EXCUSED_WHY=(
   "a harness imported by instrumented.py rather than a gate"
   "invoked by the Makefile, not by a workflow"
   "invoked by the Makefile's net target"
+  "fetches the corpus for the tb fuzz harness, which is out of the matrix until E1 and E2 are fixed; run by hand"
   "roughly 10x the cost of the budget gate; run by hand before a decomposition"
   "the zone table, sourced by depcheck.sh and linkcheck.sh rather than run"
 )
