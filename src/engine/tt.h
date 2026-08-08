@@ -28,7 +28,6 @@
 
 namespace Stockfish {
 
-class ThreadPool;
 struct TTEntry;
 struct Cluster;
 
@@ -87,10 +86,10 @@ class TranspositionTable {
     ~TranspositionTable() { arena().free(table); }
 
     // Set TT size in MiB
-    void resize(usize mbSize, ThreadPool& threads);
+    void resize(usize mbSize);
 
     // Re-initialize memory, multithreaded
-    void clear(ThreadPool& threads);
+    void clear();
 
     // Must be called at the beginning of each root search to track entry aging
     void new_search();

@@ -14,11 +14,13 @@
 # instantiates in every engine TU that includes thread.h. They go with the
 # ThreadPool seam, not this one.
 #
+# 15 now. The parallel-for seam (engine/parallel.h) took the transposition
+# table's five ThreadPool references, and tt.o is free of the platform entirely.
+#
 # What remains needs injection seams rather than re-zoning:
 #   Tablebases::*   the Syzygy prober, from position.o and search.o
 #   NumaConfig::*   topology, from search.o
 #   ThreadPool::*   from search.o and tt.o
-#   aligned_large_pages_*  from search.o and tt.o
 position.o _ZN9Stockfish10Tablebases14MaxCardinalityE
 position.o _ZN9Stockfish10Tablebases9probe_dtzERNS_8PositionEPNS0_10ProbeStateE
 position.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
@@ -34,8 +36,3 @@ search.o _ZNK9Stockfish10ThreadPool14nodes_searchedEv
 search.o _ZNK9Stockfish10ThreadPool15get_best_threadEv
 search.o _ZNK9Stockfish10ThreadPool24wait_for_search_finishedEv
 search.o _ZNK9Stockfish10ThreadPool7tb_hitsEv
-tt.o _ZN9Stockfish10ThreadPool13run_on_threadEmSt8functionIFvvEE
-tt.o _ZN9Stockfish10ThreadPool14wait_on_threadEm
-tt.o _ZNK9Stockfish10ThreadPool10numa_nodesEv
-tt.o _ZNK9Stockfish10ThreadPool11num_threadsEv
-tt.o _ZNK9Stockfish10ThreadPool29get_bound_thread_to_numa_nodeEv
