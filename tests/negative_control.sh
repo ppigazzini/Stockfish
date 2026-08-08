@@ -482,6 +482,78 @@ movegen.cpp -> uci.h'
     restore
 fi
 
+# --------------------------------------------------------------- type design
+
+row b5-mismatch
+if selected b5-mismatch; then
+    # The INVERSE of every other row: this one passes when the compiler REFUSES.
+    # B5.2 welded the discriminator into the accessor so a correction counter
+    # cannot be read through a field the row's key did not select. Before, the
+    # accessor returned the bundle and the caller picked a field, so pairing one
+    # key's row with another key's field compiled and returned a real counter of
+    # the wrong kind.
+    echo "negative-control: b5 [type]   -- a key/field mismatch must not compile"
+    cat > /tmp/nc_b5_mismatch.cpp <<'CPP'
+#include "history.h"
+#include "position.h"
+using namespace Stockfish;
+int probe(SharedHistories& h, const Position& pos, Color us) {
+    return h.pawn_correction(pos, us).minor;
+}
+CPP
+    if ( cd src && g++ -std=c++20 -I. -fsyntax-only /tmp/nc_b5_mismatch.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the mismatch still compiles"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, rejected by the compiler"; PASS=$((PASS+1))
+    fi
+    # A row that only checked the rejection would also pass if the header stopped
+    # compiling at all, so require the correct form to build.
+    cat > /tmp/nc_b5_ok.cpp <<'CPP'
+#include "history.h"
+#include "position.h"
+using namespace Stockfish;
+int probe(SharedHistories& h, const Position& pos, Color us) {
+    return h.pawn_correction(pos, us);
+}
+CPP
+    if ! ( cd src && g++ -std=c++20 -I. -fsyntax-only /tmp/nc_b5_ok.cpp ) >/dev/null 2>&1; then
+        echo "  RIG FAULT -- the correct form does not compile either"; FAIL=$((FAIL+1))
+    fi
+    rm -f /tmp/nc_b5_mismatch.cpp /tmp/nc_b5_ok.cpp
+fi
+
+row b5-swap
+if selected b5-swap; then
+    # What the type does NOT buy, recorded as a test so the page cannot imply
+    # otherwise. The accessors share a signature, so substituting one for another
+    # still compiles; only the bench signature catches it. This is the residual
+    # the sibling port measured after making the same change.
+    REF=$(git log -60 --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+    if [ -z "$REF" ]; then
+        echo "negative-control: b5 [swap]  SKIPPED -- no Bench: in the commit record"
+        SKIP=$((SKIP+1))
+    else
+        echo "negative-control: b5 [swap]   -- one accessor substituted for another"
+        mutate src/search.cpp \
+            '    const int   pcv    = shared.pawn_correction(pos, us);
+    const int   micv   = shared.minor_piece_correction(pos, us);' \
+            '    const int   pcv    = shared.minor_piece_correction(pos, us);
+    const int   micv   = shared.pawn_correction(pos, us);'
+        if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
+            if ( cd src && ../tests/signature.sh "$REF" ) >/dev/null 2>&1; then
+                echo "  NOT DETECTED -- the bench reproduced $REF with the accessors swapped"
+                FAIL=$((FAIL+1))
+            else
+                echo "  ok, red (1) -- the compiler accepts it, the bench does not"; PASS=$((PASS+1))
+            fi
+        else
+            restore; die "the accessor swap did not compile -- it is supposed to"
+        fi
+        restore
+        ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
+    fi
+fi
+
 # --------------------------------------------------------------- linkcheck
 
 row linkcheck
