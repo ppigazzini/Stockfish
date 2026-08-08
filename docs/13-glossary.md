@@ -25,31 +25,31 @@ computes.
 
 | term | what carries it here |
 |---|---|
-| **bench** | the fixed position list and depth in `src/benchmark.cpp`, run by `bench` in `src/uci.cpp`. The transposition table is cleared between positions, so the total does not depend on their order |
+| **bench** | the fixed position list and depth in `src/shell/benchmark.cpp`, run by `bench` in `src/shell/uci.cpp`. The transposition table is cleared between positions, so the total does not depend on their order |
 | **the bench signature** | the node total `bench` prints, asserted by `tests/signature.sh`. The number lives in the commit record, in the `Bench:` line of the last functional commit; `tests/docslint.sh` refuses a page that quotes it |
 | **node** | one execution of `Search::Worker::search<NodeType>` (or `qsearch`). **Not** a NUMA node -- see Section 3 |
 | **ply** | one half-move. `ss->ply` counts from the root of the current search; `Position::game_ply()` counts from the start of the game. They are both `int` and they measure from different origins |
 | **depth** | `using Depth = int`, deliberately. A depth-scaled product feeds a history bonus, two score margins, a move count, a history magnitude and a reduction denominator, so a type carrying it would need six output types |
 | **`Value`** | the search's score domain, `using Value = int`. The band above `VALUE_TB_WIN_IN_MAX_PLY` is reserved for tablebase verdicts and mates, which is why `evaluate.cpp` clamps into it |
 | **key** | a `u64` Zobrist hash. Seven distinct spaces share the alias: the position key, the transposition key (`Position::adjust_key50` mixes the halfmove clock in), the pawn, minor-piece, material and two non-pawn keys |
-| **the transposition table** | `src/tt.cpp`: clusters of three `TTEntry` in 32 bytes, shared across threads without a lock. `depth8` is the occupancy test, which is why `DEPTH_UNSEARCHED` and `DEPTH_NONE` are negative and distinct |
+| **the transposition table** | `src/engine/tt.cpp`: clusters of three `TTEntry` in 32 bytes, shared across threads without a lock. `depth8` is the occupancy test, which is why `DEPTH_UNSEARCHED` and `DEPTH_NONE` are negative and distinct |
 | **cluster** | the 32-byte unit the table is an array of, sized to divide a cache line so one probe touches one line |
-| **the history tables** | `src/history.h`. Every one is a gravity table: `operator<<` moves the stored value toward the bonus in proportion to its distance from the clamp `D`, which is a template parameter, one per table |
-| **continuation history** | a plane per (piece, destination) of the *previous* move, each plane a history over the current move. `ContinuationHistory` in `src/history.h` |
+| **the history tables** | `src/engine/history.h`. Every one is a gravity table: `operator<<` moves the stored value toward the bonus in proportion to its distance from the clamp `D`, which is a template parameter, one per table |
+| **continuation history** | a plane per (piece, destination) of the *previous* move, each plane a history over the current move. `ContinuationHistory` in `src/engine/history.h` |
 | **correction history** | tables recording how far the static evaluation of positions sharing a pawn structure, minor-piece configuration or non-pawn material count has been from what the search found. The node starts from the corrected value |
-| **the move picker** | `src/movepick.cpp`, staged: each stage is generated only when the previous one runs out. Four sequences -- main, evasion, probcut, quiescence |
+| **the move picker** | `src/engine/movepick.cpp`, staged: each stage is generated only when the previous one runs out. Four sequences -- main, evasion, probcut, quiescence |
 | **stand-pat** | the static evaluation used as a lower bound in quiescence, before any capture is tried |
 | **SEE** | static exchange evaluation, `Position::see_ge`. Answers whether an exchange on a square is worth at least a threshold, without searching it |
-| **the optimum and the maximum** | the two numbers `src/timeman.cpp` produces. The optimum is the point past which a new iteration is not started; the maximum is the point past which the search stops wherever it is |
+| **the optimum and the maximum** | the two numbers `src/engine/timeman.cpp` produces. The optimum is the point past which a new iteration is not started; the maximum is the point past which the search stops wherever it is |
 | **nodestime** | the mode in which the whole clock model is denominated in nodes rather than milliseconds. The `time` reported to the GUI stays real milliseconds |
-| **the accumulator** | the NNUE first layer's output for the current position, updated per move rather than recomputed. `src/nnue/nnue_accumulator.cpp` |
+| **the accumulator** | the NNUE first layer's output for the current position, updated per move rather than recomputed. `src/engine/nnue/nnue_accumulator.cpp` |
 | **refresh** | recomputing an accumulator rather than updating it, forced by a king move under a king-bucketed feature set. The refresh cache diffs against the last accumulator computed in that bucket |
-| **dirty piece / dirty threats** | the record `Position::do_move` leaves of exactly what changed, so the accumulator update knows which features to subtract and add. `DirtyPiece` and `DirtyThreats` in `src/types.h` |
+| **dirty piece / dirty threats** | the record `Position::do_move` leaves of exactly what changed, so the accumulator update knows which features to subtract and add. `DirtyPiece` and `DirtyThreats` in `src/engine/types.h` |
 | **psqt and positional** | the network's two output heads. Their sum is the raw evaluation; their difference is the complexity term `evaluate.cpp` blends with |
 | **optimism** | the per-worker search disposition blended into the evaluation, one of the three reasons Lazy SMP threads diverge |
 | **Lazy SMP** | the threading model: N workers on one root, sharing the transposition table, with no work queue and no split points |
 | **the vote** | `ThreadPool::get_best_thread`, which picks the answer by weighted agreement across threads rather than by taking the deepest or highest-scoring |
-| **WDL, DTZ** | the two Syzygy results -- win/draw/loss, and distance to a zeroing move. `src/syzygy/tbprobe.cpp` |
+| **WDL, DTZ** | the two Syzygy results -- win/draw/loss, and distance to a zeroing move. `src/platform/syzygy/tbprobe.cpp` |
 | **cursed win, blessed loss** | a win the fifty-move rule takes away, and a loss it rescues. `WDLCursedWin` and `WDLBlessedLoss` in `syzygy/tbprobe.h` exist because the tables are generated under two rules at once |
 | **cardinality** | the largest piece count the loaded tablebases cover. Zero with no `SyzygyPath`, which is what makes the Step 6 probe one predictable branch for a user with no tables |
 
@@ -79,13 +79,13 @@ None of this is chess-programming vocabulary.
 
 | word | the two meanings |
 |---|---|
-| **node** | a search node (`Worker::search`), or a **NUMA node** (`src/numa.h`). Both appear on the same page in [04-multithreading.md](04-multithreading.md) |
+| **node** | a search node (`Worker::search`), or a **NUMA node** (`src/platform/numa.h`). Both appear on the same page in [04-multithreading.md](04-multithreading.md) |
 | **depth** | the search depth of a node, or the `--depth` argument to the perf gates, which is a bench depth |
 | **key** | a Zobrist hash, or the 16-bit fragment of one stored in a `TTEntry` |
 | **generation** | the transposition table's age counter, or the act of producing moves (`movegen`) |
 | **stage** | a move picker stage, or a step in a CI job |
 | **bound** | `BOUND_UPPER`/`BOUND_LOWER`/`BOUND_EXACT` on a stored score, or the alpha-beta window bounds |
-| **history** | an ordering table (`src/history.h`), or git history |
+| **history** | an ordering table (`src/engine/history.h`), or git history |
 | **cluster** | the 32-byte transposition unit, or a machine cluster running fishtest |
 | **check** | the king being attacked, or a gate assertion |
 | **magic** | the multiplier in magic bitboards, or `DualMagic`, which despite the name uses hyperbola quintessence at avx2 and above |

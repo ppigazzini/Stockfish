@@ -18,7 +18,7 @@
 
 // Standalone NNUE embedding for universal binary builds
 
-#include "../evaluate.h"
+#include "../engine/evaluate.h"
 
 #ifdef UNIVERSAL_BINARY_MACOS_X86_SLICE
 

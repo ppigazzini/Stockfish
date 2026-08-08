@@ -31,7 +31,7 @@ Audience: all developers.
     [Static exchange evaluation][cpw-see]
   - [Lazy SMP][cpw-lazysmp] -- the threading model, [04-multithreading.md](04-multithreading.md).
   - [Chess960][cpw-960] -- the castling encoding `Move` carries.
-- [UCI protocol specification][uci] -- the wire protocol `src/uci.cpp` implements.
+- [UCI protocol specification][uci] -- the wire protocol `src/shell/uci.cpp` implements.
 - [Cuckoo hashing for repetition detection][cuckoo] -- van Kervinck's algorithm,
   `Position::upcoming_repetition`.
 
@@ -106,7 +106,7 @@ Background for [09-type-design.md](09-type-design.md).
   as the claim that the measured cost rule qualifies rather than as one this codebase relies
   on.
 - [Parent, "Better Code: Runtime Polymorphism"][parent] -- on inheritance versus value
-  semantics, background for the `ISearchManager` null-object in `src/search.h`.
+  semantics, background for the `ISearchManager` null-object in `src/engine/search.h`.
 
 ## Codegen, LTO and measurement
 
@@ -121,7 +121,7 @@ perf gates.
 - [GCC common function attributes][gcc-attr] | [Clang attribute reference][clang-attr] --
   what `always_inline`, `noinline` and `aligned` are and are not a request for.
 - [Intel intrinsics guide][intel-intrinsics] -- the lookup for the per-ISA kernels in
-  `src/nnue/simd.h`.
+  `src/engine/nnue/simd.h`.
 - [Agner Fog's optimisation manuals][agner] -- instruction tables and microarchitecture.
 - [What every programmer should know about memory][drepper] -- cache lines and data layout,
   the background for the 32-byte transposition cluster.
