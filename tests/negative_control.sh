@@ -591,6 +591,23 @@ exit 0'
     fi
 fi
 
+row fuzz-shm
+if selected fuzz-shm; then
+    # The shm harness's claim is survivorship: a process that dies because a
+    # PEER died is the defect, a process killed on purpose is the stimulus. The
+    # stub dies on its own, so every survivor reads as one that did not survive.
+    echo "negative-control: fuzz [shm]  -- a peer death taking a survivor with it"
+    stub shmdie '#!/bin/bash
+cat >/dev/null &
+sleep 0.4
+kill -TERM $$'
+    if EXE="$NCSTUB/shmdie" ./tests/fuzz.py --seconds 2 --harness shm >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a survivor dying by signal ran clean"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+fi
+
 row fuzz-verdict
 if selected fuzz-verdict; then
     if [ -z "$(ls tests/syzygy-3man 2>/dev/null)" ]; then
