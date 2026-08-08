@@ -1,6 +1,6 @@
 # Endgame tablebases
 
-`src/syzygy/tbprobe.h`, `src/syzygy/tbprobe.cpp`.
+`src/platform/syzygy/tbprobe.h`, `src/platform/syzygy/tbprobe.cpp`.
 
 Syzygy tablebases give a **proven** result for positions with few enough pieces: whether the
 side to move wins, draws or loses, and under DTZ how many moves until an irreversible move

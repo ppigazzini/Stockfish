@@ -7,31 +7,29 @@
 # src/ is flat, so a zone is a NAME LIST rather than a directory. That is the
 # weakness both checks inherit, and why each reports files belonging to no zone.
 
-# The chess library: types, board, movegen, search, evaluation, tables.
-ENGINE="attacks basetypes bitboard evaluate history movegen movepick position
-        score search tt types nnue_accumulator nnue_architecture nnue_common
-        nnue_feature_transformer nnue_misc network simd tbprobe nnz_helper
-        full_threats half_ka_v2_hm pp_3wide affine_transform clipped_relu
-        affine_transform_sparse_input sqr_clipped_relu"
+# Zones are DIRECTORIES now, not name lists. B7 moved src/ into engine/,
+# platform/ and shell/, so a file's zone is its directory and a new file joins a
+# zone by where it is put -- which is the whole point of the move. The unassigned
+# check below is what catches a file added outside all three.
+#
+# incbin/ is vendored; universal/ holds the fat-binary entry shims, which are
+# build scaffolding rather than engine, platform or shell code.
 
-# The OS runtime that hosts it: clock, memory, threads, NUMA, shared memory.
-PLATFORM="memory misc numa numa_shared platform shm shm_unix thread thread_native
-          entry_arm64 entry_riscv64 entry_x86 nnue_embed"
+zone_of_path() {
+    case "$1" in
+        src/engine/*)    echo engine ;;
+        src/platform/*)  echo platform ;;
+        src/shell/*)     echo shell ;;
+        src/incbin/*)    echo vendor ;;
+        src/universal/*) echo vendor ;;
+        *)               echo unassigned ;;
+    esac
+}
 
-# Vendored third-party code. It is in the tree but not ours to zone.
-VENDOR="incbin"
-
-# The process: main, the UCI loop, the option table, bench, tuning.
-SHELL_Z="benchmark engine main perft timeman tune uci ucioption"
-
+# Kept for callers that have only a basename (object files, nm output).
 zone_of() {
-    local stem=$1
-    # $(echo ...) collapses the newlines in the lists above; without it a name
-    # sitting at a line break is followed by \n rather than a space and matches
-    # nothing, which silently exempts it.
-    case " $(echo $ENGINE) "   in *" $stem "*) echo engine;   return ;; esac
-    case " $(echo $PLATFORM) " in *" $stem "*) echo platform; return ;; esac
-    case " $(echo $SHELL_Z) "  in *" $stem "*) echo shell;    return ;; esac
-    case " $(echo $VENDOR) "   in *" $stem "*) echo vendor;   return ;; esac
-    echo unassigned
+    local stem=$1 f
+    f=$(git ls-files "src/*/$stem.cpp" "src/*/$stem.h" "src/*/*/$stem.cpp" "src/*/*/$stem.h" \
+        "src/*/*/*/$stem.cpp" "src/*/*/*/$stem.h" 2>/dev/null | head -1)
+    [ -n "$f" ] && zone_of_path "$f" || echo unassigned
 }

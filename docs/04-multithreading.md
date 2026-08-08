@@ -1,6 +1,6 @@
 # Multithreading
 
-`src/thread.h`, `src/thread.cpp`, `src/thread_native.h`, and the shared state they hand to
+`src/platform/thread.h`, `src/platform/thread.cpp`, `src/platform/thread_native.h`, and the shared state they hand to
 `Search::Worker`.
 
 Audience: threading and NUMA.
@@ -32,7 +32,7 @@ the pooled counters.
 std::atomic_bool stop, increaseDepth;
 ```
 
-and every shared counter is a `RelaxedAtomic<u64>` (`src/misc.h`), summed on demand:
+and every shared counter is a `RelaxedAtomic<u64>` (`src/platform/misc.h`), summed on demand:
 
 ```cpp
 u64 accumulate(RelaxedAtomic<u64> Search::Worker::* member) const;
@@ -87,7 +87,7 @@ specifically.
 
 ## NUMA
 
-`src/numa.h` and `src/numa.cpp` carry the topology detection, the thread binding and the
+`src/platform/numa.h` and `src/platform/numa.cpp` carry the topology detection, the thread binding and the
 network replication. The split is by temperature rather than by subject: everything that runs
 before the first search -- topology discovery, the string forms, thread binding -- is in the
 `.cpp`, and what stays in the header is template-bound and could not move.
@@ -98,10 +98,10 @@ The network is therefore **replicated per NUMA node**, and threads are bound so 
 copy local to it. `LazyNumaReplicated` defers the copy until a node actually has a thread on
 it, so a single-socket machine pays for one.
 
-`src/shm.h` and `src/shm_unix.h` back `SystemWideSharedConstant`, which lets several engine
+`src/platform/shm.h` and `src/platform/shm_unix.h` back `SystemWideSharedConstant`, which lets several engine
 processes on one machine share one copy of a replicated network rather than each loading its
 own -- relevant when a test harness runs many engines at once. The holder that uses it,
-`LazyNumaReplicatedSystemWide`, is in `src/numa_shared.h` rather than `numa.h`, so shared
+`LazyNumaReplicatedSystemWide`, is in `src/platform/numa_shared.h` rather than `numa.h`, so shared
 memory reaches the files that own one and not everything that includes `search.h`.
 
 **This is the largest platform-specific surface in the tree** and the least covered by the

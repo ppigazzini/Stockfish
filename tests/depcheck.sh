@@ -37,8 +37,7 @@ FILES=$(git ls-files 'src/*.h' 'src/*.cpp' 'src/**/*.h' 'src/**/*.cpp')
 echo "== files with no zone =="
 unassigned=0
 for f in $FILES; do
-    stem=$(basename "$f"); stem=${stem%.*}
-    if [ "$(zone_of "$stem")" = unassigned ]; then
+    if [ "$(zone_of_path "$f")" = unassigned ]; then
         echo "  UNASSIGNED  $f"
         unassigned=$((unassigned+1))
     fi
@@ -49,8 +48,7 @@ echo
 echo "== engine files that include a shell header =="
 violations=$(
 for f in $FILES; do
-    stem=$(basename "$f"); stem=${stem%.*}
-    [ "$(zone_of "$stem")" = engine ] || continue
+    [ "$(zone_of_path "$f")" = engine ] || continue
     grep -oE '^[[:space:]]*#include "[^"]+"' "$f" 2>/dev/null \
     | sed 's/.*"\(.*\)"/\1/' | while read -r inc; do
         istem=$(basename "$inc"); istem=${istem%.*}
