@@ -375,6 +375,29 @@ The sibling C port checks the same property at link time instead -- it compiles 
 alone and fails on any undefined symbol -- which is stronger, and is not available here while
 `src/` is one flat directory with one link step.
 
+## `tests/buildcoverage.sh`
+
+Every tracked source is named by the build.
+
+```sh
+./tests/buildcoverage.sh
+```
+
+`SRCS` is an explicit list rather than a wildcard, and that is worth protecting: a wildcard
+absorbs whatever is in the directory. The cost of the explicit list is the failure this gate
+exists for -- **a file in the tree and in no build list is not compiled, not linked, and covered
+by no gate, while still looking maintained.** It then rots against the files that do move, and
+the first symptom is a compile error months later in a file nobody was editing.
+
+**It is the prerequisite for the two zone checks.** `linkcheck.sh` reasons about *objects*: a
+source the build names nowhere produces none, so it could call straight into the shell with the
+zone check green. `depcheck.sh` reads the file and stays green too, because it reasons about
+files rather than builds -- `tests/negative_control.sh buildcoverage` asserts exactly that
+split.
+
+Comments are stripped before matching, so a filename mentioned only in a comment does not count
+as a build rule.
+
 ## `tests/linkcheck.sh`
 
 The same rule as `depcheck.sh`, asked of the linker instead of the preprocessor.
