@@ -23,6 +23,11 @@
 # worker_count and worker_at, which is mcfish worker_set.h's split: lifecycle
 # and dispatch cross over, the vote does not.
 #
+# 10. The worker-set seam (engine/worker_set.h) took start_searching,
+# wait_for_search_finished, nodes_searched and tb_hits. Its shape is mcfish's:
+# a ctx pointer rather than a global, and the stop flag handed over as a POINTER
+# so the seventeen per-node reads stay direct atomic loads.
+#
 # What remains needs injection seams rather than re-zoning:
 #   Tablebases::*   the Syzygy prober, from position.o and search.o
 #   NumaConfig::*   topology, from search.o
@@ -33,11 +38,7 @@ position.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
 search.o _ZN9Stockfish10NumaConfig11from_systemERKSt7variantIJNS_16SystemNumaPolicyENS_15L3DomainsPolicyENS_15BundledL3PolicyEEEb
 search.o _ZN9Stockfish10Tablebases15rank_root_movesERKNS_13SearchOptionsERNS_8PositionERSt6vectorINS_6Search8RootMoveESaIS8_EEbRKSt8functionIFbvEE
 search.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
-search.o _ZN9Stockfish10ThreadPool15start_searchingEv
 search.o _ZN9Stockfish24aligned_large_pages_freeEPv
 search.o _ZN9Stockfish25aligned_large_pages_allocEm
 search.o _ZNK9Stockfish10NumaConfig32bind_current_thread_to_numa_nodeEm
 search.o _ZNK9Stockfish10NumaConfig9to_stringB5cxx11Ev
-search.o _ZNK9Stockfish10ThreadPool14nodes_searchedEv
-search.o _ZNK9Stockfish10ThreadPool24wait_for_search_finishedEv
-search.o _ZNK9Stockfish10ThreadPool7tb_hitsEv
