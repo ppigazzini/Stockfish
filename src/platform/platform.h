@@ -23,6 +23,10 @@
 
 #include "../engine/basetypes.h"
 
+// TimePoint and now() live in the engine, which is what speaks them; this
+// header re-exports both so the platform and shell readers are undisturbed.
+#include "../engine/clock.h"
+
 #if !defined(NO_PREFETCH) && (defined(_MSC_VER) || defined(__INTEL_COMPILER))
     #include <immintrin.h>
 #endif
@@ -107,14 +111,6 @@ void prefetch(const void* addr) {
 }
 #endif
 
-
-using TimePoint = std::chrono::milliseconds::rep;  // A value in milliseconds
-static_assert(sizeof(TimePoint) == sizeof(i64), "TimePoint should be 64 bits");
-inline TimePoint now() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-             std::chrono::steady_clock::now().time_since_epoch())
-      .count();
-}
 
 }  // namespace Stockfish
 
