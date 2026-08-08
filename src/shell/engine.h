@@ -130,6 +130,12 @@ class Engine {
     Position     pos;
     StateListPtr states;
 
+    // Declared FIRST so its constructor installs the arena before any member
+    // below it allocates. Member initialisation order is the mechanism.
+    struct ArenaInstallerTag {
+        ArenaInstallerTag();
+    } arenaInstaller;
+
     OptionsMap                                        options;
     // The snapshot handed to the engine. A member rather than a local because
     // SharedState holds a reference to it for the life of the thread pool.

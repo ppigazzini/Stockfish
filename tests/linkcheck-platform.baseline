@@ -7,6 +7,13 @@
 # bytes belongs, and the console half of misc.h moved to the shell, which turned
 # three of these into honest engine-to-shell edges instead of hidden ones.
 #
+# 20 now: the arena seam (engine/arena.h) took the transposition table and the
+# history banks off the platform allocator. The two aligned_large_pages_*
+# references left in search.o are NOT the engine allocating -- they are
+# platform/thread.h holding LargePagePtr<Search::Worker>, whose deleter
+# instantiates in every engine TU that includes thread.h. They go with the
+# ThreadPool seam, not this one.
+#
 # What remains needs injection seams rather than re-zoning:
 #   Tablebases::*   the Syzygy prober, from position.o and search.o
 #   NumaConfig::*   topology, from search.o
@@ -29,8 +36,6 @@ search.o _ZNK9Stockfish10ThreadPool24wait_for_search_finishedEv
 search.o _ZNK9Stockfish10ThreadPool7tb_hitsEv
 tt.o _ZN9Stockfish10ThreadPool13run_on_threadEmSt8functionIFvvEE
 tt.o _ZN9Stockfish10ThreadPool14wait_on_threadEm
-tt.o _ZN9Stockfish24aligned_large_pages_freeEPv
-tt.o _ZN9Stockfish35aligned_large_pages_alloc_with_hintEmb
 tt.o _ZNK9Stockfish10ThreadPool10numa_nodesEv
 tt.o _ZNK9Stockfish10ThreadPool11num_threadsEv
 tt.o _ZNK9Stockfish10ThreadPool29get_bound_thread_to_numa_nodeEv
