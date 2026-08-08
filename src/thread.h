@@ -32,6 +32,7 @@
 #include "position.h"
 #include "search.h"
 #include "thread_native.h"
+#include "basetypes.h"
 
 namespace Stockfish {
 

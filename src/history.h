@@ -32,6 +32,7 @@
 #include "memory.h"
 #include "misc.h"
 #include "position.h"
+#include "basetypes.h"
 
 namespace Stockfish {
 

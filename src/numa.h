@@ -20,25 +20,18 @@
 #define NUMA_H_INCLUDED
 
 #include <algorithm>
-#include <atomic>
-#include <cstdint>
 #include <cstdlib>
 #include <functional>
-#include <iostream>
-#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <set>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
 #include <variant>
 #include <vector>
-#include <cstring>
 
-#include "misc.h"
 
 // We support linux very well, but we explicitly do NOT support Android,
 // because there is no affected systems, not worth maintaining.
@@ -71,6 +64,10 @@ using GetThreadSelectedCpuSetMasks_t = BOOL (*)(HANDLE, PGROUP_AFFINITY, USHORT,
 #endif
 
 #include "misc.h"
+#include <assert.h>
+#include <optional>
+#include "basetypes.h"
+#include "memory.h"
 
 namespace Stockfish {
 
