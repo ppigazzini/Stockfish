@@ -31,6 +31,7 @@
 #include "../../incbin/incbin.h"
 
 #include "../evaluate.h"
+#include "../output_sink.h"
 #include "../../platform/misc.h"
 #include "../position.h"
 #include "../types.h"
@@ -39,7 +40,6 @@
 #include "nnue_misc.h"
 #include "nnz_helper.h"
 #include "../hashing.h"
-#include "../../shell/console.h"
 
 // Macro to embed the default efficiently updatable neural network (NNUE) file
 // data in the engine binary (using incbin.h, by Dale Weiler).
@@ -114,17 +114,16 @@ void Network::load(const fs::path& rootDirectory, fs::path evalfilePath, EvalFil
 bool Network::save(const EvalFile& evalFile, const std::optional<fs::path>& filename) const {
     if (!evalFile.current.has_value())
     {
-        sync_cout << "Failed to export a net. No network file is currently loaded. "
-                     "Please load a network file first."
-                  << sync_endl;
+        emit_line(
+          "Failed to export a net. No network file is currently loaded. "
+          "Please load a network file first.");
         return false;
     }
 
     if (!filename.has_value() && evalFile.current != evalFile.defaultName)
     {
-        sync_cout << "Failed to export a net. A non-embedded net can only be "
-                     "saved if the filename is specified"
-                  << sync_endl;
+        emit_line("Failed to export a net. A non-embedded net can only be "
+                  "saved if the filename is specified");
         return false;
     }
 
@@ -133,9 +132,8 @@ bool Network::save(const EvalFile& evalFile, const std::optional<fs::path>& file
 
     bool saved = save(stream, evalFile.netDescription);
 
-    sync_cout << (saved ? "Network saved successfully to " + actualFilename.string()
-                        : "Failed to export a net")
-              << sync_endl;
+    emit_line(saved ? "Network saved successfully to " + actualFilename.string()
+                    : std::string("Failed to export a net"));
 
     return saved;
 }
