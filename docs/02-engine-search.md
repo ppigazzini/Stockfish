@@ -283,4 +283,3 @@ considered.
 has asked the more specific question. The polynomial mapping one to the other is a fit
 against real games, anchored to a named opponent, so the ratings mean ratings rather than
 being a scale of the engine's own invention.
-

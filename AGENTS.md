@@ -24,6 +24,18 @@ make -j profile-build ARCH=...       # PGO+LTO -- what actually ships
 make help                            # every ARCH
 ```
 
+The Python gates need one dependency the tree did not used to declare. `tests/testing.py`
+imports `requests`, and CI worked only because the hosted runner ships it -- on a fresh
+checkout the gate died with `ModuleNotFoundError` and therefore proved nothing:
+
+```sh
+uv sync                                                  # ruff, ty, pre-commit
+uv run --with requests python ../tests/instrumented.py --none ./stockfish   # from src/
+pre-commit install                                       # optional, hooks below
+```
+
+`pyproject.toml` declares it in a `gates` group, so `uv sync --group gates` works too.
+
 The net is downloaded by the `net` target, which `build` depends on. Run the binary from
 `src/`: it resolves `EvalFile` relative to the working directory, and a run from the repo root
 finds no net and produces an unrelated but entirely plausible number.
