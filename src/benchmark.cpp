@@ -19,7 +19,6 @@
 #include "benchmark.h"
 #include "engine.h"
 #include "numa.h"
-#include "misc.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -27,6 +26,7 @@
 #include <iostream>
 #include <limits>
 #include <vector>
+#include "basetypes.h"
 
 namespace {
 

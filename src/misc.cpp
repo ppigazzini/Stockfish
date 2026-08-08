@@ -46,6 +46,7 @@
 #endif
 
 #include "types.h"
+#include <chrono>
 
 namespace Stockfish {
 

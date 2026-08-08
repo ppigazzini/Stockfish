@@ -26,6 +26,7 @@
 #include "engine.h"
 #include "misc.h"
 #include "search.h"
+#include "basetypes.h"
 
 namespace Stockfish {
 

@@ -37,6 +37,8 @@
 #include "movegen.h"
 #include "syzygy/tbprobe.h"
 #include "tt.h"
+#include "basetypes.h"
+#include "platform.h"
 
 using std::string;
 

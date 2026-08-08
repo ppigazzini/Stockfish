@@ -22,6 +22,6 @@ option name Syzygy50MoveRule type check default true
 option name SyzygyProbeLimit type spin default 7 min 0 max 7
 option name EvalFile type string default nn-ab28990d4ea3.nnue
 uciok
-info string Available processors: 0-15
+info string Available processors: <cpus>
 info string Using 1 thread
 bestmove e2e4 ponder e7e5

@@ -21,8 +21,8 @@
 
 #include <algorithm>  // IWYU pragma: keep
 
-#include "misc.h"
 #include "types.h"
+#include "basetypes.h"
 
 namespace Stockfish {
 
