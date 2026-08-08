@@ -1,8 +1,8 @@
 # The search
 
-`src/search.h`, `src/search.cpp`, `src/tt.h`, `src/tt.cpp`, `src/history.h`,
-`src/movepick.h`, `src/movepick.cpp`, `src/timeman.h`, `src/timeman.cpp`, `src/score.h`,
-`src/score.cpp`.
+`src/engine/search.h`, `src/engine/search.cpp`, `src/engine/tt.h`, `src/engine/tt.cpp`, `src/engine/history.h`,
+`src/engine/movepick.h`, `src/engine/movepick.cpp`, `src/engine/timeman.h`, `src/engine/timeman.cpp`, `src/engine/score.h`,
+`src/engine/score.cpp`.
 
 Alpha-beta with a transposition table, a staged move picker, history-driven ordering and a
 pruning set. Every margin, reduction and bonus named here is a tuned constant: read the value
@@ -36,7 +36,7 @@ and distinct -- an entry that stored no search must still be distinguishable fro
 slot.
 
 **The table is shared across threads with no lock.** Entries are written and read
-concurrently; a torn entry is possible and tolerated. `RelaxedAtomic` in `src/misc.h` is what
+concurrently; a torn entry is possible and tolerated. `RelaxedAtomic` in `src/platform/misc.h` is what
 keeps that defined rather than undefined behaviour. See
 [04-multithreading.md](04-multithreading.md).
 
@@ -186,7 +186,7 @@ do not cope with the volume.
 the largest in the tree:
 
 ```sh
-awk 'NR>=708 && /^}/{print NR-708; exit}' src/search.cpp
+awk 'NR>=708 && /^}/{print NR-708; exit}' src/engine/search.cpp
 ```
  `NodeType` is a template parameter -- `NonPV`, `PV`, `Root` -- so the PV-only
 bookkeeping is compiled out of the zero-window instantiation, which is the overwhelming

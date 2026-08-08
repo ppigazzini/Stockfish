@@ -96,13 +96,13 @@ row() { KNOWN="$KNOWN $1"; }
 
 row signature
 if selected signature; then
-    REF=$(git log -60 --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+    REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
     if [ -z "$REF" ]; then
-        echo "negative-control: signature   SKIPPED -- no Bench: in the last 60 commit bodies"
+        echo "negative-control: signature   SKIPPED -- no Bench: anywhere in the commit record"
         SKIP=$((SKIP+1))
     else
         echo "negative-control: signature   -- futility multiplier base 45 -> 46"
-        mutate src/search.cpp \
+        mutate src/engine/search.cpp \
             'Value futilityMult = std::min(45 + depth * 4, 85);' \
             'Value futilityMult = std::min(46 + depth * 4, 85);'
         if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
@@ -126,7 +126,7 @@ if selected perfbudget; then
         echo "negative-control: perfbudget  SKIPPED -- valgrind is not installed"; SKIP=$((SKIP+1))
     else
         echo "negative-control: perfbudget  -- adjust_key50 forced out of line"
-        mutate src/position.h \
+        mutate src/engine/position.h \
             'template<bool AfterMove>
 inline Key Position::adjust_key50(Key k) const {' \
             'template<bool AfterMove>
@@ -145,7 +145,7 @@ fi
 row textequal
 if selected textequal; then
     echo "negative-control: textequal   -- adjust_key50 forced out of line"
-    mutate src/position.h \
+    mutate src/engine/position.h \
         'template<bool AfterMove>
 inline Key Position::adjust_key50(Key k) const {' \
         'template<bool AfterMove>
@@ -179,7 +179,7 @@ fi
 row golden
 if selected golden; then
     echo "negative-control: golden      -- an info field renamed, which the signature cannot see"
-    mutate src/uci.cpp \
+    mutate src/shell/uci.cpp \
         '<< " multipv " << info.multiPV' \
         '<< " MULTIPV " << info.multiPV'
     if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
@@ -227,7 +227,7 @@ fi
 
 row docslint-bench
 if selected docslint-bench; then
-    REF=$(git log -60 --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+    REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
     if [ -z "$REF" ]; then
         echo "negative-control: docslint    SKIPPED -- no Bench: in the commit record"
         SKIP=$((SKIP+1))
@@ -288,7 +288,7 @@ if selected fingerprint; then
         echo "negative-control: fingerprint SKIPPED -- valgrind is not installed"; SKIP=$((SKIP+1))
     else
         echo "negative-control: fingerprint -- adjust_key50 forced out of line"
-        mutate src/position.h \
+        mutate src/engine/position.h \
             'template<bool AfterMove>
 inline Key Position::adjust_key50(Key k) const {' \
             'template<bool AfterMove>
@@ -342,7 +342,7 @@ if selected perft; then
     if false; then :
     else
         echo "negative-control: perft       -- no knight under-promotion"
-        mutate src/movegen.cpp \
+        mutate src/engine/movegen.cpp \
             '*moveList++ = Move::make<PROMOTION>(from, to, KNIGHT);' \
             ''
         if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
@@ -374,7 +374,7 @@ if selected instrumented; then
         SKIP=$((SKIP+1))
     else
         echo "negative-control: instrumented -- the CRITICAL ERROR contract renamed"
-        mutate src/uci.cpp \
+        mutate src/shell/uci.cpp \
             'sync_cout << "info string CRITICAL ERROR: Command `" << currentCmd' \
             'sync_cout << "info string SEVERE PROBLEM: Command `" << currentCmd'
         if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
@@ -430,7 +430,7 @@ if selected reprosearch; then
     # transposition table warm across the reset is the smallest change that
     # breaks exactly that and nothing else.
     echo "negative-control: reprosearch -- ucinewgame leaves the TT warm"
-    mutate src/engine.cpp \
+    mutate src/shell/engine.cpp \
         '    tt.clear(threads);
     threads.clear();' \
         '    threads.clear();'
@@ -452,7 +452,7 @@ fi
 row depcheck-new
 if selected depcheck-new; then
     echo "negative-control: depcheck    -- an engine file reaching into the shell"
-    mutate src/bitboard.cpp \
+    mutate src/engine/bitboard.cpp \
         '#include "bitboard.h"' \
         '#include "bitboard.h"
 #include "uci.h"'
@@ -556,13 +556,13 @@ if selected b5-swap; then
     # otherwise. The accessors share a signature, so substituting one for another
     # still compiles; only the bench signature catches it. This is the residual
     # the sibling port measured after making the same change.
-    REF=$(git log -60 --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+    REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
     if [ -z "$REF" ]; then
         echo "negative-control: b5 [swap]  SKIPPED -- no Bench: in the commit record"
         SKIP=$((SKIP+1))
     else
         echo "negative-control: b5 [swap]   -- one accessor substituted for another"
-        mutate src/search.cpp \
+        mutate src/engine/search.cpp \
             '    const int   pcv    = shared.pawn_correction(pos, us);
     const int   micv   = shared.minor_piece_correction(pos, us);' \
             '    const int   pcv    = shared.minor_piece_correction(pos, us);
@@ -594,14 +594,14 @@ if selected linkcheck; then
     # includes cannot see this, and linkcheck goes RED. A row that only checked
     # the second would not show why the second gate is needed.
     echo "negative-control: linkcheck   -- an engine-to-shell call with no include"
-    mutate src/benchmark.cpp \
+    mutate src/shell/benchmark.cpp \
         'namespace Stockfish::Benchmark {' \
         'namespace Stockfish {
 int nc_link_probe() { return 0; }
 }
 
 namespace Stockfish::Benchmark {'
-    mutate src/bitboard.cpp \
+    mutate src/engine/bitboard.cpp \
         'namespace Stockfish {' \
         'namespace Stockfish {
 
@@ -826,7 +826,7 @@ echo
 # Prove the tree is clean by RUNNING a gate, not by asserting it.
 ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1 \
     || die "the tree does not build after restore"
-REF=$(git log -60 --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
 if [ -n "$REF" ] && ! ( cd src && ../tests/signature.sh "$REF" ) >/dev/null 2>&1; then
     die "the tree does not reproduce $REF after restore -- sources were NOT put back"
 fi

@@ -1,7 +1,7 @@
 # The evaluation
 
-`src/evaluate.h`, `src/evaluate.cpp`, `src/nnue/` -- the feature transformer, the
-accumulator, the layers, and the feature sets under `src/nnue/features/`.
+`src/engine/evaluate.h`, `src/engine/evaluate.cpp`, `src/engine/nnue/` -- the feature transformer, the
+accumulator, the layers, and the feature sets under `src/engine/nnue/features/`.
 
 A neural network evaluates the position. `evaluate.cpp` turns its output into the value the
 search uses.
@@ -39,7 +39,7 @@ This is why `Position::do_move` records a `DirtyPiece`: the accumulator update n
 exactly what changed, and reconstructing that from two board states would cost more than the
 update saves.
 
-`src/nnue/nnue_accumulator.cpp` is the largest file under `src/nnue/` because this is where
+`src/engine/nnue/nnue_accumulator.cpp` is the largest file under `src/engine/nnue/` because this is where
 the engine's time goes.
 
 **The stack** holds one accumulator per ply, so unmaking a move is a pop. **Evaluation is
@@ -82,7 +82,7 @@ bookkeeping does not pay.
 
 ## The feature sets
 
-Three, under `src/nnue/features/`:
+Three, under `src/engine/nnue/features/`:
 
 | Set | What it encodes |
 |---|---|
@@ -114,7 +114,7 @@ index list of the non-zero inputs (`nnz_helper.h`) and multiplies only those col
 The activation is a concatenation of two functions of the same input -- `SqrClippedReLU`
 alongside `ClippedReLU` -- so the network gets a quadratic term without a second layer.
 
-`src/nnue/simd.h` carries the vector kernels, with a path per ISA. **Which path compiles
+`src/engine/nnue/simd.h` carries the vector kernels, with a path per ISA. **Which path compiles
 changes the instruction sequence but must not change the result**: every architecture in the
 compile matrix has to reproduce the same bench signature, and that is what catches a
 saturation or narrowing that behaves differently at one vector width.
