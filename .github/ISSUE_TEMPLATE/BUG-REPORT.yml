@@ -43,7 +43,7 @@ body:
     label: Anything else?
     description: |
       Anything that will give us more context about the issue you are encountering.
-      You can also use this section to propose ideas on how to solve the issue. 
+      You can also use this section to propose ideas on how to solve the issue.
   validations:
     required: false
 
