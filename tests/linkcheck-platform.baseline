@@ -17,6 +17,12 @@
 # 15 now. The parallel-for seam (engine/parallel.h) took the transposition
 # table's five ThreadPool references, and tt.o is free of the platform entirely.
 #
+# 14. get_best_thread went to the engine as Search::best_worker -- it was chess
+# policy (root moves, scores, PVs, mate distance) living in the thread pool
+# because that is where the workers are stored. The pool now exposes only
+# worker_count and worker_at, which is mcfish worker_set.h's split: lifecycle
+# and dispatch cross over, the vote does not.
+#
 # What remains needs injection seams rather than re-zoning:
 #   Tablebases::*   the Syzygy prober, from position.o and search.o
 #   NumaConfig::*   topology, from search.o
@@ -33,6 +39,5 @@ search.o _ZN9Stockfish25aligned_large_pages_allocEm
 search.o _ZNK9Stockfish10NumaConfig32bind_current_thread_to_numa_nodeEm
 search.o _ZNK9Stockfish10NumaConfig9to_stringB5cxx11Ev
 search.o _ZNK9Stockfish10ThreadPool14nodes_searchedEv
-search.o _ZNK9Stockfish10ThreadPool15get_best_threadEv
 search.o _ZNK9Stockfish10ThreadPool24wait_for_search_finishedEv
 search.o _ZNK9Stockfish10ThreadPool7tb_hitsEv
