@@ -80,10 +80,10 @@ Two classes, and both go stale:
 Where the figure earns its place, write the command that produces it:
 
 ```sh
-awk 'NR>=708 && /^}/{print NR-708; exit}' src/search.cpp
+awk 'NR>=708 && /^}/{print NR-708; exit}' src/engine/search.cpp
 ```
 
-Where it does not, write the claim that stays true: *the largest file under `src/nnue/`*
+Where it does not, write the claim that stays true: *the largest file under `src/engine/nnue/`*
 rather than *over a thousand lines*.
 
 Tuned constants are the same class. Margins, reductions and history clamps move with tuning

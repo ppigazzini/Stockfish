@@ -80,7 +80,7 @@ rm -f /tmp/docslint.$$.paths
 # documentation when it does. The subject is read from its owner -- the commit
 # record -- rather than restated here.
 head_check "3. no page pins the bench signature"
-BENCH=$(git log -60 --format='%b' 2>/dev/null | grep -oE 'Bench: *[0-9]{5,}' | head -1 | grep -oE '[0-9]+')
+BENCH=$(git log --format='%b' 2>/dev/null | grep -oE 'Bench: *[0-9]{5,}' | head -1 | grep -oE '[0-9]+')
 found=0
 for p in "${exists_pages[@]}"; do
     if grep -qE 'Bench: *[0-9]{5,}' "$p"; then
@@ -91,7 +91,7 @@ for p in "${exists_pages[@]}"; do
     fi
 done
 if [ "$found" = "1" ]; then note "a page pins the bench signature"
-elif [ -z "$BENCH" ]; then echo "  ok (no signature found in the last 60 commit bodies)"
+elif [ -z "$BENCH" ]; then echo "  ok (no signature found anywhere in the commit record)"
 else echo "  ok (current signature $BENCH appears in no page)"; fi
 
 # --------------------------------------------------------------- 4. coverage

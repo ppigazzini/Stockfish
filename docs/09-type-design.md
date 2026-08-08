@@ -3,8 +3,8 @@
 What the engine's quantities mean, which of them the compiler can tell apart, and -- stated
 as plainly as the rest -- which of them it cannot.
 
-`src/types.h` owns most of it; `src/history.h` owns the history clamps and
-`src/position.h` the key accessors. The theory each family rests on is linked in
+`src/engine/types.h` owns most of it; `src/engine/history.h` owns the history clamps and
+`src/engine/position.h` the key accessors. The theory each family rests on is linked in
 [11-references.md](11-references.md).
 
 Audience: anyone adding a type or changing an encoding.
