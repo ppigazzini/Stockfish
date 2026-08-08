@@ -1,0 +1,73 @@
+# Python tooling config for the repo-owned scripts under tests/. There is no
+# Python package to build -- this file exists so ruff, ty and pre-commit share
+# one config, the same shape the sibling ports use.
+#
+# It also declares the dependency the gates actually need. tests/testing.py
+# imports `requests`, and nothing in the tree said so: CI works only because the
+# hosted runner image happens to ship it, and a fresh checkout fails with
+# ModuleNotFoundError from a gate that then proves nothing. See "Running the
+# gates" below.
+
+[project]
+name = "stockfish-internal-python-tools"
+version = "0.0.0"
+# The scripts run under whatever python3 the CI runner provides, currently 3.12
+# on ubuntu-24.04. Nothing here needs more, so nothing here demands more.
+requires-python = ">=3.10"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.1",
+    "ruff>=0.16.1",
+    "ty>=0.0.65",
+]
+# What tests/instrumented.py needs to run at all, kept out of `dev` so the
+# default sync stays a lint toolchain. Either of these works:
+#
+#   uv run --with requests tests/instrumented.py --none ./stockfish
+#   uv sync --group gates && uv run tests/instrumented.py --none ./stockfish
+#
+# Run it from src/ -- it resolves EvalFile against the working directory.
+gates = [
+    "requests>=2.32",
+]
+
+[tool.ruff]
+target-version = "py310"
+src = ["tests"]
+# House style wraps prose-heavy tool comments at ~100, not ruff's default 88.
+line-length = 100
+
+[tool.ruff.lint]
+# A curated GATING set, deliberately not ALL: these are operator tools, so print
+# IS their output (T201), subprocess IS their job (S603/S607), and annotation or
+# docstring ceremony (ANN/D) buys nothing an operator reads. A rule family the
+# tools violate by design would force --exit-zero, and an advisory hook is a
+# laundered gate.
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Every overlong line in these two is a single string literal: a search-output
+# regex, a FEN with its move list, and f-strings carrying ANSI colour codes.
+# None can be wrapped without either editing the literal -- which for a regex is
+# how a gate quietly stops matching -- or splitting it across implicit
+# concatenation that reads worse than the long line. One rule, two files, named.
+"tests/instrumented.py" = ["E501"]
+"tests/testing.py" = ["E501"]
+
+[tool.ty.environment]
+python-version = "3.10"
+
+[tool.ty.src]
+include = ["tests"]
+# ruff lints and formats these two -- they are upstream but cold (8 commits
+# each, untouched for months), so mechanical fixes cost nothing at merge time.
+# ty is different in kind: its 24 diagnostics here are unannotated upstream code
+# (`Popen | CompletedProcess` unions reached without narrowing), and silencing
+# them means adding asserts and annotations to code this fork does not own.
+# That is separate work with real behaviour risk, so it is excluded and named
+# rather than laundered into a passing hook.
+exclude = [
+    "tests/instrumented.py",
+    "tests/testing.py",
+]
