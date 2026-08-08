@@ -21,7 +21,6 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
-#include <cmath>
 #include <cstdlib>
 #include <initializer_list>
 #include <iterator>
@@ -42,6 +41,8 @@
 #include "search.h"
 #include "types.h"
 #include "ucioption.h"
+#include "platform.h"
+#include "misc.h"
 
 namespace Stockfish {
 

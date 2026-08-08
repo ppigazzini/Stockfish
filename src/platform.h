@@ -27,6 +27,27 @@
     #include <immintrin.h>
 #endif
 
+// The compiler's no-aliasing qualifier, spelled per compiler. A macro rather
+// than a keyword, so include-what-you-use cannot see who needs it: a file using
+// RESTRICT must include this header itself rather than inherit it.
+#ifdef __GNUC__
+    #define RESTRICT __restrict__
+#elif defined(_MSC_VER)
+    #define RESTRICT __restrict
+#else
+    #define RESTRICT
+#endif
+
+// A `for` the compiler is asked to unroll, spelled per compiler. A macro as well,
+// so the same rule holds: a file using UNROLLED_FOR includes this header itself.
+#ifdef __clang__
+    #define UNROLLED_FOR(...) _Pragma("clang loop unroll(full)") for (__VA_ARGS__)
+#elif defined(__GNUC__)
+    #define UNROLLED_FOR(...) _Pragma("GCC unroll 32") for (__VA_ARGS__)
+#else
+    #define UNROLLED_FOR(...) for (__VA_ARGS__)
+#endif
+
 namespace Stockfish {
 
 // True if and only if the binary is compiled on a little-endian machine

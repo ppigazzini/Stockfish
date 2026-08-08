@@ -27,12 +27,12 @@
 #include <string_view>
 #include <filesystem>
 
-#include "../misc.h"
 #include "../types.h"
 #include "nnue_architecture.h"
 #include "nnue_common.h"
 #include "nnue_feature_transformer.h"
 #include "nnue_misc.h"
+#include "../basetypes.h"
 
 namespace Stockfish {
 class Position;

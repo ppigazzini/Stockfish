@@ -30,6 +30,7 @@
 
 #include "../misc.h"
 #include "../types.h"
+#include "../platform.h"
 
 #if defined(USE_AVX2)
     #include <immintrin.h>

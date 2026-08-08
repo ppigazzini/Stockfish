@@ -20,12 +20,8 @@
 #define MISC_H_INCLUDED
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cassert>
-#include <chrono>
-#include <cstddef>
-#include <cstdint>
 #include <exception>  // IWYU pragma: keep
 // IWYU pragma: no_include <__exception/terminate.h>
 #include <functional>
@@ -42,7 +38,6 @@
 #endif
 
 #include "basetypes.h"
-#include "platform.h"
 
 #define stringify2(x) #x
 #define stringify(x) stringify2(x)
@@ -347,22 +342,6 @@ void move_to_front(std::vector<T>& vec, Predicate pred) {
     #define sf_unreachable() __assume(0)
 #else
     #define sf_unreachable()
-#endif
-
-#ifdef __GNUC__
-    #define RESTRICT __restrict__
-#elif defined(_MSC_VER)
-    #define RESTRICT __restrict
-#else
-    #define RESTRICT
-#endif
-
-#ifdef __clang__
-    #define UNROLLED_FOR(...) _Pragma("clang loop unroll(full)") for (__VA_ARGS__)
-#elif defined(__GNUC__)
-    #define UNROLLED_FOR(...) _Pragma("GCC unroll 32") for (__VA_ARGS__)
-#else
-    #define UNROLLED_FOR(...) for (__VA_ARGS__)
 #endif
 
 void set_console_utf8();

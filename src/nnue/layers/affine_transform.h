@@ -25,6 +25,7 @@
 #include <iostream>
 
 #include "../../memory.h"
+#include "../../platform.h"
 #include "../nnue_common.h"
 #include "../simd.h"
 

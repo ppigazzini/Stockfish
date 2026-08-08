@@ -29,6 +29,7 @@
 
 #include "../../bitboard.h"
 #include "../../memory.h"
+#include "../../platform.h"
 #include "../simd.h"
 #include "../nnue_common.h"
 #include "../nnz_helper.h"

@@ -22,6 +22,6 @@ Stockfish <version>
 Fen: bqnb1rkr/pp3ppp/3ppn2/2p5/5P2/P2P4/NPP1P1PP/BQ1BNRKR w HFhf - 2 9
 Key: 07EA21D9A952A6B4
 Checkers: 
-info string Available processors: 0-15
+info string Available processors: <cpus>
 info string Using 1 thread
 bestmove e2e3 ponder b7b5

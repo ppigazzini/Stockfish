@@ -24,6 +24,7 @@
 #include "misc.h"
 #include "tune.h"
 #include "uci.h"
+#include "basetypes.h"
 
 using namespace Stockfish;
 

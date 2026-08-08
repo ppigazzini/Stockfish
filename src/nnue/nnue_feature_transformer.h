@@ -28,6 +28,7 @@
 #include <iterator>
 
 #include "../position.h"
+#include "../platform.h"
 #include "../types.h"
 #include "nnue_accumulator.h"
 #include "nnue_architecture.h"

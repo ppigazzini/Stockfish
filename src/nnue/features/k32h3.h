@@ -23,9 +23,9 @@
 
 #include <array>
 
-#include "../../misc.h"
 #include "../../types.h"
 #include "../nnue_common.h"
+#include "../../basetypes.h"
 
 namespace Stockfish {
 class Position;

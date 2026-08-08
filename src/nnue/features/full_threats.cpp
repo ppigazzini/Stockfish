@@ -30,6 +30,7 @@
 #include "../../position.h"
 #include "../../types.h"
 #include "../nnue_common.h"
+#include "../../platform.h"
 
 namespace Stockfish::Eval::NNUE::Features {
 

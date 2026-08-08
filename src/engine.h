@@ -42,6 +42,8 @@
 #include "tt.h"
 #include "types.h"
 #include "ucioption.h"
+#include "basetypes.h"
+#include "numa.h"
 
 namespace Stockfish {
 

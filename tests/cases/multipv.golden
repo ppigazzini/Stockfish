@@ -1,4 +1,4 @@
 Stockfish <version>
-info string Available processors: 0-15
+info string Available processors: <cpus>
 info string Using 1 thread
 bestmove d2d4 ponder d7d5
