@@ -314,6 +314,17 @@ asserting the sources were put back.
 
 Rows that cannot run report SKIPPED and are counted separately. A skipped row proves nothing.
 
+**It also enumerates the gates it does not cover**, because the failure this script exists to
+prevent applies to itself: a gate with no row was simply absent, and absence is quiet.
+`lanecheck.sh` asks whether a gate is dispatched and `docslint.sh` asks whether it is
+documented; **neither asks whether it can fail**, so a gate could be fully wired, fully
+described and inert. `reprosearch.sh` was exactly that -- a merge gate nobody had watched go
+red.
+
+Every script in `tests/` now needs a row or an excuse, and the excuse list expires in both
+directions as `lanecheck.sh`'s does: an excused script that has a row is a stale excuse, and an
+excuse naming a script the tree no longer carries fails too.
+
 ## `tests/lanecheck.sh`
 
 Every gate must be dispatched by a workflow, or carry an excuse saying what runs it.
