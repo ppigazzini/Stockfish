@@ -9,13 +9,18 @@
 # The set is ten files and about 26 KiB, which is what makes it affordable to
 # fetch in a fuzz job rather than commit.
 #
+# NOT tests/syzygy. That name belongs to tests/instrumented.py, whose
+# download_syzygy() skips its own fetch when the directory already exists and
+# then expects the 4-man set it would have downloaded -- so a 3-man corpus
+# sitting there makes TestSyzygy wait 300 seconds for a line that cannot come.
+#
 # Exit codes:  0 present and verified   1 a file failed verification   2 skipped
 
 set -u
 set -o pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-DEST=${1:-$ROOT/tests/syzygy}
+DEST=${1:-$ROOT/tests/syzygy-3man}
 BASE=${TB_MIRROR:-http://tablebase.sesse.net/syzygy/3-4-5}
 
 # The values the engine itself checks, at src/syzygy/tbprobe.cpp:323:
