@@ -21,7 +21,6 @@
 #include "position.h"
 
 #include <cassert>
-#include <cmath>
 #include <cstdlib>
 #include <cmath>
 #include <algorithm>

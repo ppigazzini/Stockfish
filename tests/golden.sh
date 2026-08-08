@@ -59,12 +59,20 @@ skip() { echo "golden: SKIPPED -- $*" >&2; exit 2; }
 
 # Lines whose content is a property of the machine, the build or the clock.
 # Everything else is behaviour and is compared byte for byte.
+#
+# The processor list is the one that got away: the corpus was recorded on a
+# 16-core box and read `Available processors: 0-15`, so every 4-core CI runner
+# saw a mismatch in four of six cases. A golden that records the machine is a
+# record of the machine, which is the thing this filter exists to prevent.
 filter() {
     grep -avE '^info (depth [0-9]+ seldepth [0-9]+ multipv [0-9]+ score .* nodes [0-9]+ nps|string NNUE evaluation using|string Network replica)' \
     | sed -E \
         -e 's/^(Stockfish) [^ ]+ by .*/\1 <version>/' \
         -e 's/^(id name Stockfish) .*/\1 <version>/' \
         -e 's/^(Stockfish) dev-.*/\1 <version>/' \
+        -e 's/^(info string Available processors): .*/\1: <cpus>/' \
+        -e 's/(with NUMA node thread binding): .*/\1: <binding>/' \
+        -e 's/^(Available processors +): .*/\1: <cpus>/' \
         -e 's/ time [0-9]+/ time <t>/g' \
         -e 's/ nps [0-9]+/ nps <n>/g' \
         -e 's/ hashfull [0-9]+/ hashfull <h>/g' \

@@ -19,9 +19,9 @@
 #define NNUE_FEATURES_FULL_THREATS_INCLUDED
 
 
-#include "../../misc.h"
 #include "../../types.h"
 #include "../nnue_common.h"
+#include "../../basetypes.h"
 
 namespace Stockfish {
 class Position;

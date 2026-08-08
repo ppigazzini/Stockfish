@@ -47,6 +47,8 @@
 #include "../search.h"
 #include "../types.h"
 #include "../ucioption.h"
+#include "../basetypes.h"
+#include "../platform.h"
 
 #ifndef _WIN32
     #include <fcntl.h>

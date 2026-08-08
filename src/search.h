@@ -40,6 +40,8 @@
 #include "syzygy/tbprobe.h"
 #include "timeman.h"
 #include "types.h"
+#include "basetypes.h"
+#include "platform.h"
 
 namespace Stockfish {
 

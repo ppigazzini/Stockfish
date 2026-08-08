@@ -51,6 +51,8 @@
 #include "types.h"
 #include "uci.h"
 #include "ucioption.h"
+#include "platform.h"
+#include "basetypes.h"
 
 namespace Stockfish {
 

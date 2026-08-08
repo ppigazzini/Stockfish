@@ -17,16 +17,17 @@
 */
 
 #include "numa.h"
+#include "misc.h"
 
-#include <algorithm>
 #include <cstdlib>
-#include <iostream>
 #include <map>
 #include <set>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
+#include <iterator>
+#include <limits>
+#include <string_view>
 
 // The cold half of NumaConfig: topology discovery, the string forms, and thread
 // binding. All of it runs before the first search, and none of it belongs in a

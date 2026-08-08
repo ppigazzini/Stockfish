@@ -25,7 +25,7 @@
 #include <optional>
 #include <string>
 
-#include "misc.h"
+#include "basetypes.h"
 
 namespace Stockfish {
 // Define a custom comparator, because the UCI options should be case-insensitive
