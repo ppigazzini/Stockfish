@@ -439,7 +439,7 @@ them. A clean run means "nothing failed inside that budget", never "there is not
 The `tb` harness found this, and it is **not fixed**:
 
 ```sh
-printf '\x00' | dd of=tests/syzygy/KNvK.rtbw bs=1 seek=10 count=1 conv=notrunc
+printf '\x00' | dd of=tests/syzygy-3man/KNvK.rtbw bs=1 seek=10 count=1 conv=notrunc
 ```
 
 The engine loads the table, answers `readyok`, and dies with SIGSEGV on the first probe. Under
@@ -516,6 +516,36 @@ token read as `" go"`, which its stop-guard missed, leaving an unbounded search 
 behind it. That guard is fixed and the harness now runs clean. The engine behaviour is
 independent of it, and the reproducer above uses no fuzzing at all.
 
+## Local hooks
+
+```sh
+uv sync && pre-commit install     # once
+pre-commit run --all-files        # everything, now
+```
+
+`.pre-commit-config.yaml` runs file hygiene, `ruff` (lint and format), `ty`, `make format`, and
+the three static gates above -- `docslint.sh`, `lanecheck.sh`, `depcheck.sh`. **CI does not run
+these.** The workflows stay the authority; this catches the same classes before the commit
+exists, which is the only difference that matters when a gate takes seconds.
+
+`pyproject.toml` holds the `ruff` and `ty` configuration and declares the dependency the gates
+need. The lint set is curated rather than `ALL`: these are operator tools, so `print` IS their
+output and `subprocess` IS their job, and a rule family the tools violate by design would force
+`--exit-zero` -- an advisory hook is a laundered gate.
+
+Two scopes are narrowed on purpose, and both are named rather than left to be discovered.
+`ty` skips `tests/instrumented.py` and `tests/testing.py`: its diagnostics there are unannotated
+upstream code reached without narrowing, and silencing them means adding asserts to code this
+fork does not own. `E501` is ignored in those same two files, where every overlong line is a
+single string literal -- a search-output regex, a FEN with its move list, ANSI-coloured
+f-strings. Editing a regex to satisfy a line limit is how a gate quietly stops matching.
+
+**The `clang-format` hook runs only if `clang-format-20` is present**, the version CI pins. The
+Makefile falls back to a bare `clang-format` when 20 is absent, and a different major reformats
+the whole tree to its own house style: running it once here rewrote 29 files nobody had
+touched. It skips loudly instead, which weakens nothing -- CI's own `clang-format` step is
+`continue-on-error` and comments rather than blocks.
+
 ## CI
 
 | Workflow | Gates |
@@ -563,4 +593,3 @@ not at all, and `tests/lanecheck.sh` holds each of them to carrying an excuse th
 A workflow with only a `workflow_call` trigger and no caller is in the same position -- it
 cannot start, so nothing it names is in a lane, which is what `lanecheck` checks before it
 looks at any script.
-

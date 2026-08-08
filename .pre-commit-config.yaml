@@ -1,0 +1,82 @@
+# Pre-commit hooks: file hygiene, Python lint/format/type-check, clang-format,
+# and the repo's own static gates.
+#
+# Install once with `pre-commit install`; run everything with
+# `pre-commit run --all-files`. CI does not run these -- the workflows' own gates
+# stay the authority; this catches the same classes before the commit exists.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+        # Never touch byte-exact comparison inputs. tests/cases/*.golden is
+        # matched against engine output verbatim, *.uci is what produces it, and
+        # a trailing newline added to either is a mismatch, not a tidy-up.
+        exclude: '\.(golden|uci|nnue|epd|fens)$'
+      - id: trailing-whitespace
+        exclude: '\.(golden|uci|nnue|epd|fens)$'
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.2
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: v0.0.69
+    hooks:
+      # The hook's own entry checks the whole project (ty's cross-file
+      # diagnostics make per-filename invocation wrong); [tool.ty] in
+      # pyproject.toml scopes it to tests/ and pins the env.
+      - id: ty
+  - repo: local
+    hooks:
+      # Run the repo's own format target so drift never reaches CI, and run it
+      # through `make format` rather than a bare clang-format entry or a
+      # third-party mirror: the Makefile owns the file list and a mirror would
+      # add a supply-chain edge for one command. It rewrites in place, so
+      # pre-commit fails on the modified file and the next run passes.
+      #
+      # ONLY with clang-format-20, the version CI pins. The Makefile falls back
+      # to a bare `clang-format` when 20 is absent, and a different major
+      # reformats the whole tree to its own house style -- running it once here
+      # rewrote 29 files nobody had touched. Skip loudly instead; CI's own
+      # clang-format step is continue-on-error, so a local skip weakens no
+      # blocking gate.
+      - id: clang-format
+        name: make format
+        entry: >-
+          bash -c 'command -v clang-format-20 >/dev/null
+          && (cd src && make format)
+          || echo "SKIP: clang-format-20 not installed (CI pins 20; local clang-format is another major)"'
+        language: system
+        files: '^src/.*\.(cpp|h)$'
+        pass_filenames: false
+      # Docs are part of the change (AGENTS.md): an edit that breaks a link,
+      # names a dead path, quotes the bench signature, or leaves a gate
+      # undiscoverable should fail here rather than in CI.
+      - id: docs-lint
+        name: tests/docslint.sh
+        entry: ./tests/docslint.sh
+        language: system
+        files: '\.(md|sh|py|yml)$'
+        pass_filenames: false
+      # A new gate with no lane, or an excuse that has expired, is caught at the
+      # commit that introduces it rather than a CI run later.
+      - id: lane-coverage
+        name: tests/lanecheck.sh
+        entry: ./tests/lanecheck.sh
+        language: system
+        files: '^(tests|scripts)/.*|^\.github/workflows/.*'
+        pass_filenames: false
+      # An engine file reaching into the shell, or a baselined edge that no
+      # longer happens. Cheap, and the commit that adds the include is the one
+      # that should hear about it.
+      - id: dep-direction
+        name: tests/depcheck.sh
+        entry: ./tests/depcheck.sh
+        language: system
+        files: '^src/.*\.(cpp|h)$|^tests/depcheck\.baseline$'
+        pass_filenames: false

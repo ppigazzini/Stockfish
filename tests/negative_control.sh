@@ -400,7 +400,7 @@ fi
 
 row fuzz-tb
 if selected fuzz-tb; then
-    if [ -z "$(ls tests/syzygy 2>/dev/null)" ]; then
+    if [ -z "$(ls tests/syzygy-3man 2>/dev/null)" ]; then
         echo "negative-control: fuzz [tb]   SKIPPED -- no corpus; run tests/tbfetch.sh"
         SKIP=$((SKIP+1))
     else
@@ -419,7 +419,7 @@ fi
 
 row fuzz-rig
 if selected fuzz-rig; then
-    if [ -z "$(ls tests/syzygy 2>/dev/null)" ]; then
+    if [ -z "$(ls tests/syzygy-3man 2>/dev/null)" ]; then
         echo "negative-control: fuzz [rig]  SKIPPED -- no corpus; run tests/tbfetch.sh"
         SKIP=$((SKIP+1))
     else
