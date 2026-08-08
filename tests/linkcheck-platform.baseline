@@ -1,21 +1,17 @@
 # Engine objects that reference a symbol only a platform object defines.
 #
 # The declared stack says the engine depends on nothing outside itself, so every
-# line here is a violation -- and together they are the reason engine/ still
-# cannot be linked alone. B7's seams closed the engine-to-SHELL edge; this is
-# the other half and it is untouched.
+# line here is a violation, and together they are why engine/ cannot link alone.
 #
-# Three groups, and they need different fixes:
-#   Tablebases::*        the Syzygy prober, reached from position.o and search.o
-#   NumaConfig::*        topology, reached from search.o
-#   hash_bytes, sync_cout, and other misc.h/platform.h helpers
+# Down from 27: hash_bytes moved to engine/hashing.h, where arithmetic over
+# bytes belongs, and the console half of misc.h moved to the shell, which turned
+# three of these into honest engine-to-shell edges instead of hidden ones.
 #
-# The first two want injection seams of the shape mcfish uses: the engine
-# declares a function pointer, the composition root registers an implementation.
-# The third is mostly D1 -- misc.h is a drawer, and half of what engine files
-# reach for in it is not platform at all.
-network.o _ZN9Stockfish10hash_bytesEPKcm
-network.o _ZN9StockfishlsERSoNS_8SyncCoutE
+# What remains needs injection seams rather than re-zoning:
+#   Tablebases::*   the Syzygy prober, from position.o and search.o
+#   NumaConfig::*   topology, from search.o
+#   ThreadPool::*   from search.o and tt.o
+#   aligned_large_pages_*  from search.o and tt.o
 position.o _ZN9Stockfish10Tablebases14MaxCardinalityE
 position.o _ZN9Stockfish10Tablebases9probe_dtzERNS_8PositionEPNS0_10ProbeStateE
 position.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
@@ -23,11 +19,8 @@ search.o _ZN9Stockfish10NumaConfig11from_systemERKSt7variantIJNS_16SystemNumaPol
 search.o _ZN9Stockfish10Tablebases15rank_root_movesERKNS_13SearchOptionsERNS_8PositionERSt6vectorINS_6Search8RootMoveESaIS8_EEbRKSt8functionIFbvEE
 search.o _ZN9Stockfish10Tablebases9probe_wdlERNS_8PositionEPNS0_10ProbeStateE
 search.o _ZN9Stockfish10ThreadPool15start_searchingEv
-search.o _ZN9Stockfish10hash_bytesEPKcm
 search.o _ZN9Stockfish24aligned_large_pages_freeEPv
 search.o _ZN9Stockfish25aligned_large_pages_allocEm
-search.o _ZN9Stockfish9dbg_printEv
-search.o _ZN9StockfishlsERSoNS_8SyncCoutE
 search.o _ZNK9Stockfish10NumaConfig32bind_current_thread_to_numa_nodeEm
 search.o _ZNK9Stockfish10NumaConfig9to_stringB5cxx11Ev
 search.o _ZNK9Stockfish10ThreadPool14nodes_searchedEv
