@@ -76,6 +76,11 @@ transposed at a call site.
 | `PieceToHistory` (a continuation plane) | moving piece, destination | 30000 |
 | `PawnHistory` | pawn-key row, piece, destination | 8192 |
 | `CorrectionHistory` | a key row | 1024 |
+
+The four correction counters share one `CorrectionBundle` per row, and `SharedHistories`
+hands out the **counter** rather than the row -- `pawn_correction(pos, us)` and its three
+siblings -- so the key that selects the row and the field read from it are chosen in one
+place. `do_move` still prefetches the rows themselves, written out at the call site.
 | `TTMoveHistory` | a single entry | 8192 |
 
 `ContinuationHistory` is a `MultiArray<PieceToHistory, PIECE_NB, SQUARE_NB>`: a plane per
