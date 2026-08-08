@@ -224,27 +224,45 @@ struct SharedHistories {
         return pawnHistory[pos.pawn_key() & pawnHistSizeMinus1];
     }
 
-    auto& pawn_correction_entry(const Position& pos) {
-        return correctionHistory[pos.pawn_key() & sizeMinus1];
+    // Each accessor returns the COUNTER, not the bundle holding it. The key that
+    // selects the row and the field read out of it are chosen in one place, so
+    // pairing one key's row with another key's field -- which compiled, and
+    // yielded a real counter of the wrong kind rather than a fault -- is no
+    // longer expressible: there is no field left to pick.
+    //
+    // `us` stays a parameter because it is a different colour from the one that
+    // chooses the row: it is the side to move, and for the non-pawn pair the
+    // template argument is the side whose key is used. Welding those two
+    // together would be wrong, not safer.
+    auto& pawn_correction(const Position& pos, Color us) {
+        return correctionHistory[pos.pawn_key() & sizeMinus1][us].pawn;
     }
-    const auto& pawn_correction_entry(const Position& pos) const {
-        return correctionHistory[pos.pawn_key() & sizeMinus1];
+    const auto& pawn_correction(const Position& pos, Color us) const {
+        return correctionHistory[pos.pawn_key() & sizeMinus1][us].pawn;
     }
 
-    auto& minor_piece_correction_entry(const Position& pos) {
-        return correctionHistory[pos.minor_piece_key() & sizeMinus1];
+    auto& minor_piece_correction(const Position& pos, Color us) {
+        return correctionHistory[pos.minor_piece_key() & sizeMinus1][us].minor;
     }
-    const auto& minor_piece_correction_entry(const Position& pos) const {
-        return correctionHistory[pos.minor_piece_key() & sizeMinus1];
+    const auto& minor_piece_correction(const Position& pos, Color us) const {
+        return correctionHistory[pos.minor_piece_key() & sizeMinus1][us].minor;
     }
 
     template<Color c>
-    auto& nonpawn_correction_entry(const Position& pos) {
-        return correctionHistory[pos.non_pawn_key(c) & sizeMinus1];
+    auto& nonpawn_correction(const Position& pos, Color us) {
+        auto& bundle = correctionHistory[pos.non_pawn_key(c) & sizeMinus1][us];
+        if constexpr (c == WHITE)
+            return bundle.nonPawnWhite;
+        else
+            return bundle.nonPawnBlack;
     }
     template<Color c>
-    const auto& nonpawn_correction_entry(const Position& pos) const {
-        return correctionHistory[pos.non_pawn_key(c) & sizeMinus1];
+    const auto& nonpawn_correction(const Position& pos, Color us) const {
+        const auto& bundle = correctionHistory[pos.non_pawn_key(c) & sizeMinus1][us];
+        if constexpr (c == WHITE)
+            return bundle.nonPawnWhite;
+        else
+            return bundle.nonPawnBlack;
     }
 
     UnifiedCorrectionHistory               correctionHistory;

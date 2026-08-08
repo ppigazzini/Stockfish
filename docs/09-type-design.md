@@ -56,6 +56,22 @@ and the unused rows are the price.
   two independent booleans. Four combinations for three meanings would make a non-PV root
   expressible, and no call site produces one. Because the tag is a template argument, the
   tests on it fold in each instantiation and it costs nothing.
+- **A correction counter cannot be read through the wrong key's field.** The four counters live
+  in one `CorrectionBundle`, and the accessors on `SharedHistories` return the *counter*, not
+  the bundle: `pawn_correction(pos, us)` yields the pawn counter and nothing else, so pairing
+  one key's row with another key's field has no expression. It used to: the accessor returned
+  the row, the caller wrote `.minor`, and the result was a real counter of the wrong kind
+  rather than a fault.
+
+  ```sh
+  # h.pawn_correction(pos, us).minor
+  # error: StatsEntry<short int, 1024, true> has no member named 'minor'
+  ./tests/negative_control.sh b5-mismatch
+  ```
+
+  **It does not stop one accessor being substituted for another.** They share a signature, so
+  `minor_piece_correction` where `pawn_correction` was meant still compiles; only the bench
+  signature catches that, and `./tests/negative_control.sh b5-swap` is it going red.
 - **A widened domain type is caught at compile time.** `types.h` closes with the relationships
   that imply each width -- `PIECE_NB` against `COLOR_NB`, `SQUARE_NB` against the bitboard
   width -- so an assertion cannot go stale against a literal.
