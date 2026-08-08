@@ -32,13 +32,20 @@ cd "$ROOT" || exit 2
 
 SELECT=${1:-all}
 BACKUP=$(mktemp -d)
-MUTATED=""
+MUTATED=()
 
+# A LIST, not one path. A row that mutates two files -- linkcheck needs a caller
+# in one zone and a callee in another -- would otherwise leave the first behind:
+# the second mutate() overwrote the variable and restore() put back only the
+# last. The tree then stays broken past the row that broke it, and every later
+# row measures a mutant it did not create.
 restore() {
-    if [ -n "$MUTATED" ] && [ -f "$BACKUP/$(basename "$MUTATED")" ]; then
-        cp "$BACKUP/$(basename "$MUTATED")" "$MUTATED"
-        MUTATED=""
-    fi
+    local i
+    for ((i=${#MUTATED[@]}-1; i>=0; i--)); do
+        local f=${MUTATED[$i]}
+        [ -f "$BACKUP/$(basename "$f")" ] && cp "$BACKUP/$(basename "$f")" "$f"
+    done
+    MUTATED=()
 }
 cleanup() { restore; rm -rf "$BACKUP"; }
 trap cleanup EXIT INT TERM
@@ -69,7 +76,7 @@ mutate() {
         "$file" "$from")
     [ "$n" = "1" ] || die "anchor appears $n times in $file (want exactly 1): $from"
     cp "$file" "$BACKUP/$(basename "$file")"
-    MUTATED=$file
+    MUTATED+=("$file")
     python3 - "$file" "$from" "$to" <<'PY'
 import sys
 p, a, b = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -475,6 +482,46 @@ movegen.cpp -> uci.h'
     restore
 fi
 
+# --------------------------------------------------------------- linkcheck
+
+row linkcheck
+if selected linkcheck; then
+    # The row that justifies linkcheck existing beside depcheck. It adds a
+    # symbol to a SHELL object and calls it from an ENGINE object through a
+    # forward declaration, so no #include announces the edge.
+    #
+    # It therefore asserts two things: depcheck stays GREEN, because reading
+    # includes cannot see this, and linkcheck goes RED. A row that only checked
+    # the second would not show why the second gate is needed.
+    echo "negative-control: linkcheck   -- an engine-to-shell call with no include"
+    mutate src/benchmark.cpp \
+        'namespace Stockfish::Benchmark {' \
+        'namespace Stockfish {
+int nc_link_probe() { return 0; }
+}
+
+namespace Stockfish::Benchmark {'
+    mutate src/bitboard.cpp \
+        'namespace Stockfish {' \
+        'namespace Stockfish {
+
+int nc_link_probe();
+namespace { const int nc_link_sink = nc_link_probe(); }'
+    if ./tests/depcheck.sh >/dev/null 2>&1; then
+        echo "  depcheck green, as expected -- an include-reader cannot see this"
+    else
+        echo "  NOT AS DESIGNED -- depcheck reported it; the row no longer isolates the gap"
+        FAIL=$((FAIL+1))
+    fi
+    if ./tests/linkcheck.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- linkcheck passed an engine object calling a shell symbol"
+        FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- fuzz
 #
 # A fuzz harness has two ways to be useless, and only one of them is visible in
@@ -574,11 +621,13 @@ COVERAGE_EXCUSED_NAMES=(
   npsab.sh
   negative_control.sh
   testing.py
+  zones.sh
 )
 COVERAGE_EXCUSED_WHY=(
   "a wall-clock measurement rather than a pass/fail gate; it carries its own A/A control, which is the same check from the inside"
   "this script -- it cannot be its own negative control"
   "a harness imported by instrumented.py rather than a gate; instrumented.py's row covers it"
+  "the zone table, sourced by depcheck.sh and linkcheck.sh; it asserts nothing itself"
 )
 
 echo

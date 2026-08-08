@@ -31,6 +31,7 @@ EXCUSED_NAMES=(
   get_native_properties.sh
   net.sh
   fingerprint.sh
+  zones.sh
 )
 EXCUSED_WHY=(
   "wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
@@ -39,6 +40,7 @@ EXCUSED_WHY=(
   "invoked by the Makefile, not by a workflow"
   "invoked by the Makefile's net target"
   "roughly 10x the cost of the budget gate; run by hand before a decomposition"
+  "the zone table, sourced by depcheck.sh and linkcheck.sh rather than run"
 )
 
 FAIL=0
