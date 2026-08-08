@@ -182,4 +182,3 @@ ls -l src/stockfish src/*.nnue
 
 **The engine resolves `EvalFile` relative to the working directory.** Running from anywhere
 but `src/` finds no external net and produces an unrelated but entirely plausible number.
-

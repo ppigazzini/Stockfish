@@ -156,4 +156,3 @@ not.
 
 This is why `tests/perft.sh` carries Chess960 rows: standard-chess castling hides an entire
 class of bug, and the same FEN means two different positions under the two dialects.
-
