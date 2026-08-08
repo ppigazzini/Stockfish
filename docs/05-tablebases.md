@@ -86,4 +86,3 @@ derived from the files found, not from the option.
 With no path set, nothing is discovered, no probe fires, and the bench signature is
 unaffected. That is the property that keeps an unconfigured engine identical to one built
 without the feature.
-

@@ -11,13 +11,16 @@ repos:
       - id: check-added-large-files
       - id: check-toml
       - id: check-yaml
+      # Two exclusions, both load-bearing. Byte-exact comparison inputs:
+      # tests/cases/*.golden is matched against engine output verbatim and *.uci
+      # is what produces it, so a trailing newline added to either is a
+      # mismatch, not a tidy-up. And src/incbin/ is vendored -- rewriting a
+      # third-party header to this repo's whitespace taste makes every future
+      # update a conflict, which is why CI's clang-format excludes it too.
       - id: end-of-file-fixer
-        # Never touch byte-exact comparison inputs. tests/cases/*.golden is
-        # matched against engine output verbatim, *.uci is what produces it, and
-        # a trailing newline added to either is a mismatch, not a tidy-up.
-        exclude: '\.(golden|uci|nnue|epd|fens)$'
+        exclude: '\.(golden|uci|nnue|epd|fens)$|^src/incbin/'
       - id: trailing-whitespace
-        exclude: '\.(golden|uci|nnue|epd|fens)$'
+        exclude: '\.(golden|uci|nnue|epd|fens)$|^src/incbin/'
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.2
     hooks:
