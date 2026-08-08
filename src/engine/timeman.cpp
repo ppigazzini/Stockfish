@@ -47,9 +47,9 @@ void TimeManagement::advance_nodes_time(i64 nodes) {
 void TimeManagement::init(Search::LimitsType& limits,
                           Color               us,
                           int                 ply,
-                          const OptionsMap&   options,
+                          const SearchOptions& options,
                           double&             originalTimeAdjust) {
-    TimePoint npmsec = TimePoint(options["nodestime"]);
+    TimePoint npmsec = TimePoint(options.nodestime);
 
     // If we have no time, we don't need to fully initialize TM.
     // startTime is used by movetime and useNodesTime is used in elapsed calls.
@@ -65,7 +65,7 @@ void TimeManagement::init(Search::LimitsType& limits,
         return;
     }
 
-    TimePoint moveOverhead = TimePoint(options["Move Overhead"]);
+    TimePoint moveOverhead = TimePoint(options.moveOverhead);
 
     // optScale is a percentage of available time to use for the current move.
     // maxScale is a multiplier applied to optimumTime.
@@ -138,7 +138,7 @@ void TimeManagement::init(Search::LimitsType& limits,
       TimePoint(std::max(double(optimumTime), std::min(0.8097 * limits.time[us] - moveOverhead,
                                                        maxScale * optimumTime)));
 
-    if (options["Ponder"])
+    if (options.ponder)
         optimumTime += optimumTime / 4;
 }
 

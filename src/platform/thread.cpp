@@ -42,6 +42,8 @@
 #include "../shell/uci.h"
 #include "../shell/ucioption.h"
 
+#include "../engine/searchoptions.h"
+
 namespace Stockfish {
 
 // Constructor launches the thread and waits until it goes to sleep
@@ -55,7 +57,7 @@ Thread::Thread(Search::SharedState&                    sharedState,
     idx(n),
     idxInNuma(numaN),
     totalNuma(totalNumaCount),
-    nthreads(sharedState.options["Threads"]),
+    nthreads(sharedState.options.threads),
     stdThread(
       create_native_thread(NativeThreadOptions{}.setLargeStack(true), &Thread::idle_loop, this)) {
 
@@ -170,7 +172,7 @@ void ThreadPool::set(const NumaConfig&                           numaConfig,
         boundThreadToNumaNode.clear();
     }
 
-    const usize requested = sharedState.options["Threads"];
+    const usize requested = sharedState.options.threads;
 
     if (requested > 0)  // create new thread(s)
     {
@@ -180,7 +182,7 @@ void ThreadPool::set(const NumaConfig&                           numaConfig,
         // This is undesirable, and so the default behaviour (i.e. when the user does not
         // change the NumaConfig UCI setting) is to not bind the threads to processors
         // unless we know for sure that we span NUMA nodes and replication is required.
-        const std::string numaPolicy(sharedState.options["NumaPolicy"]);
+        const std::string numaPolicy(sharedState.options.numaPolicy);
         const bool        doBindThreads = [&]() {
             if (numaPolicy == "none")
                 return false;
@@ -294,7 +296,7 @@ usize ThreadPool::num_threads() const { return threads.size(); }
 
 // Wakes up main thread waiting in idle_loop() and returns immediately.
 // Main thread will wake up other threads and start the search.
-void ThreadPool::start_thinking(const OptionsMap&  options,
+void ThreadPool::start_thinking(const SearchOptions&  options,
                                 Position&          pos,
                                 StateListPtr&      states,
                                 Search::LimitsType limits) {

@@ -61,7 +61,7 @@ static constexpr std::array<int, 16> lmrDivisor = {3637, 2787, 2761, 2939, 3171,
 
 namespace TB = Tablebases;
 
-void syzygy_extend_pv(const OptionsMap&            options,
+void syzygy_extend_pv(const SearchOptions&         options,
                       const Search::LimitsType&    limits,
                       Stockfish::Position&         pos,
                       Stockfish::Search::RootMove& rootMove,
@@ -212,7 +212,7 @@ void Search::Worker::start_searching() {
     {
         main_manager()->updates.onUpdateNoMoves(
           {0, {rootPos.checkers() ? -VALUE_MATE : VALUE_DRAW, rootPos}});
-        main_manager()->updates.onBestmove(UCIEngine::move(Move::none()), "");
+        main_manager()->updates.onBestmove(move_to_uci(Move::none()), "");
         return;
     }
 
@@ -243,7 +243,7 @@ void Search::Worker::start_searching() {
 
     Worker* bestThread = this;
     Skill   skill =
-      Skill(options["Skill Level"], options["UCI_LimitStrength"] ? int(options["UCI_Elo"]) : 0);
+      Skill(options.skillLevel, options.limitStrength ? options.elo : 0);
 
     if (!limits.depth && !skill.enabled())
         bestThread = threads.get_best_thread()->worker.get();
@@ -262,9 +262,9 @@ void Search::Worker::start_searching() {
     // In rare cases, output_pv() may change the ponder move through syzygy_extend_pv()
     std::string ponder;
     if (bestThread->rootMoves[0].pv.size() > 1)
-        ponder = UCIEngine::move(bestThread->rootMoves[0].pv[1], rootPos.is_chess960());
+        ponder = move_to_uci(bestThread->rootMoves[0].pv[1], rootPos.is_chess960());
 
-    auto bestmove = UCIEngine::move(bestThread->rootMoves[0].pv[0], rootPos.is_chess960());
+    auto bestmove = move_to_uci(bestThread->rootMoves[0].pv[0], rootPos.is_chess960());
     main_manager()->updates.onBestmove(bestmove, ponder);
 }
 
@@ -314,8 +314,8 @@ bool Search::Worker::iterative_deepening() {
             mainThread->iterValue.fill(mainThread->bestPreviousScore);
     }
 
-    usize multiPV = usize(options["MultiPV"]);
-    Skill skill(options["Skill Level"], options["UCI_LimitStrength"] ? int(options["UCI_Elo"]) : 0);
+    usize multiPV = options.multiPV;
+    Skill skill(options.skillLevel, options.limitStrength ? options.elo : 0);
 
     // When playing with strength handicap enable MultiPV search that we will
     // use behind-the-scenes to retrieve a set of possible moves.
@@ -1143,7 +1143,7 @@ moves_loop:  // When in check, search starts here
         if (rootNode && is_mainthread() && nodes > NODES_LIMIT_OUTPUT)
         {
             main_manager()->updates.onIter(
-              {depth, UCIEngine::move(move, pos.is_chess960()), moveCount + pvIdx});
+              {depth, move_to_uci(move, pos.is_chess960()), moveCount + pvIdx});
         }
         if (PvNode)
             (ss + 1)->pv = nullptr;
@@ -2137,7 +2137,7 @@ void SearchManager::check_time(Search::Worker& worker) {
 // Keeps the search based PV for as long as it is verified to maintain the game
 // outcome, truncates afterwards. Finally, extends to mate the PV, providing a
 // possible continuation (but not a proven mating line).
-void syzygy_extend_pv(const OptionsMap&         options,
+void syzygy_extend_pv(const SearchOptions&      options,
                       const Search::LimitsType& limits,
                       Position&                 pos,
                       RootMove&                 rootMove,
@@ -2145,8 +2145,8 @@ void syzygy_extend_pv(const OptionsMap&         options,
                       const usize               multiPV) {
 
     auto t_start      = std::chrono::steady_clock::now();
-    int  moveOverhead = int(options["Move Overhead"]);
-    bool rule50       = bool(options["Syzygy50MoveRule"]);
+    int  moveOverhead = options.moveOverhead;
+    bool rule50       = options.syzygy50MoveRule;
 
     // Do not use more than moveOverhead / 2 ms, if time management is active.
     // Under 'nodestime' the pos.do_move() calls come for free.
@@ -2282,7 +2282,7 @@ void SearchManager::output_pv(Search::Worker&           worker,
     const auto nodes     = threads.nodes_searched();
     auto&      rootMoves = worker.rootMoves;
     auto&      pos       = worker.rootPos;
-    usize      multiPV   = std::min(usize(worker.options["MultiPV"]), rootMoves.size());
+    usize      multiPV   = std::min(worker.options.multiPV, rootMoves.size());
     u64        tbHits    = threads.tb_hits() + (worker.tbConfig.rootInTB ? rootMoves.size() : 0);
 
     for (usize i = 0; i < multiPV; ++i)
@@ -2309,13 +2309,13 @@ void SearchManager::output_pv(Search::Worker&           worker,
 
         std::string pv;
         for (Move m : usePreviousScore ? rootMoves[i].previousPV : rootMoves[i].pv)
-            pv += UCIEngine::move(m, pos.is_chess960()) + " ";
+            pv += move_to_uci(m, pos.is_chess960()) + " ";
 
         // Remove last whitespace
         if (!pv.empty())
             pv.pop_back();
 
-        auto wdl = worker.options["UCI_ShowWDL"] ? UCIEngine::wdl(v, pos) : "";
+        auto wdl = worker.options.showWDL ? wdl_to_string(v, pos) : "";
 
         // Scores cannot be both exact and inexact
         assert(!(rootMoves[i].inexactLower && rootMoves[i].inexactUpper));

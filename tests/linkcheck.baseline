@@ -1,13 +1,9 @@
-# Engine objects that reference a symbol only a shell object defines, from a
-# -fno-lto build. Symbol-level; see tests/linkcheck.sh.
+# Engine objects that reference a symbol only a shell object defines.
 #
-# After B7 the zones are directories. What survived the move is search.o
-# reaching the option map and the UCI renderers, and timeman.o reaching the
-# option map -- the edge the move exposed, since timeman is engine and
-# ucioption is shell.
-search.o _ZN9Stockfish9UCIEngine3wdlB5cxx11EiRKNS_8PositionE
-search.o _ZN9Stockfish9UCIEngine4moveB5cxx11ENS_4MoveEb
-search.o _ZNK9Stockfish10OptionsMapixERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE
-search.o _ZNK9Stockfish6OptioncviEv
-timeman.o _ZNK9Stockfish10OptionsMapixERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE
-timeman.o _ZNK9Stockfish6OptioncviEv
+# EMPTY. B7's seams closed the last six: the option snapshot (searchoptions.h)
+# replaced OptionsMap in search, timeman, the thread pool and the Syzygy prober,
+# and the two UCI renderers moved into the engine beside the domain knowledge
+# they already used.
+#
+# A new entry here is a new edge. There is no debt left to grandfather, so the
+# next one to appear is the first.
