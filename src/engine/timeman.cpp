@@ -23,7 +23,6 @@
 #include <cmath>
 
 #include "search.h"
-#include "../shell/ucioption.h"
 #include "../platform/platform.h"
 
 namespace Stockfish {
