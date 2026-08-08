@@ -19,9 +19,9 @@
 #ifndef NNUE_FEATURES_PP_3WIDE_INCLUDED
 #define NNUE_FEATURES_PP_3WIDE_INCLUDED
 
-#include "../../misc.h"
 #include "../../types.h"
 #include "../nnue_common.h"
+#include "../../basetypes.h"
 
 namespace Stockfish {
 class Position;

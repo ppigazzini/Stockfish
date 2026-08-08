@@ -27,13 +27,13 @@
 #include <memory>
 #include <sstream>
 
-#include "misc.h"
 #include "nnue/network.h"
 #include "nnue/nnue_misc.h"
 #include "position.h"
 #include "types.h"
 #include "score.h"
 #include "nnue/nnue_accumulator.h"
+#include "basetypes.h"
 
 namespace Stockfish {
 

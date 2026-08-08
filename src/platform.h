@@ -27,6 +27,17 @@
     #include <immintrin.h>
 #endif
 
+// The compiler's no-aliasing qualifier, spelled per compiler. A macro rather
+// than a keyword, so include-what-you-use cannot see who needs it: a file using
+// RESTRICT must include this header itself rather than inherit it.
+#ifdef __GNUC__
+    #define RESTRICT __restrict__
+#elif defined(_MSC_VER)
+    #define RESTRICT __restrict
+#else
+    #define RESTRICT
+#endif
+
 namespace Stockfish {
 
 // True if and only if the binary is compiled on a little-endian machine
