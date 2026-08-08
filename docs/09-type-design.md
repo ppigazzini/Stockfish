@@ -64,18 +64,31 @@ and the unused rows are the price.
 
 A page that omits its own boundary invites over-trust.
 
-**Seven key spaces share one alias.** `using Key = u64` covers the raw position key, the
-transposition key, and the pawn, minor-piece, material and two non-pawn keys. `Bitboard` is
-the same underlying type, so a `Key` where a `Bitboard` belongs also compiles.
+**Six key spaces share one alias.** `using Key = u64` covers the transposition key and the
+pawn, minor-piece, material and two non-pawn keys, reached through six accessors --
+`key()`, `prefetch_key()`, `material_key()`, `pawn_key()`, `minor_piece_key()` and
+`non_pawn_key(Color)`, the last being one accessor over two spaces. The raw position key is
+not among them: it is `StateInfo::key`, reached through `Position::state()`, and no file
+outside `position.cpp` reads it. `Bitboard` is the same underlying type, so a `Key` where a
+`Bitboard` belongs also compiles.
 
 The sharpest pair is the position key and the transposition key. `Position::adjust_key50`
 mixes the halfmove clock in only at and above a threshold, so **below it the two words are
 identical** -- a confusion between them passes every position where the clock is low and is
 wrong only later in a game. No perft can see it.
 
-**Two arguments of the same type transpose in silence.** `Move(from, to)` and
-`make_square(f, r)` are reversible, and so is any pair of `Color`s or same-typed keys. No
-type in this family addresses that.
+**Two arguments of the same type transpose in silence.** `Move(from, to)` takes two
+`Square`s and is reversible, and so is any pair of `Color`s or same-typed keys. No type in
+this family addresses that.
+
+`make_square(File, Rank)` is the counter-example, and it is where the technique shows its
+hand: the two arguments are *different* types, so the transposition is a compile error rather
+than a silent swap.
+
+```sh
+printf '#include "types.h"\nusing namespace Stockfish;\nint main(){File f=FILE_A;Rank r=RANK_1;return make_square(r,f);}\n' > /tmp/t.cpp
+g++ -std=c++20 -Isrc -fsyntax-only /tmp/t.cpp    # error: cannot convert Rank to File
+```
 
 **A wrong index that is in range.** Every enum here is a distinct type over an integer, not a
 refinement over a range. It narrows which *space* an index lives in, never which *entry*. The
@@ -137,6 +150,15 @@ measure it -- `tests/perfbudget.sh`, both tiers and both build modes.
    convenient will be used where it should not be.
 3. Check the value is **carried**, not computed with. If it participates in arithmetic inside
    the node body, expect a cost.
+
+   Where a quantity is constructed by arithmetic but only carried afterwards, the type belongs
+   at the boundary between the two. The keys are the case in point: every one is built by
+   XOR-ing Zobrist words, and `Zobrist::psq[pc][s]` is XOR-ed into the position, pawn,
+   non-pawn and minor-piece keys alike (`position.cpp:501-515`), so no typed key could permit
+   the construction without also permitting the mixing. Construction stays untyped inside
+   `position.cpp`; a type would begin at the accessors, which is the only place the rest of
+   the tree sees a key at all. **Type at the boundary or not at all** -- typing one side of it
+   reintroduces the cast at the other.
 4. **Make the mutation fail.** Break the code on purpose in the way the type is meant to stop,
    build it, and confirm the compiler rejects it. Arguing that it would fail is not watching
    it fail.
