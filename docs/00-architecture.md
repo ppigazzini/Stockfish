@@ -36,7 +36,7 @@ ls src/universal                        # runtime ISA dispatch entry points
 | `uci.h/.cpp`, `ucioption.h/.cpp`, `engine.h/.cpp` | the UCI transport, the option table, the session |
 | `benchmark.h/.cpp`, `perft.h`, `tune.h/.cpp` | bench positions, perft, SPSA tuning |
 | `score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from |
-| `basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray` |
+| `basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, and `TypedKey<KeySpace>` |
 | `platform.h` | what the machine provides: `prefetch`, `TimePoint`/`now`, `IsLittleEndian` |
 | `misc.h/.cpp` | what is left of the utility drawer: `RelaxedAtomic`, `PRNG`, the logger, the `dbg_*` counters, `sync_cout`, `split`, `CommandLine` |
 | `universal/` | per-ISA entry points for the runtime-dispatch binary |
