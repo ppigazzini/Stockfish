@@ -93,9 +93,10 @@ Its counts are **facts about chess**, not a golden. A mismatch is always a moveg
 
 ## `eval`
 
-Prints the evaluation with its breakdown, which is why `evaluate.cpp` reaches for
-`UCIEngine::to_cp` -- the trace has to render centipawns, and that is the coupling
-[00-architecture.md](00-architecture.md) records.
+Prints the evaluation with its breakdown. Rendering centipawns needs `to_cp`, which is the
+win-rate model fitted to fishtest statistics -- evaluation-domain knowledge rather than
+protocol -- so it lives in `score.h/.cpp` and `evaluate.cpp` no longer reaches into this zone
+to get it. `tests/depcheck.sh` is what keeps that from coming back.
 
 ## `tune.cpp` -- SPSA tuning
 

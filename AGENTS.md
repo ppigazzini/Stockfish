@@ -70,11 +70,18 @@ cost. These three do, and they are not interchangeable.
 ../tests/npsab.sh      <base-rev> [<head-rev>]   # interleaved paired wall clock
 ```
 
-**PGO is the binding lane.** `perfbudget.sh` at plain `-O3` and with `--pgo` disagree about
-header restructuring on this tree, by about 0.037% consistently. `make profile-build` is what
-ships and what fishtest measures, so a refactor free under PGO and costly under plain `-O3` has
-cost no player anything: report both, let PGO decide. A regression under PGO still does not
-land.
+**Measure with gcc AND clang, and let PGO decide.** One compiler cannot distinguish a change
+from its own codegen. Run `perfbudget.sh` with `--comp gcc` and `--comp clang`, and with
+`--pgo`, and put all of them in the commit body.
+
+A sign that **flips between gcc and clang** means the change is not an instruction-count change
+at all -- it is one compiler's layout. Measured here: taking `shm.h` out of `numa.h` reads
++0.0367% under gcc -O3 and **-0.0124% under clang**, on identical source with an identical node
+count.
+
+`make profile-build` is what ships and what fishtest measures, so PGO is the binding lane: a
+refactor free under PGO and costly under plain `-O3` on one compiler has cost no player
+anything. A regression under PGO still does not land.
 
 **Pick by what the change CLAIMS.**
 
