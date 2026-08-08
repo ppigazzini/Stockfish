@@ -25,9 +25,10 @@
 #include "basetypes.h"
 #include "../platform/platform.h"
 
+#include "searchoptions.h"
+
 namespace Stockfish {
 
-class OptionsMap;
 enum Color : u8;
 
 namespace Search {
@@ -41,7 +42,7 @@ class TimeManagement {
     void init(Search::LimitsType& limits,
               Color               us,
               int                 ply,
-              const OptionsMap&   options,
+              const SearchOptions& options,
               double&             originalTimeAdjust);
 
     TimePoint optimum() const;

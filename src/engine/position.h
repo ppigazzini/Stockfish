@@ -85,6 +85,10 @@ struct PositionSetError: std::runtime_error {
 // traversing the search tree.
 std::string square_name(Square s);
 
+// A move in UCI notation. Chess960 castling is encoded king-takes-rook; the
+// standard dialect rewrites it to the king's destination file.
+std::string move_to_uci(Move m, bool chess960 = false);
+
 class Position {
    public:
     static void init();

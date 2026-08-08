@@ -19,6 +19,7 @@
 #ifndef SCORE_H_INCLUDED
 #define SCORE_H_INCLUDED
 
+#include <string>
 #include <variant>
 #include <utility>
 
@@ -39,6 +40,9 @@ int win_rate_model(Value v, const Position& pos);
 // Turn a Value into an integer centipawn number, without treatment of mate and
 // similar special scores.
 int to_cp(Value v, const Position& pos);
+
+// The win/draw/loss triple in per-mille, as the UCI info line spells it.
+std::string wdl_to_string(Value v, const Position& pos);
 
 class Score {
    public:
