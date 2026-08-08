@@ -51,7 +51,7 @@ carries one. **Read it from `git log`, never from memory or a doc** -- it moves 
 functional commit.
 
 ```sh
-cd src && ../tests/signature.sh $(git log -20 --format=%b | grep -m1 -oE 'Bench: *[0-9]+' | grep -oE '[0-9]+')
+cd src && ../tests/signature.sh $(git log --format=%b | grep -m1 -oE 'Bench: *[0-9]+' | grep -oE '[0-9]+')
 ```
 
 **A byte-changing edit is not done until a gate says so.**
