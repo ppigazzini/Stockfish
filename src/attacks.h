@@ -26,6 +26,7 @@
 
 #include "types.h"
 #include "bitboard.h"
+#include "platform.h"
 
 #ifdef __aarch64__
     #include <arm_acle.h>

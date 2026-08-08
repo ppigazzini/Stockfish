@@ -29,7 +29,6 @@
 #include <sstream>
 
 #include "../position.h"
-#include "../misc.h"
 #include "../types.h"
 #include "../score.h"
 #include "network.h"

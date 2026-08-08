@@ -24,6 +24,7 @@
 
 #include "search.h"
 #include "ucioption.h"
+#include "platform.h"
 
 namespace Stockfish {
 
