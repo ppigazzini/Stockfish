@@ -18,6 +18,8 @@
 
 #include "tt.h"
 
+#include "arena.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
@@ -179,7 +181,7 @@ static_assert(sizeof(Cluster) == 32, "Suboptimal Cluster size");
 // Transposition table consists of clusters and each cluster consists
 // of ClusterSize number of TTEntry.
 void TranspositionTable::resize(usize mbSize, ThreadPool& threads) {
-    aligned_large_pages_free(table);
+    arena().free(table);
 
     clusterCount  = mbSize * 1024 * 1024 / sizeof(Cluster);
     usize ttBytes = clusterCount * sizeof(Cluster);
@@ -188,7 +190,7 @@ void TranspositionTable::resize(usize mbSize, ThreadPool& threads) {
     // memory oversubscription
     bool hugePageHint = ttBytes >= threads.numa_nodes() * HugePageSize * 8;
 
-    table = static_cast<Cluster*>(aligned_large_pages_alloc_with_hint(ttBytes, hugePageHint));
+    table = static_cast<Cluster*>(arena().alloc_hinted(ttBytes, hugePageHint));
 
     if (!table)
     {
