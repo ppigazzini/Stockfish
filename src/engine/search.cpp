@@ -49,8 +49,6 @@
 #include "timeman.h"
 #include "tt.h"
 #include "types.h"
-#include "../shell/uci.h"
-#include "../shell/ucioption.h"
 #include "../platform/platform.h"
 #include "basetypes.h"
 
