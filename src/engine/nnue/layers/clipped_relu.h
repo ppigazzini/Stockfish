@@ -26,6 +26,7 @@
 #include <iosfwd>
 
 #include "../nnue_common.h"
+#include "../../hashing.h"
 
 namespace Stockfish::Eval::NNUE::Layers {
 

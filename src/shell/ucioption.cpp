@@ -28,6 +28,7 @@
 #include <utility>
 
 #include "../platform/misc.h"
+#include "console.h"
 
 namespace Stockfish {
 

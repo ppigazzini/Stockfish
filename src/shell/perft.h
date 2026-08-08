@@ -27,6 +27,7 @@
 #include "../engine/types.h"
 #include "uci.h"
 #include "../platform/misc.h"
+#include "console.h"
 
 namespace Stockfish::Benchmark {
 
