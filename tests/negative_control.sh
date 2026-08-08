@@ -45,6 +45,17 @@ trap cleanup EXIT INT TERM
 
 die() { echo "negative-control: $*" >&2; exit 1; }
 
+# instrumented.py imports requests through tests/testing.py. uv supplies it
+# without installing anything; fall back to a bare python3 where it is already
+# importable, and to empty (skip) where neither works.
+if command -v uv >/dev/null; then
+    RUNPY="uv run --with requests python"
+elif python3 -c 'import requests' 2>/dev/null; then
+    RUNPY="python3"
+else
+    RUNPY=""
+fi
+
 # Apply one literal substitution, refusing if the anchor is not present exactly
 # once. A rotted anchor must not silently leave the tree unmutated.
 mutate() {
@@ -340,6 +351,67 @@ if selected perft; then
     fi
 fi
 
+# --------------------------------------------------------------- instrumented
+
+row instrumented
+if selected instrumented; then
+    # instrumented.py is a merge gate -- sanitizers.yml and matetrack.yml both
+    # run it -- and nothing had watched it fail. The mutation targets the
+    # contract its assertions actually rest on: _expect_critical requires a
+    # non-zero exit AND the literal "CRITICAL ERROR" in the output, so renaming
+    # the banner leaves the exit code alone and breaks only the string. Removing
+    # the validation instead would leave the engine dying for some other reason
+    # and the test passing for the wrong one.
+    if [ -z "$RUNPY" ]; then
+        echo "negative-control: instrumented SKIPPED -- no requests and no uv to supply it"
+        SKIP=$((SKIP+1))
+    else
+        echo "negative-control: instrumented -- the CRITICAL ERROR contract renamed"
+        mutate src/uci.cpp \
+            'sync_cout << "info string CRITICAL ERROR: Command `" << currentCmd' \
+            'sync_cout << "info string SEVERE PROBLEM: Command `" << currentCmd'
+        if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
+            if ( cd src && $RUNPY ../tests/instrumented.py --none ./stockfish ) >/dev/null 2>&1; then
+                echo "  NOT DETECTED -- the suite passed a renamed error contract"; FAIL=$((FAIL+1))
+            else
+                echo "  ok, red (1)"; PASS=$((PASS+1))
+            fi
+        else
+            restore; die "the instrumented mutant did not compile"
+        fi
+        restore
+        ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
+    fi
+fi
+
+# --------------------------------------------------------------- tbfetch
+
+row tbfetch
+if selected tbfetch; then
+    # tbfetch verifies by MAGIC rather than by HTTP status, because a mirror
+    # that answers a missing file with a body -- an error page, a redirect to a
+    # landing page -- would otherwise be stored as a table and fail much later
+    # inside the decoder, reading as corruption rather than as a bad download.
+    # Serve exactly that from a file:// mirror, so the row needs no network.
+    echo "negative-control: tbfetch     -- a mirror serving a body that is not a table"
+    NCMIRROR=$(mktemp -d); NCDEST=$(mktemp -d)
+    for stem in KQvK KRvK KPvK KNvK KBvK; do
+        for ext in rtbw rtbz; do
+            printf '<!DOCTYPE html><title>404</title>' > "$NCMIRROR/$stem.$ext"
+        done
+    done
+    if TB_MIRROR="file://$NCMIRROR" ./tests/tbfetch.sh "$NCDEST" >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- an HTML body was accepted as a tablebase"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    # And the inverse: nothing was left behind for a later run to trust.
+    if [ -n "$(ls -A "$NCDEST" 2>/dev/null)" ]; then
+        echo "  NOT DETECTED -- a rejected download was still stored"; FAIL=$((FAIL+1))
+    fi
+    rm -rf "$NCMIRROR" "$NCDEST"
+fi
+
 # --------------------------------------------------------------- reprosearch
 
 row reprosearch
@@ -486,6 +558,61 @@ kill -SEGV $$'
 fi
 
 rm -rf "$NCSTUB"
+
+# --------------------------------------------------------------- coverage
+#
+# The gap this closes: a gate with no row here was simply ABSENT, and absence is
+# quiet. lanecheck.sh asks whether a gate is dispatched and docslint.sh asks
+# whether it is documented; neither asks whether it can fail, so a gate could be
+# fully wired, fully described and inert. reprosearch.sh was exactly that.
+#
+# The excuse list expires in both directions, as lanecheck's does: an excused
+# script that HAS a row is a stale excuse, and an excuse naming a script the
+# tree no longer carries fails too.
+
+COVERAGE_EXCUSED_NAMES=(
+  npsab.sh
+  negative_control.sh
+  testing.py
+)
+COVERAGE_EXCUSED_WHY=(
+  "a wall-clock measurement rather than a pass/fail gate; it carries its own A/A control, which is the same check from the inside"
+  "this script -- it cannot be its own negative control"
+  "a harness imported by instrumented.py rather than a gate; instrumented.py's row covers it"
+)
+
+echo
+echo "== gates whose failure has been observed =="
+cov_rc=0
+for g in tests/*.sh tests/*.py; do
+    [ -e "$g" ] || continue
+    name=$(basename "$g"); stem=${name%.*}
+    covered=no
+    for r in $KNOWN; do
+        case "$r" in "$stem"|"$stem"-*) covered=yes ;; esac
+    done
+    excused=""; i=0
+    for e in "${COVERAGE_EXCUSED_NAMES[@]}"; do
+        [ "$e" = "$name" ] && excused=${COVERAGE_EXCUSED_WHY[$i]}
+        i=$((i+1))
+    done
+    if [ "$covered" = yes ] && [ -n "$excused" ]; then
+        echo "  STALE EXCUSE: $name has a row but is excused -- remove the excuse"
+        cov_rc=1
+    elif [ "$covered" = yes ]; then
+        echo "  covered    $name"
+    elif [ -n "$excused" ]; then
+        echo "  excused    $name -- $excused"
+    else
+        echo "  NO ROW     $name -- add one, or an excuse saying why it cannot fail"
+        cov_rc=1
+    fi
+done
+
+for e in "${COVERAGE_EXCUSED_NAMES[@]}"; do
+    [ -e "tests/$e" ] || { echo "  DEAD EXCUSE: tests/$e is not in the tree"; cov_rc=1; }
+done
+[ "$cov_rc" = 0 ] || FAIL=$((FAIL+1))
 
 # --------------------------------------------------------------------- verdict
 
