@@ -416,8 +416,15 @@ asserts **both** halves: `depcheck` stays green, and `linkcheck` goes red.
 The zone table lives in `tests/zones.sh` and is sourced by both, because two checks that
 disagreed about which file is engine would be worse than either alone.
 
-`tests/linkcheck.baseline` records the symbols today, and expires in both directions like the
-other baselines. It is finer-grained than the include baseline on purpose: the two files that
+It asks **two** questions, with a baseline each. `tests/linkcheck.baseline` is the
+engine-to-shell edge and is **empty**: B7's seams closed it.
+`tests/linkcheck-platform.baseline` is the engine-to-platform edge and holds 27 references --
+the Syzygy prober, the NUMA topology, and some `misc.h` helpers. Both expire in both directions
+like the other baselines.
+
+The second is reported separately because closing it is different work: the shell edge needed a
+value snapshot, this one needs injection seams. **It is also the answer to whether `engine/`
+links alone, which is no.** It is finer-grained than the include baseline on purpose: the two files that
 reach the shell already have their includes listed, so only a symbol-level record makes a *new*
 call visible when the include that would have announced it is there already.
 

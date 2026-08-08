@@ -29,6 +29,7 @@ cd "$ROOT" || exit 2
 source "$(dirname "${BASH_SOURCE[0]}")/zones.sh"
 
 BASELINE=tests/linkcheck.baseline
+BASELINE_PLATFORM=tests/linkcheck-platform.baseline
 ARCH=${ARCH:-x86-64-avx2}
 JOBS=${JOBS:-$(nproc 2>/dev/null || echo 4)}
 
@@ -56,16 +57,20 @@ OBJ=$(cd "$BUILD/w/src" && find . -name '*.o' | sed 's|^\./||')
 # Symbols each shell object DEFINES. `nm --defined-only` lists them; the zone of
 # an object is the zone of its source stem.
 shell_defs="$BUILD/shell.defs"
+plat_defs="$BUILD/plat.defs"
 : > "$shell_defs"
+: > "$plat_defs"
 engine_objs=""
 for o in $OBJ; do
     stem=$(basename "$o" .o)
     case "$(zone_of "$stem")" in
-        shell)  nm --defined-only "$BUILD/w/src/$o" | awk '{print $3}' >> "$shell_defs" ;;
-        engine) engine_objs="$engine_objs $o" ;;
+        shell)    nm --defined-only "$BUILD/w/src/$o" | awk '{print $3}' >> "$shell_defs" ;;
+        platform) nm --defined-only "$BUILD/w/src/$o" | awk '{print $3}' >> "$plat_defs" ;;
+        engine)   engine_objs="$engine_objs $o" ;;
     esac
 done
 sort -u -o "$shell_defs" "$shell_defs"
+sort -u -o "$plat_defs" "$plat_defs"
 
 [ -s "$shell_defs" ] || { echo "linkcheck: SKIPPED -- no shell object defined anything" >&2; exit 2; }
 [ -n "$engine_objs" ] || { echo "linkcheck: SKIPPED -- no engine object was built" >&2; exit 2; }
@@ -117,6 +122,41 @@ if [ -n "$gone" ]; then
     rc=1
 else
     echo "  ok"
+fi
+
+# The engine-to-PLATFORM edge. The declared stack says the engine depends on
+# nothing outside itself, so this is a violation too -- and it is the one that
+# decides whether engine/ can be linked alone. It is reported separately because
+# its baseline is large and closing it is a different piece of work: the shell
+# edge needed a value snapshot, this one needs injection seams for the tablebase
+# prober and the NUMA topology.
+echo
+echo "== engine objects referencing a platform-defined symbol =="
+pfound="$BUILD/pfound"
+: > "$pfound"
+for o in $engine_objs; do
+    nm -u "$BUILD/w/src/$o" | awk '{print $2}' | sort -u > "$BUILD/pu"
+    comm -12 "$BUILD/pu" "$plat_defs" | while read -r sym; do
+        printf '%s %s\n' "$(basename "$o")" "$sym" >> "$pfound"
+    done
+done
+sort -u -o "$pfound" "$pfound"
+pknown=""
+[ -f "$BASELINE_PLATFORM" ] && pknown=$(grep -vE '^\s*(#|$)' "$BASELINE_PLATFORM" | sort -u)
+pnew=$(comm -23 <(cut -d' ' -f1,2 "$pfound") <(printf '%s\n' "$pknown" | grep -v '^$'))
+pgone=$(comm -13 <(cut -d' ' -f1,2 "$pfound") <(printf '%s\n' "$pknown" | grep -v '^$'))
+pn=$(grep -c . "$pfound" || true)
+echo "  $pn reference(s), $(printf '%s\n' "$pknown" | grep -c . || true) baselined"
+if [ -n "$pnew" ]; then
+    printf '%s\n' "$pnew" | while read -r obj sym; do
+        printf '  NEW    %-22s %s\n' "$obj" "$(echo "$sym" | c++filt | cut -c1-90)"
+    done
+    rc=1
+fi
+if [ -n "$pgone" ]; then
+    printf '%s\n' "$pgone" | sed 's/^/  STALE  /'
+    echo "  remove these from $BASELINE_PLATFORM"
+    rc=1
 fi
 
 echo
