@@ -16,6 +16,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "clock.h"
 #include "search.h"
 
 #include "output_sink.h"
