@@ -13,8 +13,8 @@ have their own directory.
 
 ```sh
 ls src/*.cpp src/*.h                    # the engine, flat
-ls src/nnue src/nnue/features src/nnue/layers   # the network
-ls src/syzygy                           # the tablebase prober
+ls src/engine/nnue src/engine/nnue/features src/engine/nnue/layers   # the network
+ls src/platform/syzygy                           # the tablebase prober
 ls src/universal                        # runtime ISA dispatch entry points
 ```
 
@@ -53,7 +53,7 @@ comm -23 <(cd src && ls *.cpp nnue/*.cpp nnue/*/*.cpp syzygy/*.cpp | sort) \
 
 ## Startup
 
-`main` (`src/main.cpp`) does four things in an order that is load-bearing:
+`main` (`src/shell/main.cpp`) does four things in an order that is load-bearing:
 
 ```cpp
 Attacks::init();      // slider and leaper tables
@@ -111,7 +111,7 @@ table, the accumulator stack and the refresh cache are allocated once outside an
 
 ## What depends on what
 
-`src/` is flat, so a zone is a **name list rather than a directory**, and the stack is
+`src/` splits by responsibility, one directory each, and the stack is
 `shell -> platform -> engine` with the engine at the bottom:
 
 | Zone | Owns | May include |
@@ -123,9 +123,13 @@ table, the accumulator stack and the refresh cache are allocated once outside an
 `platform` is not a layer *beneath* the engine: it is the runtime that hosts the engine, so it
 may depend on engine types and not the other way round.
 
+A file's zone is now **its directory**, so a new file joins a zone by where it is put, and one
+that belongs to none is reported rather than silently exempt. `tests/zones.sh` holds the
+mapping and both checks read it.
+
 **One edge is checked, because only one is a defect rather than a choice**: an engine file that
-includes a shell header. `./tests/depcheck.sh` fails on a new one, and
-`tests/depcheck.baseline` lists the ones that exist today. The baseline expires in both
+reaches a shell one. `./tests/depcheck.sh` reads includes and `./tests/linkcheck.sh` reads
+symbols, and `tests/depcheck.baseline` and `tests/linkcheck.baseline` list what exists today. The baseline expires in both
 directions -- an entry describing an edge that no longer happens fails too, so a fixed edge
 cannot quietly stay listed as debt.
 
@@ -140,7 +144,7 @@ the honest measure of how far the tree is from it. Concretely, at the time of wr
   `square_name` in `position.h/.cpp`. `evaluate.cpp`, `position.cpp`, `score.cpp` and
   `nnue/nnue_misc.cpp` include neither.
 - **`Search::Worker` holds the frontend as members**: `const OptionsMap&`, `ThreadPool&`,
-  `TranspositionTable&` and the network reference (`src/search.h`). Linking the search means
+  `TranspositionTable&` and the network reference (`src/engine/search.h`). Linking the search means
   linking the option model and the thread pool; there is no way to drive a search without a
   process around it.
 - **`numa.h` no longer carries all of its implementation.** The cold half of `NumaConfig` --
@@ -184,7 +188,7 @@ closure is a coupling fact and not a build-time one.
 
 Lazy SMP: every `Worker` searches the same tree independently and they share the
 transposition table, the history tables and a stop flag. The sharing is **deliberately racy**
-and the races are typed rather than left undefined -- see `RelaxedAtomic` in `src/misc.h` and
+and the races are typed rather than left undefined -- see `RelaxedAtomic` in `src/platform/misc.h` and
 its uses in `search.h`, `history.h`, `thread.h` and `tt.cpp`.
 
 `bench` is single-threaded, so every value gate in [10-tooling-ci.md](10-tooling-ci.md) stays

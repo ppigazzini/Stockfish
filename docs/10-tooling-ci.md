@@ -514,7 +514,7 @@ printf '\x00' | dd of=tests/syzygy-3man/KNvK.rtbw bs=1 seek=10 count=1 conv=notr
 
 The engine loads the table, answers `readyok`, and dies with SIGSEGV on the first probe. Under
 valgrind the fault is a read of unmapped memory inside `decompress_pairs`
-(`src/syzygy/tbprobe.cpp`), reached from `probe_dtz` by way of `rank_root_moves` and
+(`src/platform/syzygy/tbprobe.cpp`), reached from `probe_dtz` by way of `rank_root_moves` and
 `Engine::go`:
 
 ```
@@ -557,8 +557,8 @@ printf 'uci\nisready\ngo infinite\nsetoption name Hash value 32\nquit\n' | ./src
 The engine never exits. It is not slow -- it is unreachable: `stop` and `quit` are no longer
 read, so nothing in the protocol can recover it.
 
-`Engine::resize_threads` (`src/engine.cpp:249`) and `Engine::set_tt_size`
-(`src/engine.cpp:259`) each open with `wait_for_search_finished()`, and both are reached from
+`Engine::resize_threads` (`src/shell/engine.cpp:249`) and `Engine::set_tt_size`
+(`src/shell/engine.cpp:259`) each open with `wait_for_search_finished()`, and both are reached from
 an option's on-change handler. That handler runs on the **UCI reader thread**, which is the
 only thread that would ever read the `stop` that releases the wait. The reader blocks waiting
 for a search that only the reader could end.
