@@ -1,17 +1,13 @@
-# Engine objects that reference a symbol only a shell object defines, as of
-# today. Symbol-level, from a -fno-lto build; see tests/linkcheck.sh.
+# Engine objects that reference a symbol only a shell object defines, from a
+# -fno-lto build. Symbol-level; see tests/linkcheck.sh.
 #
-# These are the same two files tests/depcheck.baseline names at include level --
-# search and the Syzygy prober reaching the option map, the time manager and the
-# UCI renderers. This file records WHICH symbols, so a new one is visible even
-# when the include that would have announced it is already there.
-search.o _ZN9Stockfish14TimeManagement18advance_nodes_timeEl
-search.o _ZN9Stockfish14TimeManagement4initERNS_6Search10LimitsTypeENS_5ColorEiRKNS_10OptionsMapERd
+# After B7 the zones are directories. What survived the move is search.o
+# reaching the option map and the UCI renderers, and timeman.o reaching the
+# option map -- the edge the move exposed, since timeman is engine and
+# ucioption is shell.
 search.o _ZN9Stockfish9UCIEngine3wdlB5cxx11EiRKNS_8PositionE
 search.o _ZN9Stockfish9UCIEngine4moveB5cxx11ENS_4MoveEb
 search.o _ZNK9Stockfish10OptionsMapixERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE
-search.o _ZNK9Stockfish14TimeManagement7maximumEv
-search.o _ZNK9Stockfish14TimeManagement7optimumEv
 search.o _ZNK9Stockfish6OptioncviEv
-tbprobe.o _ZNK9Stockfish10OptionsMapixERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE
-tbprobe.o _ZNK9Stockfish6OptioncviEv
+timeman.o _ZNK9Stockfish10OptionsMapixERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE
+timeman.o _ZNK9Stockfish6OptioncviEv
