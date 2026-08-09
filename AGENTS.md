@@ -166,14 +166,43 @@ the failure it prevents:
 **One logical change per commit** -- a commit that touches three modules cannot be bisected
 when the node count moves.
 
-Conventional subject 72 characters or fewer, blank line, body wrapped at 80 carrying the
-evidence: gate output and exit code, not "should work". A change that moves the bench
-signature must say what moved it and carry the new `Bench:`.
+**Conventional Commits v1.0.0.** The subject is `type(scope): description`, 72 characters or
+fewer, lower case after the colon, no full stop:
 
-**No trailers.** The body ends with the evidence and nothing after it: no `Co-Authored-By:`
-for a tool or an assistant, and no generated-by advertisement of any kind. A trailer naming a
-non-author is a false claim about who wrote the change, and every blame view repeats it
-forever. Tooling that appends one by default must be configured not to, rather than having it
-stripped in a later rewrite.
+```
+refactor(engine): seam the clock, the dependency no gate can see
+test: link the engine alone, and fix the LTO flag that did nothing
+fix: repair the -Werror errors and the stale WASM path
+```
+
+| type | use for |
+|---|---|
+| `feat` | a capability the engine or a host did not have |
+| `fix` | a defect a user or a host can hit |
+| `perf` | a change whose claim is speed -- carries its measurement |
+| `refactor` | behaviour-preserving structure: a zone move, a seam, a header split |
+| `test` | anything under `tests/`, including a new gate |
+| `ci` | anything under `.github/` |
+| `docs` | `docs/`, `AGENTS.md`, `README.md`, and comment-only source changes |
+| `build` | `Makefile`, `pyproject.toml`, `.gitignore`, the pre-commit config |
+
+Scope is the zone -- `engine`, `platform`, `shell` -- or a subsystem, and is omitted when the
+change is not confined to one. A breaking change to a UCI option or an exported interface takes
+`!` before the colon and says what breaks in the body.
+
+Body wrapped at 80, carrying the evidence: gate output and exit code, not "should work". A
+change that moves the bench signature must say what moved it and carry the new `Bench:`.
+
+**Write the body to the rules in [docs/12-writing.md](docs/12-writing.md).** A commit message is
+the one surface where history is the subject rather than the contamination, and that licence
+covers the change -- not the prose. No capitalised shouting to mark a section, no paragraph
+describing what the commit does or does not establish, no summary of the body above it. State
+the fact and stop.
+
+**Footers: `Bench:` and `BREAKING CHANGE:` only.** No `Co-Authored-By:` for a tool or an
+assistant, and no generated-by advertisement of any kind. A footer naming a non-author is a
+false claim about who wrote the change, and every blame view repeats it forever. Tooling that
+appends one by default must be configured not to, rather than having it stripped in a later
+rewrite.
 
 **Don't** `git push` -- commit locally and stop unless asked.
