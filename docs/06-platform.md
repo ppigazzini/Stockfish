@@ -40,7 +40,10 @@ which is why `tests/enginelink.sh` can link and run the engine with no platform 
 
 The installer is the **first member declared** in `Engine`, and that position is the whole
 guarantee: a block taken from the fallback allocator and released by the host's is heap
-corruption with no diagnostic.
+corruption with no diagnostic. `ThreadPool threads` is declared **last** for the mirror of the
+same reason -- reverse declaration order destroys the workers before the members they hold
+references into. Both ends live in `src/shell/engine.h`, not in the constructor's initialiser
+list, which decides nothing here.
 
 Large pages need privilege on Windows (`OpenProcessToken`, `LookupPrivilegeValueA`, resolved
 as function pointers) and `MADV_HUGEPAGE` on Linux. `has_large_pages()` reports whether the
@@ -87,9 +90,12 @@ both.
 
 ### Binding threads
 
-`distribute_threads_among_numa_nodes(numThreads)` returns which node each thread should bind
-to. A **single thread is not bound at all**: binding it would restrict its memory to one node
-for no benefit, since there is no second thread to be near.
+`suggests_binding_threads(numThreads)` decides *whether* to bind at all and
+`distribute_threads_among_numa_nodes(numThreads)` then decides *which* node each thread gets.
+Two answers are fixed rather than derived: a user-set affinity that disagrees with the OS
+always binds, and **a single thread never does** -- there is nothing to distribute. The cost of
+not binding is stated in the same function: unbound threads can only use the replica on the
+first node, so the engine takes the hit whenever the OS schedules elsewhere.
 
 `NumaReplicatedAccessToken` is what a worker holds to read the copy of a replicated object
 belonging to its own node.

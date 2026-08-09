@@ -67,7 +67,11 @@ struct TTData {
 struct TTWriter {
    public:
     void write(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev, u8 generation8);
-    void penalize(int penalty);  // decrement stored depth by the penalty
+    // Decrement the stored depth by the penalty, clamped at zero. depth8 is a
+    // u8 and bool(depth8) IS the occupancy test, so an unclamped penalty would
+    // wrap and leave a penalised shallow entry the deepest in its cluster;
+    // clamping retires the entry instead.
+    void penalize(int penalty);
 
    private:
     friend class TranspositionTable;

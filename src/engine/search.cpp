@@ -155,7 +155,8 @@ void update_all_stats(const Position& pos,
                       bool            PvNode);
 
 // Detect shuffling moves in order to limit search explosions
-// Added in #6447 as non-regression, and so its parameters should not be tuned
+// The thresholds below have no SPRT behind them: keep them out of TUNE unless
+// one is run for them
 bool is_shuffling(Move move, Stack* const ss, const Position& pos) {
     if (pos.capture_stage(move) || pos.rule50_count() < 10)
         return false;
@@ -206,9 +207,10 @@ Search::Worker::Worker(SharedState&                    sharedState,
 //
 // THIS IS CHESS POLICY, NOT DISPATCH: it reads root moves, scores, principal
 // variations and mate distances and votes on them, and the only thing it wants
-// from the host is the set of workers to read. Keep it here rather than beside
-// the workers in the thread pool, so the worker-set seam carries lifecycle and
-// dispatch alone -- count and at, nothing that knows what a good move is.
+// from the host is the set of workers to read, which it takes through count and
+// at. Keep it here rather than beside the workers in the thread pool, so the
+// worker-set seam carries lifecycle and dispatch alone and nothing on it knows
+// what a good move is.
 Search::Worker* Search::best_worker(const std::vector<Search::Worker*>& workers) {
 
     Worker* bestWorker = workers.front();
@@ -298,7 +300,7 @@ void Search::Worker::start_searching() {
     bool uciPvSent = iterative_deepening();
 
     // When we reach the maximum depth, we can arrive here without a raise of
-    // threads.stop. However, if we are pondering or in an infinite search,
+    // stopFlag. However, if we are pondering or in an infinite search,
     // the UCI protocol states that we shouldn't print the best move before the
     // GUI sends a "stop" or "ponderhit" command. We therefore simply wait here
     // until the GUI sends one of those commands.
@@ -306,7 +308,7 @@ void Search::Worker::start_searching() {
     {}  // Busy wait for a stop or a ponder reset
 
     // Stop the threads if not already stopped (also raise the stop if
-    // "ponderhit" just reset threads.ponder)
+    // "ponderhit" just reset the manager's ponder flag)
     stopFlag.store(true);
 
     // Wait until all threads have finished

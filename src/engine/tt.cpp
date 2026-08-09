@@ -48,7 +48,8 @@ namespace Stockfish {
 // value      16 bit
 // evaluation 16 bit
 //
-// These fields are in the same order as accessed by TT::probe(), since memory is fastest sequentially.
+// These fields are in the same order as accessed by TranspositionTable::probe(), since memory is
+// fastest sequentially.
 // Equally, the store order in save() matches this order.
 //
 // We use `bool(depth8)` as the cheap internal occupancy check, corresponding to `depth == DEPTH_NONE`
@@ -105,7 +106,7 @@ void TTEntry::save(
     {
         assert(d > DEPTH_NONE);
         assert(d - DEPTH_NONE < 256);
-        assert(curr_generation <= GENERATION_MASK);  // TT::new_search() plays nice
+        assert(curr_generation <= GENERATION_MASK);  // TranspositionTable::new_search() plays nice
 
         key16     = u16(k);
         depth8    = u8(d - DEPTH_NONE);
