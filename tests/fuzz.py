@@ -105,7 +105,7 @@ TB_FEN = "8/8/8/8/3k4/8/3Q4/3K4 b - - 0 1"
 
 
 def run(cmds, timeout=25, extra_env=None):
-    """Feed lines to a fresh engine. Return (returncode, output) or None on hang."""
+    """Feed lines to a fresh engine. Return (returncode, output); returncode is None on a hang."""
     env = dict(os.environ)
     if extra_env:
         env.update(extra_env)

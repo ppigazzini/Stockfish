@@ -132,7 +132,7 @@ void TTWriter::write(
     {
         assert(d > DEPTH_NONE);
         assert(d - DEPTH_NONE < 256);
-        assert(curr_generation <= GENERATION_MASK);  // TT::new_search() plays nice
+        assert(curr_generation <= GENERATION_MASK);  // TranspositionTable::new_search() plays nice
 
         cluster->keys   = keys ^ (keyDiff << shift);
         entry.depth8    = u8(d - DEPTH_NONE);

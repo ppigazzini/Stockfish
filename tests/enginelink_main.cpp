@@ -30,8 +30,8 @@
 //
 // Usage: enginelink_main <dir-holding-the-net>  ->  0 on success, non-zero with
 // a reason on stderr. A DIRECTORY, not a file: the engine knows its own default
-// net name, and src/ is gitignored so it accumulates nets from older builds --
-// naming one from outside picks a stale net that will not parse.
+// net name, and `**/*.nnue` is gitignored, so src/ accumulates the nets of older
+// builds and naming one from outside picks a stale one that will not parse.
 //
 // Deliberately not a test framework: it must build from the engine sources
 // alone.
