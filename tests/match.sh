@@ -159,7 +159,10 @@ fi
 echo
 echo "match: playing ..."
 set +e
-"$CACHE/fastchess" \
+# Run it from the scratch directory. fastchess autosaves a resume config into
+# its working directory on exit, and this gate used to run from the repo root:
+# every match left a config.json there, and one of them reached a commit.
+( cd "$WORK" && "$CACHE/fastchess" \
     -engine name=refish   cmd="$WORK/wt-head/src/stockfish" \
     -engine name=upstream cmd="$WORK/wt-base/src/stockfish" \
     -each proto=uci tc="$TC" option.Threads="$THREADS" option.Hash="$HASH" \
@@ -168,7 +171,7 @@ set +e
     -openings file="$BOOK" format=epd order=random \
     -srand "$(od -An -N4 -tu4 < /dev/urandom | tr -d ' ')" \
     -ratinginterval 0 -report penta=true \
-    -log file="$WORK/match.log" \
+    -log file="$WORK/match.log" ) \
     > "$WORK/match.out" 2>&1
 rc=$?
 set -e
