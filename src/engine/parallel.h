@@ -52,6 +52,11 @@ struct ParallelFor {
 const ParallelFor& parallel_for();
 void               set_parallel_for(const ParallelFor& p);
 
+// Put the built-in default back. A host that is going away must call this before
+// the object the registered pointers reach through dies, or the seam keeps
+// dispatching into freed storage.
+void               reset_parallel_for();
+
 }  // namespace Stockfish
 
 #endif  // #ifndef PARALLEL_H_INCLUDED

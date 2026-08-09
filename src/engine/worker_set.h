@@ -64,6 +64,11 @@ struct WorkerSet {
 const WorkerSet& worker_set();
 void             set_worker_set(const WorkerSet& w);
 
+// Put the built-in default back, for the same reason reset_parallel_for exists:
+// this seam's ctx is the host's thread pool, and nothing else notices when that
+// pool is destroyed.
+void             reset_worker_set();
+
 }  // namespace Stockfish
 
 #endif  // #ifndef WORKER_SET_H_INCLUDED
