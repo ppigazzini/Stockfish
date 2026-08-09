@@ -204,8 +204,8 @@ template<KeySpace S>
 class TypedKey {
    public:
     TypedKey() = default;
-    constexpr explicit TypedKey(u64 v) :
-        v(v) {}
+    constexpr explicit TypedKey(u64 key) :
+        v(key) {}
 
     constexpr u64 raw() const { return v; }
 
