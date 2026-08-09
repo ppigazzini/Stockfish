@@ -77,6 +77,14 @@ jobs:
       - name: Lower ALSR entropy
         run: sudo sysctl -w vm.mmap_rnd_bits=28
 
+      # tests/testing.py imports requests, and this lane worked only because the
+      # hosted runner image happens to ship it. That is a gate resting on an
+      # accident: the day the image drops it, instrumented.py dies on import and
+      # the sanitizer lane stops proving anything. pyproject.toml declares it in
+      # the `gates` group; install it explicitly rather than hope.
+      - name: Install the gate's Python dependency
+        run: python3 -m pip install --user requests
+
       # Sanitizers
 
       - name: ${{ matrix.sanitizers.name }}

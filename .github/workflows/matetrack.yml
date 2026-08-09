@@ -52,6 +52,12 @@ jobs:
 
 
       # matecheck/python chess is not good at handling crashing engines. Do a basic check first.
+      # See sanitizers.yml: tests/testing.py imports requests and nothing here
+      # installed it. matetrack's own requirements.txt is a different file for a
+      # different tool and is not a substitute.
+      - name: Install the gate's Python dependency
+        run: python3 -m pip install --user requests
+
       - name: Test engine functionality
         working-directory: Stockfish/src
         run: |

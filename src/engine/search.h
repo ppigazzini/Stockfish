@@ -309,16 +309,26 @@ class SearchManager: public ISearchManager {
                    const TranspositionTable& tt,
                    Depth                     depth);
 
+    // EVERY ONE OF THESE CARRIES ITS INITIAL VALUE. They had none, and were
+    // valid only because the host remembered to assign them -- ThreadPool::clear
+    // sets four and start_thinking sets two, which is the platform initialising
+    // engine state from outside.
+    //
+    // The values are exactly what those two assign, so the hosted path is
+    // unchanged; what changes is that a manager is now valid the moment it
+    // exists. An in-process search with no pool read `ponder` before anything
+    // wrote it, and UBSan caught the load of 190 as a bool -- found by
+    // tests/fuzzsearch.sh on its first run, on the EMPTY input.
     Stockfish::TimeManagement tm;
-    double                    originalTimeAdjust;
-    int                       callsCnt;
-    std::atomic_bool          ponder;
+    double                    originalTimeAdjust = -1;
+    int                       callsCnt           = 0;
+    std::atomic_bool          ponder             = false;
 
     std::array<Value, 4> iterValue;
-    double               previousTimeReduction;
-    Value                bestPreviousScore;
-    Value                bestPreviousAverageScore;
-    bool                 stopOnPonderhit;
+    double               previousTimeReduction    = 0.85;
+    Value                bestPreviousScore        = VALUE_INFINITE;
+    Value                bestPreviousAverageScore = VALUE_INFINITE;
+    bool                 stopOnPonderhit          = false;
 
     const UpdateContext& updates;
 };
