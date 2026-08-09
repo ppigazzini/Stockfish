@@ -61,6 +61,17 @@ the search can tell a proven result from an estimate. `VALUE_TB` and the
 
 ## The prober
 
+The prober is **platform code the engine reaches through a seam**. `engine/tb_source.h`
+declares the three hooks the search needs -- `max_cardinality`, `probe_wdl`, `rank_root_moves`
+-- along with the types they speak (`Config`, `WDLScore`, `ProbeState`), and
+`platform/syzygy/tbprobe.h` re-exports those types by including it, so the prober and its
+callers agree on one definition.
+
+Unregistered the source answers **no tablebases loaded**, which is exactly true of an engine
+with none: the search's `tbConfig.cardinality != 0` guard short-circuits before the call. That
+is why `bench` cannot measure this seam -- with `SyzygyPath` empty it measures the guard. See
+[00-architecture.md](00-architecture.md).
+
 Most of `tbprobe.cpp` sits inside one anonymous namespace, and it is the only part of the
 engine that **parses a file the project did not write**.
 

@@ -30,3 +30,9 @@ duplicates it.
 checks a dead link, a named path that does not exist, a pinned bench signature, a gate no
 page names, and a tracked file pointing into the untracked working area. It cannot tell you a
 sentence has become false.
+
+**The zone boundary is checked, not described.** `src/` is `engine/`, `platform/` and `shell/`,
+the engine depends on neither of the others, and four gates hold that: `tests/depcheck.sh` at
+the include, `tests/linkcheck.sh` at the symbol, `tests/enginelink.sh` at the link, and
+`tests/fuzzsearch.sh` by running the engine with no host at all. Both symbol baselines are
+empty and are meant to stay that way.

@@ -19,6 +19,37 @@ A command therefore parses in `uci.cpp` and executes against `engine.cpp`. That 
 boundary to keep when adding a command: a new UCI verb should not grow new state in the
 transport.
 
+## The composition root
+
+`engine.cpp` is also where the engine's seams are filled. The engine declares each hook and
+reads it through a getter; nothing outside this file calls a setter.
+
+```cpp
+// src/engine/output_sink.h -- the engine declares the seam.
+struct OutputSink {
+    void (*line)(std::string_view);
+    void (*debug_dump)();
+};
+void set_output_sink(const OutputSink& s);
+
+// src/shell/engine.cpp -- the composition root fills it.
+set_output_sink({host_line, dbg_print});
+```
+
+The registration points are two, and both are ordering-sensitive:
+
+| Where | Fills | Why there |
+|---|---|---|
+| `Engine::ArenaInstallerTag` | arena, output sink, tablebase source | the tag is the **first member declared**, so it runs before anything allocates |
+| `Engine::resize_threads` | parallel-for, worker set | both need a pool, and the parallel-for must be installed before `set_tt_size` |
+
+The seams are function pointers rather than closures, so a host that needs per-instance state
+passes it as the `void* ctx` the struct carries -- the worker set uses the pool itself. A
+file-scope pointer is the alternative, and it makes two engines in one process impossible.
+
+The full catalogue, with each default and what it costs, is in
+[00-architecture.md](00-architecture.md).
+
 ## The command loop
 
 `UCIEngine::loop` reads lines from standard input and dispatches on the first token. The
