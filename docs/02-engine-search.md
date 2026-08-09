@@ -75,7 +75,8 @@ transposed at a call site.
 | `CapturePieceToHistory` | moving piece, destination, captured type |
 | `PieceToHistory` (a continuation plane) | moving piece, destination |
 | `PawnHistory` | pawn-key row, piece, destination |
-| `CorrectionHistory` | a key row |
+| `UnifiedCorrectionHistory` | a key row, then colour, giving one `CorrectionBundle` |
+| `CorrectionHistory<PieceTo>` / `<Continuation>` | moving piece and destination, and a plane of those per previous move |
 | `TTMoveHistory` | a single entry |
 
 Each table's `D` is a tuned constant and moves with tuning patches, so read it from the
@@ -86,9 +87,11 @@ grep -nE 'using [A-Za-z]+History' src/engine/history.h
 ```
 
 The four correction counters share one `CorrectionBundle` per row, and `SharedHistories`
-hands out the **counter** rather than the row -- `pawn_correction(pos, us)` and its three
-siblings -- so the key that selects the row and the field read from it are chosen in one
-place. `do_move` prefetches the rows themselves, written out at the call site.
+hands out the **counter** rather than the row: `pawn_correction(pos, us)`,
+`minor_piece_correction(pos, us)`, and `nonpawn_correction<c>(pos, us)`, which is templated on
+the colour whose key selects the row and so yields the remaining two counters. Each picks the
+key and the field in one place, so a caller cannot pair one key's row with another key's
+field. `do_move` prefetches the four counters, written out at the call site.
 
 `ContinuationHistory` is a `MultiArray<PieceToHistory, PIECE_NB, SQUARE_NB>`: a plane per
 (piece, destination) of the *previous* move, each plane itself a history over the current
@@ -97,8 +100,13 @@ move. That is what lets the ordering say "after a knight lands on f3, this reply
 `PawnHistory` is a `DynStats` sized from `PAWN_HISTORY_BASE_SIZE`, which is asserted to be a
 power of two because the index is a mask of the pawn key rather than a modulus.
 
-The tables are large and per-worker. `PieceToHistory` and `PawnHistory` are `AtomicStats`
-because the continuation planes are shared.
+**The split between per-worker and shared decides the entry type.** `mainHistory`,
+`lowPlyHistory`, `captureHistory`, `continuationCorrectionHistory` and `ttMoveHistory` are
+`Worker` members, touched by one thread. The rest arrive through `SharedHistories&`, shared
+between the threads on one NUMA node -- and those are the ones built from `AtomicStats`, which
+is `StatsEntry` with `Shared = true`, so the entry is a `RelaxedAtomic<T>` and the race is
+defined rather than undefined ([04-multithreading.md](04-multithreading.md)). Moving a table
+across that line means changing its alias, not just its owner.
 
 ## `movepick.cpp` -- the staged picker
 
@@ -148,23 +156,39 @@ feature-transformer biases, so it is the one part that cannot be filled early;
 `ensure_network_replicated` fills it after a load, and `Worker::evaluate` cannot be reached
 before then.
 
-`SearchManager` carries its own initial values -- `ponder`, `stopOnPonderhit`, `callsCnt`,
-`originalTimeAdjust`, `previousTimeReduction`, `bestPreviousScore`, `bestPreviousAverageScore`.
-Leaving them to the caller makes a search that runs without `ThreadPool::start_thinking` read
-them uninitialised, which UBSan reports as a load of a non-`bool` value into `ponder`.
+**`SearchManager` is valid the moment it exists.** Its constructor binds only `updates`, so
+every other member carries an initial value in the declaration: `ponder`, `stopOnPonderhit`,
+`callsCnt`, `originalTimeAdjust`, `previousTimeReduction`, `bestPreviousScore`,
+`bestPreviousAverageScore`. `iterValue` is the exception, and needs none, because
+`iterative_deepening` fills it before the first read. Leave the rest to the caller and a
+manager searched without `ThreadPool::start_thinking` reads indeterminate storage -- and
+`ponder` is a `bool`, for which a byte that is neither 0 nor 1 is undefined behaviour rather
+than a wrong answer.
 
 ## `Search::go` -- searching without a host
 
-`engine/search_go.h` runs one depth-limited, single-threaded search from a FEN with no seam
-registered. It exists so the defaults can be **run**, not merely linked: `tests/enginelink.sh`
-and `tests/fuzzsearch.sh` are both built on it.
+`Search::go` (`engine/search_go.h`) runs one depth-limited, single-threaded search from a FEN
+and needs no seam registered. It exists so the defaults can be **run**, not merely linked:
+`tests/enginelink.sh` and `tests/fuzzsearch.sh` are both built on it.
 
-Each call is independent. The manager's cross-search state is reset per call, because carrying
-it seeds the aspiration window from whatever was searched last -- right for successive `go`
-commands on one engine, wrong for a driver that walks to an unrelated position each iteration.
+Each call is independent. `HeadlessRunner::run` resets the manager's cross-search state per
+call -- `ThreadPool::clear`'s reset plus `start_thinking`'s two per-`go` fields -- because
+carrying it seeds the aspiration window from whatever was searched last. That is right for
+successive `go` commands on one engine and wrong for a driver that walks to an unrelated
+position each iteration, where it costs whole seconds on a search that should take
+milliseconds.
+
+The worker is constructed with thread index 0, which makes it the main worker: only the main
+worker applies the depth cap and drives the aspiration loop, so a non-main worker here would
+search until someone stopped it and nobody would.
 
 The heavy blocks are process-static and reused, so it is **not reentrant**: one search at a
-time.
+time, and two callers at once share one root position.
+
+**The limit.** The worker set is the one seam whose default is a refusal rather than a slower
+answer, and this path never asks it for a count it could refuse: there genuinely is one worker,
+and a depth-limited search never reaches time management. So `Search::go` exercises every seam
+default except the case that seam exists to prevent.
 
 ## `search.cpp` -- the driver
 

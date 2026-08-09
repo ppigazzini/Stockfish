@@ -4,8 +4,10 @@ on:
   workflow_call:
   workflow_dispatch:
 
-# Both gates read the tree and nothing else: no build, no network, seconds to run.
-# They are separate steps rather than one so a red run names which property broke.
+# Keep one gate per step, so a red run names which property broke rather than
+# just the job. docslint, lanecheck, buildcoverage and depcheck read the tree and
+# nothing else; linkcheck and enginelink build it in a worktree, which is what
+# the net fetch below is for.
 jobs:
   Docs:
     name: Documentation and lane coverage
@@ -24,33 +26,36 @@ jobs:
       - name: Lane coverage
         run: ./tests/lanecheck.sh
 
-      # linkcheck.sh and enginelink.sh both build the tree in a worktree, and the
-      # Makefile's build target depends on net. Fetch it ONCE here and let each
-      # gate copy src/*.nnue in, rather than have two gates download it
-      # independently -- a mirror outage would otherwise turn this lane red for
-      # a reason that has nothing to do with the zone boundary.
+      # Put a net in src/ before the two building gates run: linkcheck.sh and
+      # enginelink.sh copy src/*.nnue into their own worktree so the build there
+      # never reaches the network. Without this step each worktree build runs the
+      # Makefile's own net target, and a mirror outage then surfaces as a zone
+      # gate exiting 2 instead of as a named download failure.
       - name: Fetch the net
         working-directory: src
         run: make net
 
-      # Cheap, and the prerequisite for trusting the two zone checks below: a
-      # source the build names nowhere produces no object for them to reason
-      # about.
+      # Run before the two symbol-level gates: linkcheck and enginelink reason
+      # over objects, and a source the Makefile's SRCS names nowhere produces no
+      # object, so it can call straight into the shell with both of them green.
       - name: Build coverage
         run: ./tests/buildcoverage.sh
 
       - name: Dependency direction, by include
         run: ./tests/depcheck.sh
 
-      # Symbol-level, so it builds. It stays in this workflow rather than a
-      # lane of its own because it answers the same question depcheck does and
-      # a reader looking for one should find the other beside it.
+      # Ask the boundary question at the link, so this one builds: depcheck reads
+      # `#include` lines, this asks whether an engine OBJECT references a symbol
+      # only a shell object defines. An edge no include spells -- a template
+      # parameter, a declaration arriving through a platform header -- is
+      # invisible above and caught only here.
       - name: Dependency direction, by symbol
         run: ./tests/linkcheck.sh
 
-      # The strong form: link engine/ alone against a stub main and nothing
-      # else. It subsumes the check above -- it sees a reference to a symbol
-      # nothing defines, and it sees an inline call -- and it is what makes each
-      # seam's default a tested path rather than a claim.
+      # The strong form: link engine/ alone against tests/enginelink_main.cpp and
+      # nothing else, then run it. It sees a reference to a symbol nothing in the
+      # tree defines, which linkcheck's set intersection cannot, and running with
+      # no seam registered is what makes each seam's default a tested path rather
+      # than one that merely resolves.
       - name: The engine links alone
         run: ./tests/enginelink.sh

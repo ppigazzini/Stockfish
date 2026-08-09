@@ -2,16 +2,12 @@
 
 The vocabulary the rest of the set uses without stopping to define it. Owns no source.
 
-The four tiers must not be confused, because a word can sit in more than one. An engine term
-names a symbol here; a repository term names a gate and no chess-programming reference will
-define it; a testing term is the literature's, which is what makes it worth using, since it is
-searchable outside this repository and a step name is not. Section 3 is the words that mean two
-things here, and each of its entries is a disambiguation rather than a definition.
+A word can sit in more than one tier. An engine term names a symbol here; a repository term
+names a gate that no chess-programming reference will define; a testing term belongs to the
+literature, which is what makes it worth using, because it is searchable outside this
+repository and a step name is not.
 
 Audience: all contributors.
-
-An entry names the file, symbol or step that carries the word. Where it would otherwise
-quote a number a gate computes, it names the gate instead.
 
 ## 1. The engine's vocabulary
 
@@ -42,7 +38,7 @@ quote a number a gate computes, it names the gate instead.
 | **Lazy SMP** | the threading model: N workers on one root, sharing the transposition table, with no work queue and no split points |
 | **the vote** | `Search::best_worker` (`src/engine/search.cpp`), which picks the answer by weighted agreement across workers rather than by taking the deepest or highest-scoring |
 | **WDL, DTZ** | the two Syzygy results -- win/draw/loss, and distance to a zeroing move. `src/platform/syzygy/tbprobe.cpp` |
-| **cursed win, blessed loss** | a win the fifty-move rule takes away, and a loss it rescues. `WDLCursedWin` and `WDLBlessedLoss` in `syzygy/tbprobe.h` exist because the tables are generated under two rules at once |
+| **cursed win, blessed loss** | a win the fifty-move rule takes away, and a loss it rescues. `WDLCursedWin` and `WDLBlessedLoss` are members of `WDLScore` in `src/engine/tb_source.h`, and exist because the tables are generated under two rules at once |
 | **cardinality** | the largest piece count the loaded tablebases cover. Zero with no `SyzygyPath`, which is what makes the Step 6 probe one predictable branch for a user with no tables |
 
 ## 2. This repository's vocabulary
@@ -65,7 +61,7 @@ None of this is chess-programming vocabulary.
 | **rig fault** | a negative-control run that proved nothing rather than detecting something -- a rotted anchor, a mutation that did not compile, a timeout. Never credited as a detection |
 | **the build stamp** | `GIT_SHA`, `GIT_DATE` and `GIT_DIFFINDEX`, compiled into `misc.o`. Two revisions embed different strings, which shifts rodata and therefore every rip-relative displacement |
 | **tier** | an enumerated `ARCH=` value. A performance number without its tier is not a number |
-| **the counters** | `tests/perfcounters.sh`: the CPU's own PMU events -- instructions, cycles, cache and branch misses -- read through `perf_event_open`. The only axis that runs above AVX2, because callgrind implements no AVX-512 |
+| **the counters** | `tests/perfcounters.sh`: the CPU's own PMU events -- instructions, cycles, cache and branch misses -- read through `perf_event_open`. The only counting axis that runs above AVX2, because callgrind implements no AVX-512 |
 | **the decomposition** | `tests/perfdecomp.sh`: per-component instructions, D1 read misses and mispredicts, grouped by `tests/perfcomponents.tsv`. Answers *where*, where the counters answer *whether* |
 | **self cost** | a symbol's own instructions, excluding its callees. The cost line after callgrind's `calls=` is the callee's *inclusive* cost and is skipped; summing it counts the NNUE evaluation inside `search` and again inside itself |
 | **paired ratio** | head over base within ONE round, then the median across rounds -- not the ratio of the medians. A round is the only comparison in which both sides saw the same machine state |
