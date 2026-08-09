@@ -89,10 +89,18 @@ produced them.
 
 ## Configuration
 
-`SyzygyPath` sets the search path, `SyzygyProbeLimit` caps the piece count, and
-`SyzygyProbeDepth` sets the depth threshold above. `Tablebases::init` is called when the path
-option changes, and it is what discovers which tables actually exist -- `cardinality` is
-derived from the files found, not from the option.
+`SyzygyPath` sets the search path, `SyzygyProbeLimit` caps the piece count,
+`SyzygyProbeDepth` sets the `probeDepth` the Step 6 guard compares against, and
+`Syzygy50MoveRule` reaches Step 6 as `tbConfig.useRule50`, which sets the threshold the WDL
+verdict is compared against: set, a cursed win scores as a nudged draw; clear, it scores as a
+proven win.
+
+`Tablebases::init` runs on the `SyzygyPath` option's `OnChange` callback and again from
+`Engine::search_clear`, and it is what discovers which tables actually exist. **The option is
+a ceiling, not the value.** `rank_root_moves` starts `config.cardinality` at
+`SyzygyProbeLimit` and then clamps it down to `MaxCardinality`, which `init` derived from the
+files it found, so asking for 7-man tables that are not on disk configures 0 rather than a
+probe that fails per node.
 
 With no path set, nothing is discovered, no probe fires, and the bench signature is
 unaffected. That is the property that keeps an unconfigured engine identical to one built

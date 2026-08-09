@@ -1,9 +1,9 @@
 #!/bin/bash
 # Fuzz the search in-process, against engine objects only, under sanitizers.
 #
-# tests/fuzz.py drives the shipped binary's stdin. That gate spends most of a
-# mutation's budget in the command parser; this one spends all of it in the node
-# body. The two are complementary and neither replaces the other.
+# tests/fuzz.py's uci harness drives the shipped binary's stdin, so it spends
+# most of a mutation's budget in the command parser; this one spends all of it
+# in the node body. The two are complementary and neither replaces the other.
 #
 # WHAT MAKES A FINDING HERE TRUSTWORTHY. The input is a WALK -- each byte picks
 # one of the legal moves available -- so every position searched is legal and
