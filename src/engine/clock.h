@@ -39,6 +39,16 @@ static_assert(sizeof(TimePoint) == sizeof(i64), "TimePoint should be 64 bits");
 // tests/linkcheck.sh nor tests/enginelink.sh can see an engine file that reads
 // one directly. Keep the readers pointed at now() below by hand.
 //
+// One reader is deliberately outside, and this type is why. TimePoint counts
+// whole milliseconds, while syzygy_extend_pv's time_abort compares against
+// `Move Overhead`, whose range starts at 0: at millisecond resolution
+// `2 * 0 > 0` is false, so the budget would run a further millisecond past the
+// deadline it exists to enforce. That reader takes std::chrono::steady_clock
+// directly and so ignores a substituted clock -- a replay harness gets a
+// deterministic search and a wall-clock tablebase extension. Closing it means
+// giving this seam a sub-millisecond reading, which changes the type the whole
+// of time management is written in.
+//
 // The cadence is what makes an indirect call affordable. The readers are
 // once-per-process static initialisers plus TimeManagement::elapsed_time,
 // reached from check_time, which throttles itself to one call per callsCnt
