@@ -59,8 +59,8 @@ struct AccumulatorCaches {
     // Default-constructible on purpose: a Worker is built before a net is
     // necessarily resident -- Engine sizes the pool while networkFile is still
     // empty -- so the cache is the one part that cannot be filled yet.
-    // Worker::ensure_network_replicated seeds it once the net exists, which is
-    // the contract mcfish states as "complete except for that cache".
+    // Worker::ensure_network_replicated seeds it once the net exists: a worker
+    // built before then is complete EXCEPT for that cache.
     //
     // The entries are POD arrays and clear() overwrites all of them, so an
     // unseeded cache is uninitialised rather than wrong; nothing reads it before
