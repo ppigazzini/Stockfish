@@ -59,3 +59,48 @@ jobs:
         run: make -j build ARCH=x86-64-avx2
       - name: Fuzz
         run: ./tests/fuzz.py --seconds 600 --harness ${{ matrix.harness }} ${{ github.event.inputs.seed && format('--seed {0}', github.event.inputs.seed) || '' }}
+
+  # The in-process search fuzzer. A different instrument from the harnesses
+  # above, not a fourth one of them: those drive the shipped binary's stdin, so a
+  # mutation spends most of its budget in the command parser. This one links
+  # src/engine/ alone, registers no seam, and puts nothing between libFuzzer and
+  # the node body -- under ASan and UBSan, which the stdin harnesses do not run.
+  #
+  # Its first run found real UB: SearchManager had six members with no
+  # initialisers, valid only because the host assigned them, and a search with no
+  # host read `ponder` before anything wrote it.
+  FuzzSearch:
+    name: search (in-process, ASan+UBSan)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # THE CORPUS IS THE FUZZER'S MEMORY. Without it every nightly run starts
+      # from empty and spends its budget rediscovering the same shallow coverage,
+      # so the job never gets deeper than its first night. restore-keys makes a
+      # run whose exact key misses still start from the most recent corpus.
+      - name: Restore the corpus
+        uses: actions/cache@v4
+        with:
+          path: .fuzz-corpus-search
+          key: fuzz-corpus-search-${{ github.run_id }}
+          restore-keys: fuzz-corpus-search-
+
+      - name: Fetch the net
+        working-directory: src
+        run: make net
+
+      - name: Fuzz the search
+        run: ./tests/fuzzsearch.sh --seconds 600 --corpus .fuzz-corpus-search
+
+      # The reproducer is the whole value of a red run: without it the finding is
+      # "it crashed once, somewhere, on an input nobody kept".
+      - name: Keep the reproducer
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-search-reproducer
+          path: fuzz-search-*
+          if-no-files-found: ignore
