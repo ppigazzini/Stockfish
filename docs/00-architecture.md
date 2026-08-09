@@ -155,10 +155,12 @@ How each edge was closed:
   each worker. In each the engine declares a hook, every reader in the zone goes through it, and
   the host registers before the first search.
 
-**What is proven and what is not.** The engine links alone, so every seam's default is
-*reachable*. A link resolves a symbol; it does not call it, so the defaults are not yet
-*exercised*. An in-process smoke test that searches with no host registered is the remaining
-step.
+**What is proven.** The engine links alone AND searches alone. `./tests/enginelink.sh` links the
+engine objects with a host that registers nothing, then runs it: three depth-limited searches
+and a repeat, through `Search::go` (`src/engine/search_go.h`). Every seam default is therefore
+exercised rather than merely reachable -- the arena allocates, the parallel-for clears the
+transposition table inline, time management reads the clock, the tablebase source answers "none
+loaded".
 - **`numa.h` no longer carries all of its implementation.** The cold half of `NumaConfig` --
   topology discovery, the string forms, thread binding, 452 lines that all run before the
   first search -- is in `numa.cpp`. What stays is template-bound and cannot move.
