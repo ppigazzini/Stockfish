@@ -39,11 +39,17 @@ MUTATED=()
 # the second mutate() overwrote the variable and restore() put back only the
 # last. The tree then stays broken past the row that broke it, and every later
 # row measures a mutant it did not create.
+#
+# The backup is keyed by ORDINAL, not by basename. Keying by basename has the
+# same failure one level down: a row that mutates the SAME file twice backs the
+# file up on the first call and then overwrites that backup with the
+# already-mutated content on the second, so restore() puts back a half-mutant
+# and reports success. Observed, not theorised.
 restore() {
     local i
     for ((i=${#MUTATED[@]}-1; i>=0; i--)); do
         local f=${MUTATED[$i]}
-        [ -f "$BACKUP/$(basename "$f")" ] && cp "$BACKUP/$(basename "$f")" "$f"
+        [ -f "$BACKUP/$i" ] && cp "$BACKUP/$i" "$f"
     done
     MUTATED=()
 }
@@ -75,7 +81,7 @@ mutate() {
     n=$(python3 -c 'import sys; print(open(sys.argv[1],encoding="utf8").read().count(sys.argv[2]))' \
         "$file" "$from")
     [ "$n" = "1" ] || die "anchor appears $n times in $file (want exactly 1): $from"
-    cp "$file" "$BACKUP/$(basename "$file")"
+    cp "$file" "$BACKUP/${#MUTATED[@]}"
     MUTATED+=("$file")
     python3 - "$file" "$from" "$to" <<'PY'
 import sys
@@ -642,6 +648,44 @@ namespace { const int nc_link_sink = nc_link_probe(); }'
     fi
     if ./tests/linkcheck.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- linkcheck passed an engine object calling a shell symbol"
+        FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
+row enginelink
+if selected enginelink; then
+    # The row that justifies enginelink existing beside linkcheck, and the row
+    # that caught the gate being wrong.
+    #
+    # An engine file calling a PLATFORM symbol. Written the obvious way, with
+    # `EXTRACXXFLAGS=-fno-lto`, enginelink reported CLEAN on exactly this: the
+    # Makefile appends -flto after EXTRACXXFLAGS so the objects still held IR,
+    # and `ld` without the plugin warns and exits 0. Both gates now build
+    # through a COMPCXX wrapper that strips the flag, and this row is what says
+    # so on every run rather than once.
+    echo "negative-control: enginelink  -- an engine object calling a platform symbol"
+    mutate src/engine/search.cpp \
+        'void Search::Worker::start_searching() {' \
+        'void aligned_large_pages_free(void*);
+namespace { void nc_enginelink_probe() { aligned_large_pages_free(nullptr); } }
+
+void Search::Worker::start_searching() {
+    if (threadIdx == 12345)
+        nc_enginelink_probe();
+'
+    # The platform symbol is FORWARD-DECLARED in the mutation, not included, so
+    # depcheck stays green exactly as it does for the linkcheck row -- an
+    # include-reader cannot see an edge no include spells.
+    #
+    # The call is guarded by a condition that is never true, so the mutant still
+    # searches normally. It only has to EXIST: an unreferenced function in an
+    # anonymous namespace is dead code the optimiser deletes, taking the symbol
+    # reference with it and turning the row green for the wrong reason.
+    if ./tests/enginelink.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the engine linked alone while calling a platform symbol"
         FAIL=$((FAIL+1))
     else
         echo "  ok, red (1)"; PASS=$((PASS+1))
