@@ -38,12 +38,18 @@ usize zero_usize(void*) { return 0; }
 
 Search::Worker* no_worker(void*, usize) { return nullptr; }
 
-WorkerSet current = {nullptr, noop, noop, zero_u64, zero_u64, zero_usize, no_worker};
+// constexpr, for the reason given in parallel.cpp: keep `current` constant-
+// initialised so no static initialiser can observe it empty.
+constexpr WorkerSet defaults = {nullptr, noop, noop, zero_u64, zero_u64, zero_usize, no_worker};
+
+WorkerSet current = defaults;
 
 }  // namespace
 
 const WorkerSet& worker_set() { return current; }
 
 void set_worker_set(const WorkerSet& w) { current = w; }
+
+void reset_worker_set() { current = defaults; }
 
 }  // namespace Stockfish

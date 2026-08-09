@@ -66,7 +66,9 @@ class Engine {
     Engine& operator=(const Engine&) = delete;
     Engine& operator=(Engine&&)      = delete;
 
-    ~Engine() { wait_for_search_finished(); }
+    // Out of line: it uninstalls the seams this engine registered, and the
+    // file-scope pointer one of them reaches through lives in engine.cpp.
+    ~Engine();
 
     std::variant<u64, PositionSetError> perft(const std::string& fen, Depth depth, bool isChess960);
 
