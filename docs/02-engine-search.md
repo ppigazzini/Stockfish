@@ -163,9 +163,12 @@ before then.
 every scalar member carries an initial value in the declaration: `ponder`, `stopOnPonderhit`,
 `callsCnt`, `originalTimeAdjust`, `previousTimeReduction`, `bestPreviousScore`,
 `bestPreviousAverageScore`. Two members need none and are exceptions of different kinds:
-`iterValue`, which `iterative_deepening` fills before the first read, and `tm`, whose own
-`startTime`/`optimumTime`/`maximumTime` are written by `TimeManagement::init` on the way into
-every search. Leave the scalars to the caller and a manager searched without
+`iterValue`, which `iterative_deepening` fills before the first read, and `tm`, which carries
+its own initialisers for `availableNodes` and `useNodesTime` and has `startTime` written by
+`TimeManagement::init` at the top of every search. `tm`'s `optimumTime` and `maximumTime` get
+no initialiser and no write when `init` returns early on a search with no time control -- they
+are read only under `limits.use_time_management()`, which is exactly the case that skips the
+early return. Leave the scalars to the caller and a manager searched without
 `ThreadPool::start_thinking` reads indeterminate storage -- and `ponder` is a boolean, for
 which a byte that is neither 0 nor 1 is undefined behaviour rather than a wrong answer.
 
@@ -328,12 +331,14 @@ are multiplied into node counts and the search is measured against nodes searche
 a GUI is told stays real milliseconds -- it asked how long the engine thought, not how the
 engine chose to count.
 
-**No clock read is on the per-node path.** All of them go through
-`TimeManagement::elapsed_time`, and the hottest caller is `check_time`, which returns on every
-call but one in at most 512; the others are `Worker::elapsed` once per depth iteration and
-`output_pv` once per info line. Reading a clock is a syscall on some platforms, and at millions
-of nodes per second the granularity is well under a millisecond either way. A new reader in the
-node body would turn the `clock.h` seam into a per-node indirect call.
+**No clock read is on the per-node path.** The hottest goes through
+`TimeManagement::elapsed_time` from `check_time`, which returns on every call but one in at
+most 512; the others on that route are `Worker::elapsed` once per depth iteration and
+`output_pv` once per info line. The rest are colder still and do not go through `elapsed_time`
+at all: one reading per `go` for `LimitsType::startTime`, a few around the bench loop, and two
+function-local statics that initialise once. Reading a clock is a syscall on some platforms,
+and at millions of nodes per second the granularity is well under a millisecond either way. A
+new reader in the node body would turn the `clock.h` seam into a per-node indirect call.
 
 ## `score.cpp` -- what a reported score means
 
