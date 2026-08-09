@@ -33,10 +33,15 @@ cd src && ../tests/signature.sh <reference>
 **Read the reference from the commit record, never from memory or from a page here** -- it
 moves with every functional commit, which is why `docslint` refuses a page that quotes it.
 
-It is invoked ~27 times across `tests.yml`, `arm_compilation.yml`, `wasm_compilation.yml` and
-`universal_compilation.yml`, after roughly twenty separate architecture builds. That is the
-tree's ISA-divergence coverage and it is unusually strong: it is what catches a change that
-behaves differently at one vector width.
+`tests.yml`, `arm_compilation.yml`, `wasm_compilation.yml` and `universal_compilation.yml`
+each invoke it after every architecture they build:
+
+```sh
+grep -c signature.sh .github/workflows/*.yml
+```
+
+That is the tree's ISA-divergence coverage, and it is what catches a change that behaves
+differently at one vector width.
 
 **It says nothing about cost.** A change can shed no nodes and run measurably slower.
 
@@ -91,11 +96,16 @@ Retired instructions under callgrind, base against head, built and measured in t
 ./tests/perfbudget.sh --pgo HEAD~1              # the build that actually ships
 ```
 
-**Measure both build modes.** `make profile-build` is the shipped recipe, and the two do
-not agree on the size of a regression: forcing `Position::adjust_key50` out of line costs
-**+0.1000% at -O3 and +0.0477% under PGO**, because the profile lets the compiler make a
-better job of the out-of-line call. The PGO binary is also about 4.8% cheaper overall on
-this bench. A budget taken only at -O3 gates a binary nobody runs.
+**Measure both build modes.** `make profile-build` is the shipped recipe, and the two do not
+agree on the size of a regression: forcing `Position::adjust_key50` out of line reads
+materially cheaper under PGO than at `-O3`, because the profile lets the compiler make a
+better job of the out-of-line call. Take both figures rather than quoting one:
+
+```sh
+./tests/perfbudget.sh HEAD~1 && ./tests/perfbudget.sh --pgo HEAD~1
+```
+
+A budget taken only at `-O3` gates a binary nobody runs.
 
 Four properties, each deliberate:
 
@@ -103,9 +113,9 @@ Four properties, each deliberate:
   the libc as much as of the code, so it cannot be reproduced by a reviewer and it drifts
   upward until it gates nothing. Only the delta is reported, and it is reproducible by
   re-running.
-- **Startup is subtracted by measurement**, per binary. It is over 40% of the whole-process
-  count at the depth the gate uses, so an unsubtracted ratio describes the network loader as
-  much as the engine.
+- **Startup is subtracted by measurement**, per binary. Net load plus magic-table
+  construction is a large share of the whole-process count at the depth the gate uses, so an
+  unsubtracted ratio describes the network loader as much as the engine.
 - **A node count that moved makes the comparison VOID**, not expensive. That is a behaviour
   change and `signature.sh` owns it.
 - **The tolerance is set from measurement**: the A/A floor across independent builds, against
@@ -143,47 +153,37 @@ such an `--arch` rather than producing a number.
 
 ### Which lane is binding
 
-`perfbudget.sh` can be run at plain `-O3` or with `--pgo`, and on this tree they do not agree
-about header restructuring. Measured twice, on changes with identical node counts:
+`perfbudget.sh` runs at plain `-O3` or with `--pgo`, and on header restructuring the two do
+not agree. Take the whole grid rather than one cell of it -- two tiers, two compilers, both
+build modes:
 
-Three changes, each measured on six lanes -- two tiers, two compilers, both build modes. The
-tolerance is 0.02%, and **F** marks the only readings above it:
-
-| change | avx2 gcc -O3 | avx2 gcc PGO | avx2 clang -O3 | avx2 clang PGO | bmi2 gcc -O3 | bmi2 gcc PGO |
-| --- | --- | --- | --- | --- | --- | --- |
-| the win-rate model moved into the core | **+0.0377% F** | +0.0000% | +0.0005% | +0.0008% | +0.0010% | +0.0006% |
-| shared memory taken out of the NUMA header | **+0.0367% F** | +0.0008% | -0.0124% | +0.0000% | +0.0006% | -0.0001% |
-| `NumaConfig`'s cold half moved to a `.cpp` | -0.0009% | +0.0002% | -0.0008% | -0.0137% | **+0.0243% F** | +0.0001% |
-
-**Every PGO lane is clean, and each `-O3` failure occurs at exactly one (tier, compiler) pair
-and nowhere else.** The two changes that read as regressions at avx2/gcc are free at bmi2/gcc;
-the change that is free at avx2/gcc is the one that fails at bmi2/gcc. Node counts are
-identical throughout, so all six lanes measure the same search.
+```sh
+for arch in x86-64-avx2 x86-64-bmi2; do
+  for comp in gcc clang; do
+    ./tests/perfbudget.sh --arch "$arch" --comp "$comp" HEAD~1
+    ./tests/perfbudget.sh --arch "$arch" --comp "$comp" --pgo HEAD~1
+  done
+done
+```
 
 **PGO is the binding lane.** It is upstream's own recipe, it is what ships, and it is what
 fishtest measures; a refactor that is free there and costs under a build nobody distributes has
 not cost a player anything. The plain `-O3` figure is advisory: record it in the commit body,
-investigate it when it is large, and do not let it alone veto a change.
+investigate it when it is large, and do not let it alone veto a change. That is a decision
+about which measurement answers the question, not a licence to skip one. A change still reports
+both, and a regression under PGO still does not land.
 
-That is a decision about which measurement answers the question, not a licence to skip one. A
-change still reports both, and a regression under PGO still does not land.
+**One `-O3` lane is not evidence; the pattern across lanes is.** A header change measured
+across that grid on this tree exceeds tolerance at exactly one (tier, compiler) pair and is
+free at every other, and which pair it is moves from change to change -- a change free at
+avx2/gcc goes above tolerance at bmi2/gcc, and the reverse. A reading that changes sign or
+vanishes when the compiler or the tier changes is not an instruction-count change at all.
 
-**Measure with gcc AND clang, and at more than one tier.** One compiler at one tier cannot
-tell a change from its own code layout. Row two is the worked example: avx2/gcc -O3 called it a
-+0.0367% regression, clang called the same source **0.0124% faster**, and bmi2/gcc called it
-+0.0006%. A reading that changes sign or vanishes when the compiler or the tier changes is not
-an instruction-count change at all.
-
-Row three is what stops that from becoming a reason to ignore `-O3` entirely: it is the one
-change that is free at avx2 and above tolerance at bmi2. Whichever single lane you had picked,
-one of these three would have looked like a regression and a different one would have looked
-clean. **The lane is not evidence; the pattern across lanes is.**
-
-The first of those two is a worked example of the gate misreporting rather than the compiler:
-the whole process retired 1832789 FEWER instructions, while the separately measured startup
-probe got 2423700 cheaper, so `total - startup` rose by the difference. **A startup probe that
-moves makes the subtracted search figure move the other way**, which is the same class of trap
-as the locality case below -- the number is real and its sign is not the change's.
+**A startup probe that moves makes the subtracted search figure move the other way.** The gate
+reports `total - startup`, so a change whose whole process retires fewer instructions can still
+read as a regression when its separately measured startup probe got cheaper by more. The number
+is real and its sign is not the change's, which is the same class of trap as the locality case
+above.
 
 ### `tests/textequal.sh`
 
@@ -222,6 +222,30 @@ after the network load and so contains no startup.
 than reporting the median as a result. On an ordinary developer box that is the expected
 outcome for anything under roughly ten percent -- which is why the instruction axis exists.
 
+## `tests/match.sh`
+
+Play this branch against upstream and report whether the engine **played**.
+
+```sh
+./tests/match.sh                       # merge-base with master, against HEAD
+./tests/match.sh --games 200 --tc 10+0.1
+```
+
+It builds both revisions with `profile-build`, fetches and builds fastchess at the revision
+`games.yml` already pins, and plays a match at a fixed time control. Every other gate here
+compares the engine against a number; this one is the only thing in the tree that puts it in
+front of an opponent over positions no bench list and no golden corpus contains.
+
+**It does not measure strength, and it is not a substitute for fishtest.** At the game counts
+it is meant for, the error bar fastchess prints beside the Elo is wider than any refactor could
+move -- read the two together or quote neither. What it does establish is liveness: no crash,
+no disconnect, no illegal move, no forfeit on time.
+
+**A timeout is a rig fault, not a result.** A forfeit on time is a game the loser did not play,
+and on a busy box both sides forfeit at random, so a non-zero timeout count is reported apart
+from the score rather than folded into it. A background build invalidates a match exactly as it
+invalidates `npsab.sh`.
+
 ## The build and packaging scripts
 
 | Script | Job |
@@ -257,8 +281,10 @@ binary, so they are reported apart from the verdict rather than folded into it. 
 callgrind can only name by address are excluded: two builds place them differently, so they
 have no comparable identity.
 
-Deterministic: three A/A runs report IDENTICAL across 206 engine symbols. Forcing
-`Position::adjust_key50` out of line makes it appear as a called symbol with 105296 calls.
+It is deterministic: an A/A run reports IDENTICAL across every engine symbol, so any changed
+count is the change and not the machine. `tests/negative_control.sh fingerprint` is that
+property going red -- it forces `Position::adjust_key50` out of line, which turns an inlined
+body into a called symbol with a count of its own.
 
 ## `tests/golden.sh`
 
@@ -321,13 +347,12 @@ asserting the sources were put back.
 Rows that cannot run report SKIPPED and are counted separately. A skipped row proves nothing.
 
 **It also enumerates the gates it does not cover**, because the failure this script exists to
-prevent applies to itself: a gate with no row was simply absent, and absence is quiet.
+prevent applies to itself: a gate with no row is simply absent from it, and absence is quiet.
 `lanecheck.sh` asks whether a gate is dispatched and `docslint.sh` asks whether it is
-documented; **neither asks whether it can fail**, so a gate could be fully wired, fully
-described and inert. `reprosearch.sh` was exactly that -- a merge gate nobody had watched go
-red.
+documented; **neither asks whether it can fail**, so a merge gate can be fully wired, fully
+described and inert, and nothing in the tree says so.
 
-Every script in `tests/` now needs a row or an excuse, and the excuse list expires in both
+Every script in `tests/` needs a row or an excuse, and the excuse list expires in both
 directions as `lanecheck.sh`'s does: an excused script that has a row is a stale excuse, and an
 excuse naming a script the tree no longer carries fails too.
 
@@ -356,15 +381,15 @@ Enforces the declared dependency direction of [00-architecture.md](00-architectu
 ./tests/depcheck.sh
 ```
 
-`src/` is flat, so a zone is a name list rather than a directory. That is this gate's weakness
-and the reason it also reports **files in no zone**: a new file joins no zone by default, and
-without that check it would be silently exempt from the rule rather than caught by it.
+A zone is a **directory** under `src/` (`tests/zones.sh`), so a file joins one by where it is
+put. That is why the gate also reports **files in no zone**: a file added outside all three
+matches no rule, and without that check it would be silently exempt rather than caught.
 
 Only the engine-includes-shell edge is checked, because only that one is a defect rather than a
 choice. Platform depending on engine is the intended direction, and shell depending on both is
 what a process does.
 
-`tests/depcheck.baseline` carries the edges that exist today, one per line, with the reason
+`tests/depcheck.baseline` carries the edges that exist, one per line, with the reason
 each is there. It **expires in both directions**: an edge missing from it fails as new, and an
 entry in it that no longer happens fails as stale. A baseline that only grows is not a debt
 register, it is a permanent excuse, and the second direction is what keeps it from becoming
@@ -377,9 +402,8 @@ so it stays visible.
 
 **It reads includes, not the link.** A file that names no shell header but takes a shell type
 through a template parameter, or reaches one transitively through a platform header, passes.
-The sibling C port checks the same property at link time instead -- it compiles the engine
-alone and fails on any undefined symbol -- which is stronger, and is not available here while
-`src/` is one flat directory with one link step.
+`linkcheck.sh` asks the same question of the symbol table and `enginelink.sh` asks it of the
+linker; run all three, because each is blind where the next one sees.
 
 ## `tests/buildcoverage.sh`
 
@@ -422,7 +446,7 @@ asserts **both** halves: `depcheck` stays green, and `linkcheck` goes red.
 The zone table lives in `tests/zones.sh` and is sourced by both, because two checks that
 disagreed about which file is engine would be worse than either alone.
 
-It asks **two** questions, with a baseline each, and **both are now empty**.
+It asks **two** questions, with a baseline each, and **both are empty**.
 `tests/linkcheck.baseline` is the engine-to-shell edge and
 `tests/linkcheck-platform.baseline` is the engine-to-platform edge; every host service the
 engine needs -- the arena, the output sink, the parallel-for, the worker set and NUMA topology,
@@ -430,10 +454,11 @@ the tablebase prober, the NUMA network replica, the clock -- arrives through an 
 instead. Both expire in both directions like the other baselines, and both are meant to stay
 empty: the next host dependency added to `engine/` fails the gate rather than joining a list.
 
-The two are reported separately because closing them was different work: the shell edge needed a
-value snapshot, the platform edge needed the seams. The symbol-level record is finer-grained
-than the include baseline on purpose -- a file that already includes a header has nothing new to
-announce when it adds a *call*, so only symbols make that visible.
+The two are reported separately because they fail for different reasons: a shell edge is
+protocol leaking into the chess library, a platform edge is a host service the engine reached
+for directly. The symbol-level record is finer-grained than the include baseline on purpose --
+a file that already includes a header has nothing new to announce when it adds a *call*, so
+only symbols make that visible.
 
 **It describes the non-LTO build**, and turning LTO off is not what it looks like. Under `-flto`
 an object holds IR and its symbol table is not the one the real link resolves.
@@ -459,13 +484,18 @@ The strong form of the same rule: **link `engine/` alone.**
 
 It compiles the tree with LTO off, takes only the engine objects, and links them with a stub
 `main` and nothing else. Either every symbol resolves from another engine object or from the
-language runtime, or the link fails and names what is missing. Today: 22 objects, zero
-unresolved.
+language runtime, or the link fails and names what is missing. It links clean, and it names
+the object count it linked in its own output.
 
-**It subsumes `linkcheck.sh`, which is why both exist rather than one.** The older check
-intersects symbol sets, so it can only see a reference to a symbol that some platform or shell
-object *defines*, and it cannot see an inline call at all -- the platform clock was reached by
-three inline `now()` calls while both baselines read zero. The linker has neither blind spot.
+**It is stronger than `linkcheck.sh`, which is why both exist rather than one.** The symbol-set
+check intersects definitions, so it sees an edge only when some platform or shell object
+*defines* the symbol; a reference to a symbol nothing in the tree defines is invisible to it
+and is an outright link failure here.
+
+**Its own limit is the inline call.** A host function defined entirely in a header is compiled
+into the engine object, so it leaves nothing undefined and no link can fail on it. That edge is
+`depcheck.sh`'s to catch, at the `#include` -- which is why the include check is not redundant
+with the two symbol checks stacked on top of it.
 
 `libstdc++`, libc and pthread are the language runtime, not host services, so they are allowed
 to resolve. Everything else must come from `engine/` or from a seam's **default** -- and that is
@@ -493,14 +523,14 @@ from older builds, so naming one from outside picks a net that will not parse ag
 feature set the objects were compiled for. The engine knows its own default name.
 
 `tests/negative_control.sh enginelink` plants an engine object calling a platform symbol through
-a forward declaration and asserts the gate goes red. That row exists because the gate was
-**wrong when first written** and reported clean on exactly this mutation: the objects still held
-LTO IR, and `ld` handed an LTO object without the plugin warns and *exits 0*, linking a binary
-that resolved nothing. Both gates now refuse outright if they see that warning.
+a forward declaration and asserts the gate goes red. **The failure that row guards against is a
+green run over a link that resolved nothing**: `ld` handed an LTO object without the plugin
+prints `plugin needed to handle lto object` and still exits 0. Both zone gates refuse outright
+on that warning rather than reading the exit code.
 
 ## `tests/perfcounters.sh`
 
-What the hardware actually did, base against head, at four architecture tiers.
+What the hardware actually did, base against head, at every architecture tier in `--tiers`.
 
 ```sh
 ./tests/perfcounters.sh                      # merge-base with master, against HEAD
@@ -514,8 +544,8 @@ two miss rates derived from them. It reaches what neither other axis can.
 
 **It is the only performance tool that runs above AVX2.** callgrind implements no AVX-512 and
 dies on the first instruction it does not know, so `perfbudget.sh` refuses those tiers outright
--- and those are tiers players build. The default set is `x86-64`, `x86-64-sse41-popcnt`,
-`x86-64-avx2` and `x86-64-vnni512`.
+-- and those are tiers players build. The default tier set spans plain `x86-64` up to an
+AVX-512 tier; `TIERS` at the top of the script is the current list.
 
 **It answers a question the instruction axis cannot even ask.** A change that keeps
 instructions and loses IPC has moved a cache line; the budget scores that as free. This is the
@@ -561,12 +591,13 @@ per symbol, groups the symbols by `tests/perfcomponents.tsv`, and prints instruc
 misses and conditional mispredicts per component with the winner named.
 
 **Every figure is deterministic and every figure is a model.** Two runs of one binary give the
-same counts, so a 0.1% component difference is real rather than thermal -- that is what pays for
-the ~50x slowdown. But the cache simulator has one fixed geometry, is not this machine's cache,
-and knows nothing about the prefetcher or out-of-order execution. It ranks locality; it does not
-predict time. Where the two axes disagree, `perfcounters.sh` measured the hardware and this
-measured a model of it. It also implements no AVX-512, which is why `perfcounters.sh` exists
-beside it.
+same counts, so a component difference far below any wall-clock noise floor is real rather than
+thermal -- that is what pays for the simulator's order-of-magnitude slowdown, which is also why
+`lanecheck.sh` excuses this gate from a lane rather than wiring one. But the cache simulator has
+one fixed geometry, is not this machine's cache, and knows nothing about the prefetcher or
+out-of-order execution. It ranks locality; it does not predict time. Where the two axes
+disagree, `perfcounters.sh` measured the hardware and this measured a model of it. It also
+implements no AVX-512, which is why `perfcounters.sh` exists beside it.
 
 `tests/perfdecomp.py` parses the callgrind output file rather than `callgrind_annotate`, which
 wraps a long C++ symbol across output lines and cannot be column-parsed. Two properties of that
@@ -577,9 +608,9 @@ itself.
 
 **Two diagnostics that make a broken grouping visible.** A component whose regex matches nothing
 on either side is named rather than printed as a zero, because a zero on one side reads as a
-total win forever. And the largest *ungrouped* symbols are listed for both sides, which is how a
-symbol that is a call upstream and inlined here -- reading as a 7.9x regression in its component
--- gets caught.
+total win forever. And the largest *ungrouped* symbols are listed for both sides, because a
+symbol that is a call on one side and inlined on the other lands in a different component on
+each, which the component totals report as a large regression that no code caused.
 
 ## `tests/docslint.sh`
 
@@ -607,9 +638,10 @@ that has it. That half is yours.
 ## Fuzzing
 
 Every gate above compares the engine against a **known-good answer**. That shape can only find
-a defect in behaviour someone already described. The three inputs the engine did not produce --
-a command from a GUI, a Syzygy table off a mirror, a network file named by `EvalFile` -- have
-no known-good answer to compare against, so nothing above covers them.
+a defect in behaviour someone already described. The inputs the engine did not produce -- a
+command from a GUI, a Syzygy table off a mirror, a network file named by `EvalFile`, a second
+engine process on the same machine -- have no known-good answer to compare against, so nothing
+above covers them.
 
 ```sh
 ./tests/tbfetch.sh                                  # the tb corpus, once
@@ -617,7 +649,7 @@ no known-good answer to compare against, so nothing above covers them.
 ./tests/fuzz.py --seed 4242 --harness tb            # reproduce a finding
 ```
 
-`tests/fuzz.py` runs three harnesses, which fail differently and do not substitute for one
+`tests/fuzz.py` runs four harnesses, which fail differently and do not substitute for one
 another:
 
 | harness | input | what it reaches |
@@ -629,14 +661,14 @@ another:
 
 `shm` is the odd one: its input is not a file. `shm_unix.h` hands one process's network to
 another over a Unix socket and an mmapped memfd, so its failure modes are two creators racing
-and a peer dying mid-transfer. The one defect this layer is known to have produced -- a client
-disappearing killing the server with `SIGPIPE` -- is exactly that shape, and it came from
-production rather than from testing. The property is **survivorship**: a process that dies
-because a *peer* died is the defect; a process killed on purpose is the stimulus.
+and a peer dying mid-transfer. A client disappearing mid-write kills the server with `SIGPIPE`
+unless the signal is handled, which is the shape of every failure in this layer. The property
+is **survivorship**: a process that dies because a *peer* died is the defect; a process killed
+on purpose is the stimulus.
 
 The `tb` harness matters most because its bad outcome is not a crash. An index computed one off
 returns a **confident wrong verdict** the search believes, so "did not crash" is not the
-property that matters there -- and so neither harness stops at liveness.
+property that matters there -- and so no harness stops at liveness.
 
 Each takes a **reference from the clean input first**, and compares against it:
 
@@ -650,10 +682,10 @@ refused input from an accepted one that lies, because both leave the engine aliv
 print a number. It also means a harness that cannot obtain its reference stops with a rig
 fault rather than reporting the whole run clean.
 
-The `net` property passes today because the loader validates: corrupt a net's weights and the
-engine answers `ERROR: Network evaluation parameters compatible with the engine must be
-available` and does not load it. That is the engine being correct, not the check being weak,
-and the check is what tells the two apart.
+The `net` property passes because the loader validates: corrupt a net's weights and the engine
+answers `ERROR: Network evaluation parameters compatible with the engine must be available` and
+does not load it. That is the engine being correct, not the check being weak, and the check is
+what tells the two apart.
 
 **The seed prints first, and every finding prints the seed that produced it.** A fuzz run whose
 failure cannot be replayed is an anecdote.
@@ -687,13 +719,14 @@ carry their own initial values for exactly that reason -- a search driven withou
 `ThreadPool::start_thinking` reads them otherwise, and UBSan reports the load of a non-`bool`
 value into `ponder`.
 
-Two properties of the rig are load-bearing, and both fail by looking like success:
+Three properties of the rig are load-bearing, and each fails by looking like success:
 
 - **`-print_funcs=0` is the difference between fuzzing and not.** By default libFuzzer
   symbolizes and prints the new functions each corpus unit reaches, and on a statically linked
-  sanitized engine that `llvm-symbolizer` pass costs about **ninety seconds**, charged to the
-  fuzz budget: 3 executions in 90s with it against 3721 in 20s without. Without the flag the run
-  still exits 0, so the guard below is what separates the two.
+  sanitized engine that `llvm-symbolizer` pass costs orders of magnitude more than the
+  executions it annotates -- charged to the fuzz budget, so the run spends its time in the
+  symbolizer. Without the flag the run still exits 0, so the guard below is what separates the
+  two.
 - **A run that executed almost nothing is a broken rig, not a pass.** The script refuses under a
   thousand executions and reports its rate, on the same rule that says a SKIPPED gate is never
   green.
@@ -714,8 +747,8 @@ no finding to read.
 
 A harness must also refuse to bank a broken **rig** as a finding. Three ways the tb rig can be
 wrong -- an illegal fixture, no table loaded, a search never reached -- and each stops the run
-with a rig fault instead of a verdict. This is not hypothetical: the harness's first run
-reported one, against an illegal fixture. `tests/negative_control.sh` carries a row for each
+with a rig fault instead of a verdict, because each of the three otherwise reads as a clean run
+over an input that never reached the decoder. `tests/negative_control.sh` carries a row for each
 detector and a `fuzz-rig` row for the inverse property.
 
 `tests/tbfetch.sh` fetches the ten-file, ~26 KiB 3-man set and verifies each file by its
@@ -726,9 +759,20 @@ Both mirrors tried do exactly that. Without a corpus the harness **skips visibly
 passing.
 
 **None of this is a merge gate**, and the nightly `fuzz.yml` gives each harness a job of its
-own with the whole budget rather than splitting one budget three ways -- they run at
+own with the whole budget rather than splitting one budget several ways -- they run at
 throughputs orders of magnitude apart, so a shared budget is really a budget for the fastest of
 them. A clean run means "nothing failed inside that budget", never "there is nothing to find".
+
+**`tb` is not in the nightly matrix, and that is a hole rather than a decision.** It finds the
+two defects recorded below within seconds of every run, and a job that reports the same two
+known defects every night is read by nobody. The harness, `tbfetch.sh`, the verdict comparison
+and the `fuzz-tb`, `fuzz-rig` and `fuzz-verdict` negative-control rows all remain and run by
+hand -- so until those two defects are fixed, the decoder is fuzzed only when someone
+remembers to:
+
+```sh
+./tests/tbfetch.sh && ./tests/fuzz.py --seconds 600 --harness tb
+```
 
 ### A corrupt table crashes the engine
 
@@ -783,11 +827,11 @@ printf 'uci\nisready\ngo infinite\nsetoption name Hash value 32\nquit\n' | ./src
 The engine never exits. It is not slow -- it is unreachable: `stop` and `quit` are no longer
 read, so nothing in the protocol can recover it.
 
-`Engine::resize_threads` (`src/shell/engine.cpp:249`) and `Engine::set_tt_size`
-(`src/shell/engine.cpp:259`) each open with `wait_for_search_finished()`, and both are reached from
-an option's on-change handler. That handler runs on the **UCI reader thread**, which is the
-only thread that would ever read the `stop` that releases the wait. The reader blocks waiting
-for a search that only the reader could end.
+`Engine::resize_threads` and `Engine::set_tt_size` (`src/shell/engine.cpp`) each open with
+`wait_for_search_finished()`, and both are reached from an option's on-change handler. That
+handler runs on the **UCI reader thread**, which is the only thread that would ever read the
+`stop` that releases the wait. The reader blocks waiting for a search that only the reader
+could end.
 
 The boundary is exactly whether the search ends by itself:
 
@@ -807,10 +851,10 @@ a conforming GUI does not produce this, and that is the honest limit on its seve
 still a state from which the protocol offers no way out, reachable in four lines from a stock
 binary.
 
-The harness reached it through a defect of its own -- a generated line beginning with an empty
-token read as `" go"`, which its stop-guard missed, leaving an unbounded search with nothing
-behind it. That guard is fixed and the harness now runs clean. The engine behaviour is
-independent of it, and the reproducer above uses no fuzzing at all.
+The harness must guard against generating an unbounded `go` with no `stop` behind it, or it
+hangs on this engine behaviour rather than reporting it -- and a leading empty token makes a
+generated line read as `" go"`, which a guard matching on the first character misses. The
+reproducer above uses no fuzzing at all.
 
 ## Local hooks
 
@@ -838,19 +882,19 @@ f-strings. Editing a regex to satisfy a line limit is how a gate quietly stops m
 
 **The `clang-format` hook runs only if `clang-format-20` is present**, the version CI pins. The
 Makefile falls back to a bare `clang-format` when 20 is absent, and a different major reformats
-the whole tree to its own house style: running it once here rewrote 29 files nobody had
-touched. It skips loudly instead, which weakens nothing -- CI's own `clang-format` step is
-`continue-on-error` and comments rather than blocks.
+the whole tree to its own house style, rewriting files nobody touched. The hook skips loudly
+instead, which weakens nothing -- CI's own `clang-format` step is `continue-on-error` and
+comments rather than blocks.
 
 ## CI
 
 | Workflow | Gates |
 |---|---|
 | `stockfish.yml` | the umbrella: calls the rest |
-| `tests.yml` | the compile matrix -- 13 platform/compiler configurations, ~20 architecture builds, each benching the signature |
+| `tests.yml` | the compile matrix: every platform/compiler configuration in its `config:` list, several architectures each, all benching the signature |
 | `sanitizers.yml` | TSan, UBSan, valgrind, valgrind-thread, uninstrumented, glibcxx assertions |
 | `matetrack.yml` | mate-finding over a position suite |
-| `games.yml` | 8 self-play games on a debug build; fails on an assertion or a disconnect |
+| `games.yml` | a short self-play match on a debug build; fails on an assertion or a disconnect |
 | `avx2_compilers.yml` | a compiler sweep at one architecture |
 | `arm_compilation.yml`, `universal_compilation.yml`, `wasm_compilation.yml` | the remaining targets |
 | `iwyu.yml`, `clang-format.yml`, `codeql.yml` | include hygiene, formatting, static analysis |
@@ -892,17 +936,16 @@ flowchart LR
     FZ --> G7["fuzz.py (uci, net, shm)<br/>fuzzsearch.sh"]
     SAN --> G3["instrumented.py"]
     PB --> G4["perfbudget.sh<br/>textequal.sh"]
-    T --> G2["negative_control.sh<br/>fingerprint.sh<br/>npsab.sh"]
+    L(["no trigger -- by hand only"]) --> G2["negative_control.sh<br/>fingerprint.sh<br/>npsab.sh<br/>perfcounters.sh<br/>perfdecomp.sh"]
     style G2 stroke-dasharray: 5 5
+    style L stroke-dasharray: 5 5
 ```
 
-The dashed box is the point: those gates are reached by no workflow. They run locally or not at
-all, and `tests/lanecheck.sh` holds each of them to carrying an excuse that says so.
+The dashed box is the point: those gates are reached by no workflow, so they run when a
+developer remembers them or not at all. `tests/lanecheck.sh` holds each to carrying an excuse
+that names what runs it instead, and the excuse list in that script is the current one.
 
-`fuzz.yml` hangs off the cron rather than the umbrella, and that is deliberate: it is **not a
-merge gate**. A clean nightly means "nothing failed inside that budget", never "there is nothing
-to find", and blocking a merge on a time-boxed random search would make the budget a correctness
-threshold it cannot be.
-A workflow with only a `workflow_call` trigger and no caller is in the same position -- it
-cannot start, so nothing it names is in a lane, which is what `lanecheck` checks before it
-looks at any script.
+`fuzz.yml` hangs off the cron rather than the umbrella because it is not a merge gate. A
+workflow with only a `workflow_call` trigger and no caller is in the same position -- it cannot
+start, so nothing it names is in a lane, which is what `lanecheck` checks before it looks at any
+script.

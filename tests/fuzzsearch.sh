@@ -165,10 +165,9 @@ set +e
 # -print_funcs=0 IS NOT COSMETIC, IT IS THE DIFFERENCE BETWEEN FUZZING AND NOT.
 # By default libFuzzer symbolizes and prints the new functions each new corpus
 # unit reaches. On a statically linked, sanitized engine that llvm-symbolizer
-# pass costs about NINETY SECONDS the first time, and it is charged to the fuzz
-# budget: measured here, 3 executions in 90s with it, 3721 in 20s without.
-# The executions guard below is what caught that rather than reporting a clean
-# run over three inputs.
+# pass dwarfs an execution, and it is charged to -max_total_time -- so the run
+# spends its whole budget symbolizing a handful of inputs and still exits 0.
+# The executions guard below is what refuses that as a pass.
 ( cd "$BUILD/w/src" && SF_FUZZ_NET_DIR=. UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
   ./fuzz-search corpus -max_total_time="$SECONDS_TO_RUN" -print_final_stats=1 \
   -print_funcs=0 -rss_limit_mb=4096 ) \
@@ -196,8 +195,8 @@ if [ "$rc" != 0 ]; then
     exit 1
 fi
 
-# An "clean" run that executed almost nothing is a broken rig, not a pass -- the
-# same shape as a gate that SKIPPED being reported green.
+# Refuse a "clean" run that executed almost nothing: it is a broken rig, not a
+# pass -- the same shape as a gate that SKIPPED being reported green.
 if [ -z "$execs" ] || [ "$execs" -lt 1000 ]; then
     echo "fuzzsearch: SKIPPED -- only ${execs:-0} executions; the rig is not fuzzing" >&2
     tail -8 "$BUILD/run.log" >&2

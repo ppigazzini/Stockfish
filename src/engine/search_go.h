@@ -36,12 +36,12 @@ namespace Search {
 
 // Run ONE depth-limited, single-threaded search with NO host registered.
 //
-// This is the entry the engine did not have. In a hosted run the platform's
-// thread pool constructs each Worker and populates its root state before
-// iterative_deepening runs, so there was no way to search one position at one
-// depth without the pool -- and therefore no way to EXERCISE the seam defaults.
-// tests/enginelink.sh proves every seam symbol resolves without the host; a link
-// resolves a symbol, it does not call it. This is what calls them.
+// In a hosted run the platform's thread pool constructs each Worker and
+// populates its root state before iterative_deepening runs, so this is the only
+// way to search one position at one depth without the pool -- and therefore the
+// only way to EXERCISE the seam defaults. tests/enginelink.sh proves every seam
+// symbol resolves without the host; a link resolves a symbol, it does not call
+// it. This is what calls them.
 //
 // Everything it touches self-defaults: the arena falls back to plain aligned
 // allocation, the output sink prints, the parallel-for runs the transposition
@@ -51,9 +51,9 @@ namespace Search {
 // answer rather than a slower one; here there genuinely is one worker, and the
 // search is depth-limited so no time management asks the set anything.
 //
-// Not reentrant: the ~MB Worker and its scaffolding are process-static and
-// reused across calls, which is what makes calling this cheap enough for a gate.
-// Load the net before calling; the caller owns it.
+// Not reentrant: the Worker and its scaffolding are process-static and reused
+// across calls, so two callers at once share one root position. Load the net
+// before calling; the caller owns it.
 struct GoResult {
     Move  bestMove;
     Value score;

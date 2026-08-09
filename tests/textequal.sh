@@ -126,9 +126,9 @@ prepare_tree() {
 # -DGIT_SHA=<sha> -DGIT_DATE=<date> -DGIT_DIFFINDEX=<n>, so two revisions embed
 # different version strings -- which is not a codegen difference but shifts
 # every rodata offset after it, and therefore every rip-relative displacement in
-# the whole binary. Worse, an empty GIT_SHA compiles a DIFFERENT branch of
-# engine_version_info, so a `worktree` side (no .git) and a revision side were
-# not even compiling the same code.
+# the whole binary. Worse, an empty GIT_SHA selects a DIFFERENT branch of
+# engine_version_info, so a `worktree` side (which has no .git) and a revision
+# side do not compile the same code unless both are forced empty.
 #
 # Forcing all three empty on both sides makes the stamp identical and the
 # comparison about the code. It is why this gate must never be used to argue
@@ -187,10 +187,9 @@ build_nolto() {
 # distinct symbols, which would silently merge two functions' bodies.
 #
 # `\b` is not a word boundary in awk (POSIX ERE has no such escape; awk reads it
-# as a backspace), so the address-stripping pattern is written out explicitly.
-# The first version of this function used `\b` and matched nothing at all --
-# every call target kept its absolute address and the gate could never have
-# reported IDENTICAL for anything that moved.
+# as a backspace), so every address pattern below is written out explicitly. A
+# `\b` here matches nothing, every call target keeps its absolute address, and
+# the gate can then never report IDENTICAL for a change that moved anything.
 normalise() {
     local bin=$1 out=$2
     objdump -d --no-show-raw-insn "$bin" \
@@ -207,8 +206,8 @@ normalise() {
             # "# <addr> <sym>" comment. Move that NAME into the operand and drop
             # the numeric displacement: the displacement is a layout fact, not a
             # codegen fact, and one shifted string constant moves every one of
-            # them in the binary. Not doing this made the gate report DIFFERS
-            # for a byte-identical source tree.
+            # them in the binary. Without this the gate reports DIFFERS for a
+            # byte-identical source tree.
             target = ""
             h = index($0, "#")
             if (h > 0) {
@@ -266,10 +265,10 @@ echo
 
 # GCC numbers its clones -- .isra.0, .constprop.1, .part.0 -- and an unrelated
 # edit can RENUMBER them, so a symbol can appear on one side only while being
-# the same code. This binary carries 181 such symbols, so the effect is not
-# marginal. The count below separates that class from a genuine difference; it
-# is reported rather than normalised away, because collapsing the index would
-# also merge two distinct clones of one function.
+# the same code. The binary carries enough of them that a DIFFERS report is
+# unreadable without separating that class out. Report the count rather than
+# normalising it away: collapsing the index would merge two distinct clones of
+# one function into one symbol and hide a real difference between them.
 b_only=$(comm -23 <(cut -f1 "$WORK/base.txt" | uniq) <(cut -f1 "$WORK/head.txt" | uniq))
 h_only=$(comm -13 <(cut -f1 "$WORK/base.txt" | uniq) <(cut -f1 "$WORK/head.txt" | uniq))
 strip_clone() { sed -E 's/\.(isra|constprop|part|cold)\.[0-9]+$/.\1/'; }

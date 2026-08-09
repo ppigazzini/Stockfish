@@ -22,13 +22,15 @@ namespace Stockfish {
 
 namespace {
 
-// The default owns the two flags so the engine can read and write them with no
-// host attached. It reports no workers, because standalone there are none to
-// hand out -- and unlike the parallel-for's default, which runs the work inline,
-// a worker set cannot honestly pretend: fewer workers is a DIFFERENT answer, not
-// the same answer more slowly. A resize must therefore REFUSE a count above one
-// rather than silently search with fewer threads than were asked for: a degraded
-// run still produces a number, and the number looks fine.
+// Report no workers: with no host attached there are none to hand out. Unlike
+// the parallel-for's default, which runs the work inline, a worker set cannot
+// honestly pretend -- fewer workers is a DIFFERENT answer, not the same answer
+// more slowly. A host that cannot supply the requested count must therefore
+// REFUSE it rather than silently search with fewer threads: a degraded run still
+// produces a number, and the number looks fine.
+//
+// Every accessor here must tolerate a null ctx, since that is what `current`
+// carries until set_worker_set runs.
 
 void  noop(void*) {}
 u64   zero_u64(void*) { return 0; }

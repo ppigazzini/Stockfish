@@ -24,13 +24,14 @@ namespace Stockfish {
 
 namespace {
 
-// Tells the time. See the header: the default is the "same answer, slower" kind
-// -- an unregistered engine is correct, not degraded.
+// Tell the time from the standard library. std::chrono is not a host service,
+// so an unregistered engine is correct rather than degraded; the seam is there
+// for a HOST that wants to substitute a clock -- a deterministic one for a
+// replay harness, a coarser one where the steady clock is expensive.
 //
-// std::chrono is the standard library, not a host service, so reading it here
-// keeps the engine self-contained. The seam exists so a HOST may substitute a
-// clock -- a deterministic one for a replay harness, a coarser one where the
-// steady clock is expensive -- not because the engine cannot tell the time.
+// Keep this the steady clock. TimeManagement::elapsed_time subtracts two
+// readings, so a clock that can step backwards yields a negative elapsed time
+// and check_time never trips its `elapsed > tm.maximum()` deadline.
 TimePoint default_now() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::steady_clock::now().time_since_epoch())

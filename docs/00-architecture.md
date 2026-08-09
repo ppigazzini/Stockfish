@@ -8,54 +8,53 @@ Audience: anyone changing more than one file.
 
 ## The layout
 
-`src/` is **flat**: every translation unit sits at the top level except three groups that
-have their own directory.
+**No translation unit sits at the top of `src/`.** Every source is in a zone directory, and
+that placement is what assigns it a zone -- see [what depends on what](#what-depends-on-what).
 
 ```sh
-ls src/*.cpp src/*.h                    # the engine, flat
-ls src/engine/nnue src/engine/nnue/features src/engine/nnue/layers   # the network
-ls src/platform/syzygy                           # the tablebase prober
+ls src/engine src/engine/nnue src/engine/nnue/features src/engine/nnue/layers
+ls src/platform src/platform/syzygy
+ls src/shell
 ls src/universal                        # runtime ISA dispatch entry points
 ```
 
 | File | Owns |
 |---|---|
-| `types.h` | the value domain: `Color`, `Square`, `Piece`, `Move`, `Value`, `Key`, `Bitboard`, `Depth` |
-| `bitboard.h/.cpp`, `attacks.h/.cpp` | square sets and the slider/leaper attack tables |
-| `position.h/.cpp` | the board, `StateInfo`, `do_move`/`undo_move`, Zobrist keys, `see_ge` |
-| `movegen.h/.cpp`, `movepick.h/.cpp` | move generation and the staged picker |
-| `search.h/.cpp` | `Search::Worker`, iterative deepening, alpha-beta, quiescence |
-| `history.h` | the history tables and their update rule |
-| `tt.h/.cpp` | the transposition table |
-| `timeman.h/.cpp` | the time budget |
-| `evaluate.h/.cpp` | the evaluation entry point and its trace |
-| `nnue/` | the network: feature transformer, accumulator, layers, feature sets |
-| `syzygy/` | the tablebase prober |
-| `thread.h/.cpp`, `thread_native.h` | the worker pool |
-| `numa.h/.cpp`, `numa_shared.h`, `shm.h`, `shm_unix.h`, `memory.h/.cpp` | NUMA topology, replication, shared memory, aligned allocation |
-| `uci.h/.cpp`, `ucioption.h/.cpp`, `engine.h/.cpp` | the UCI transport, the option table, the session |
-| `benchmark.h/.cpp`, `perft.h`, `tune.h/.cpp` | bench positions, perft, SPSA tuning |
-| `score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from |
-| `basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, and `TypedKey<KeySpace>` |
-| `platform.h` | what the machine provides: `prefetch`, `IsLittleEndian`, `RESTRICT` |
-| `clock.h/.cpp` | `TimePoint` and `now()`: the engine's time type and the seam the host may substitute |
-| `console.h/.cpp` | `sync_cout`, `sync_endl` and the `dbg_*` counters -- the shell's own terminal |
-| `misc.h/.cpp` | what is left of the utility drawer: `RelaxedAtomic`, `PRNG`, the logger, `split`, `CommandLine` |
+| `engine/types.h` | the value domain: `Color`, `Square`, `Piece`, `Move`, `Value`, `Key`, `Bitboard`, `Depth` |
+| `engine/basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, `TypedKey<KeySpace>` |
+| `engine/bitboard.h/.cpp`, `engine/attacks.h/.cpp` | square sets and the slider/leaper attack tables |
+| `engine/position.h/.cpp` | the board, `StateInfo`, `do_move`/`undo_move`, Zobrist keys, `see_ge` |
+| `engine/movegen.h/.cpp`, `engine/movepick.h/.cpp` | move generation and the staged picker |
+| `engine/search.h/.cpp` | `Search::Worker`, iterative deepening, alpha-beta, quiescence |
+| `engine/search_go.h/.cpp` | one depth-limited search from a FEN, with no seam registered |
+| `engine/searchoptions.h` | the option snapshot a worker is built from |
+| `engine/history.h` | the history tables and their update rule |
+| `engine/tt.h/.cpp` | the transposition table |
+| `engine/timeman.h/.cpp` | the time budget |
+| `engine/evaluate.h/.cpp` | the evaluation entry point and its trace |
+| `engine/nnue/` | the network: feature transformer, accumulator, layers, feature sets |
+| `engine/score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from |
+| `engine/arena.h`, `output_sink.h`, `tb_source.h`, `clock.h`, `parallel.h`, `worker_set.h` | the seams, catalogued below |
+| `platform/memory.h/.cpp` | aligned and large-page allocation |
+| `platform/numa.h/.cpp`, `numa_shared.h`, `shm.h`, `shm_unix.h` | NUMA topology, replication, cross-process sharing |
+| `platform/thread.h/.cpp`, `platform/thread_native.h` | the worker pool and the native thread with a chosen stack |
+| `platform/syzygy/` | the tablebase prober |
+| `platform/platform.h` | what the machine provides: `prefetch`, `IsLittleEndian`, `RESTRICT` |
+| `platform/misc.h/.cpp` | what is left of the utility drawer: `RelaxedAtomic`, `PRNG`, the logger, `split`, `CommandLine` |
+| `shell/main.cpp`, `shell/uci.h/.cpp`, `shell/ucioption.h/.cpp`, `shell/engine.h/.cpp` | the UCI transport, the option table, the session |
+| `shell/benchmark.h/.cpp`, `shell/perft.h`, `shell/tune.h/.cpp` | bench positions, perft, SPSA tuning |
+| `shell/console.h/.cpp` | `sync_cout`, `sync_endl` and the `dbg_*` counters -- the shell's own terminal |
 | `universal/` | per-ISA entry points for the runtime-dispatch binary |
 
 **`src/Makefile` is the authority on what is compiled.** `SRCS` is an explicit list, not a
-wildcard, so a file added to the directory and not to `SRCS` is in the tree and not in the
+wildcard, so a file added to a zone directory and not to `SRCS` is in the tree and not in the
 binary -- and it rots silently against the files that do move, which is the worst version of
-the problem because it still looks maintained. Re-establish rather than trust:
-
-```sh
-comm -23 <(cd src && ls *.cpp nnue/*.cpp nnue/*/*.cpp syzygy/*.cpp | sort) \
-         <(grep -oE '[a-z_/]+\.cpp' src/Makefile | sort -u)
-```
+the problem because it still looks maintained. `./tests/buildcoverage.sh` is that check, and it
+is a merge gate rather than something to re-derive by hand.
 
 ## Startup
 
-`main` (`src/shell/main.cpp`) does four things in an order that is load-bearing:
+`main` (`src/shell/main.cpp`) starts the engine in an order that is load-bearing:
 
 ```cpp
 Attacks::init();      // slider and leaper tables
@@ -125,31 +124,32 @@ table, the accumulator stack and the refresh cache are allocated once outside an
 `platform` is not a layer *beneath* the engine: it is the runtime that hosts the engine, so it
 may depend on engine types and not the other way round.
 
-A file's zone is now **its directory**, so a new file joins a zone by where it is put, and one
+A file's zone is **its directory**, so a new file joins a zone by where it is put, and one
 that belongs to none is reported rather than silently exempt. `tests/zones.sh` holds the
 mapping and both checks read it.
 
 **One edge is checked, because only one is a defect rather than a choice**: an engine file that
 reaches a shell one. `./tests/depcheck.sh` reads includes and `./tests/linkcheck.sh` reads
-symbols, and `tests/depcheck.baseline` and `tests/linkcheck.baseline` list what exists today. The baseline expires in both
-directions -- an entry describing an edge that no longer happens fails too, so a fixed edge
-cannot quietly stay listed as debt.
+symbols, and `tests/depcheck.baseline` and `tests/linkcheck.baseline` list what exists. A
+baseline expires in both directions -- an entry describing an edge that no longer happens fails
+too, so a fixed edge cannot quietly stay listed as debt.
 
-The direction is now declared and checked, and **both baselines are empty**: no engine object
+**Both symbol baselines are empty** -- `tests/linkcheck.baseline` for the engine-to-shell edge
+and `tests/linkcheck-platform.baseline` for the engine-to-platform one -- so no engine object
 references a shell-defined or a platform-defined symbol. `./tests/enginelink.sh` states the same
-thing in the form that admits no argument -- it links `engine/` alone, against a stub `main` and
+thing in the form that admits no argument: it links `engine/` alone, against a stub `main` and
 nothing else, and every symbol resolves.
 
-How each edge was closed:
+Where the engine gets each of those services instead:
 
-- **The UCI frontend.** `search.cpp` reached it for `UCIEngine::wdl` and
-  `UCIEngine::format_score` on the `info` line. Two of those were never shell code -- the
-  win-rate model (`win_rate_model`, `to_cp`) is evaluation-domain knowledge fitted to fishtest
-  statistics rather than protocol, so it lives in `score.h/.cpp`, and coordinate notation is
-  `square_name` in `position.h/.cpp` -- and the renderers followed them.
+- **The UCI frontend.** The `info` line needs a win-rate reading and a formatted score. Neither
+  is protocol: the win-rate model (`win_rate_model`, `to_cp`) is evaluation-domain knowledge
+  fitted to fishtest statistics and lives in `score.h/.cpp`, and coordinate notation is
+  `square_name` in `position.h/.cpp`. The renderers sit beside them.
 - **The option model.** `Search::Worker` takes a `const SearchOptions&`, a snapshot of the
-  thirteen values the engine reads, filled by the composition root before each search
-  (`src/engine/searchoptions.h`). The search can be driven without a UCI layer.
+  option values the engine reads (`src/engine/searchoptions.h`), filled by the composition root
+  before each search. Every field defaults to a working value, so the search can be driven
+  without a UCI layer having said anything.
 - **The platform.** Injection seams, catalogued below. In each the engine declares a hook,
   every reader in the zone goes through it, and the host registers before the first search.
 
@@ -253,22 +253,29 @@ The hottest files reach no seam at all. Of the rest:
   returns on every call but one in at most 512.
 
 **The limit.** With `SyzygyPath` set, `probe_wdl` is a live indirect call where upstream made a
-direct one, and `bench` cannot see it -- the bench list never probes, so a measurement there
-measures the guard rather than the call. The figure that exists was taken on a probing workload:
-**-0.0040%**.
-- **`numa.h` no longer carries all of its implementation.** The cold half of `NumaConfig` --
-  topology discovery, the string forms, thread binding, 452 lines that all run before the
-  first search -- is in `numa.cpp`. What stays is template-bound and cannot move.
-  `search.h` still includes `numa.h`, so the NUMA subsystem still reaches everything that
-  includes `search.h`.
-  `Search::Worker` holds a `NumaReplicatedAccessToken` by value, so that edge is load-bearing
-  and a forward declaration cannot replace it.
-- **Shared memory no longer rides along with it.** `LazyNumaReplicatedSystemWide` was the only
-  user of `shm.h` inside `numa.h`, and it now lives in `numa_shared.h`, which includes both.
-  `engine.h` owns one by value and includes it; `search.h` holds one only by reference and
-  forward-declares instead, so `shm.h` and `shm_unix.h` no longer reach every consumer of
-  `search.h`. Removing the include also exposed that `numa.h` had been getting `<variant>`
-  transitively through `shm.h`, which it now includes itself.
+direct one, and **`bench` cannot see it** -- the bench list never probes, so a measurement there
+measures the guard rather than the call. Every performance gate in
+[10-tooling-ci.md](10-tooling-ci.md) drives `bench`, so none of them sets a `SyzygyPath` and
+none of them costs this seam; a change to it has to bring its own probing workload or it has no
+evidence at all.
+
+### The include graph
+
+`src/` is one flat link step, so a header reaches every translation unit that includes anything
+including it. Four edges decide most of that closure:
+
+- **`numa.cpp` carries the cold half of `NumaConfig`** -- topology discovery, the string forms,
+  thread binding, all of it running before the first search. What stays in `numa.h` is
+  template-bound and cannot move. `search.h` includes `numa.h`, so the NUMA subsystem still
+  reaches everything that includes `search.h`, and that edge is load-bearing rather than
+  incidental: `Search::Worker` holds a `NumaReplicatedAccessToken` **by value**, so a forward
+  declaration cannot replace it.
+- **Shared memory does not ride along with it.** `LazyNumaReplicatedSystemWide` is the only user
+  of `shm.h` in this family, and it lives in `numa_shared.h`, which includes both `numa.h` and
+  `shm.h`. `engine.h` owns one by value and includes it; `search.h` holds one only by reference
+  and forward-declares, so `shm.h` and `shm_unix.h` reach the files that own one rather than
+  every consumer of `search.h`. `numa.h` includes `<variant>` itself: it needs it for the policy
+  variant, and taking `shm.h` out of it removed the transitive path it had been arriving by.
 - **`types.h` includes `tune.h` after its own `#endif`**, deliberately outside the include
   guard and commented "Global visibility to tuning setup". Anything that touches `types.h` or
   the tunable constants has to account for it. This one is **kept on purpose**: no committed
@@ -287,15 +294,16 @@ measures the guard rather than the call. The figure that exists was taken on a p
   grep -rl '"misc.h"\|/misc.h"' --include=*.cpp --include=*.h src | wc -l
   ```
 
-Measure the header closure rather than trusting a number here:
+Measure the closure rather than trusting a number here:
 
 ```sh
 cd src && g++ -std=c++17 -E -I. search.cpp | grep -c ''
 ```
 
-Note when reading that figure that **the standard library dominates it** -- over 90% of the
-preprocessed lines of a translation unit come from system headers, so the project header
-closure is a coupling fact and not a build-time one.
+**That figure is dominated by the standard library**, not by this tree, so it is a poor proxy
+for build time and a poor way to score an include change. What the project headers control is
+coupling -- which files a change forces to be re-checked -- and the way to see that is which
+headers reach `search.h`, not how many lines the preprocessor emits.
 
 ## Concurrency
 

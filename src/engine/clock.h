@@ -25,24 +25,25 @@
 
 namespace Stockfish {
 
-// A value in milliseconds. The engine's own time type, declared here rather
-// than in the platform because the engine is what speaks it -- time management
-// compares, subtracts and stores these, and none of that is a host service.
+// A count of milliseconds. The engine's own type: time management compares,
+// subtracts and stores these, and none of that is a host service. Keep it 64
+// bits -- now() returns an absolute steady-clock reading, not a duration, and a
+// signed 32-bit millisecond count wraps after about 25 days of host uptime.
 using TimePoint = std::chrono::milliseconds::rep;
 static_assert(sizeof(TimePoint) == sizeof(i64), "TimePoint should be 64 bits");
 
 // Where the engine reads the clock.
 //
-// This seam closes no link edge and never will: the platform's now() is inline,
-// so the three engine callers compiled it in place and no symbol crossed the
-// boundary for a gate to notice. That is the whole reason it is worth doing by
-// hand -- one direct call anywhere in engine/ keeps the dependency whole,
-// however empty the baseline looks.
+// No link gate can police this seam. A host clock is read through an inline
+// function, which leaves no undefined symbol behind, so neither
+// tests/linkcheck.sh nor tests/enginelink.sh can see an engine file that reads
+// one directly. Keep the readers pointed at now() below by hand.
 //
-// The cadence is why an indirect call is affordable here. Two of the three
-// readers are once-per-process static initialisers; the third is
-// TimeManagement::elapsed_time, reached from check_time, which runs once per 512
-// nodes. Nothing on the per-node path reads a clock.
+// The cadence is what makes an indirect call affordable. The readers are
+// once-per-process static initialisers plus TimeManagement::elapsed_time,
+// reached from check_time, which throttles itself to one call per callsCnt
+// nodes (search.cpp). Add a reader to the per-node path and this becomes a
+// per-node indirect call.
 //
 // THE DEFAULT IS THE REAL CLOCK, and it is the "same answer, slower" kind of
 // default: an unregistered engine tells the time correctly, one indirect call
@@ -56,8 +57,6 @@ struct Clock {
 const Clock& clock_source();
 void         set_clock_source(const Clock& c);
 
-// Convenience for the call sites. Named now() so the readers keep reading the
-// way they did; the difference is which zone owns the declaration.
 TimePoint now();
 
 }  // namespace Stockfish

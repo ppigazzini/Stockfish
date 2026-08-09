@@ -36,8 +36,9 @@ namespace Stockfish::Search {
 
 namespace {
 
-// The heavy blocks are process-static and reused. A Worker is megabytes; a gate
-// that pays for one per call is a gate nobody leaves switched on.
+// Keep the heavy blocks process-static and reuse them. A Worker embeds the NNUE
+// refresh cache, so a gate that constructs one per call is a gate nobody leaves
+// switched on.
 struct Context {
     SearchOptions                        options;
     TranspositionTable                   tt;
@@ -50,9 +51,9 @@ struct Context {
     ArenaPtr<Worker>                     worker;
 
     // Which net the worker's refresh cache was last seeded from. Seeding writes
-    // the whole cache, so doing it per search dominates the cost of a shallow
-    // one -- tests/fuzzsearch.sh managed 3 executions in 90 seconds before this.
-    // ensure_network_replicated is a load-time operation, not a per-search one.
+    // the whole cache, so reseeding per search dominates the cost of a shallow
+    // one: ensure_network_replicated is a load-time operation, not a per-search
+    // one.
     const Eval::NNUE::Network* seeded = nullptr;
 };
 
@@ -64,17 +65,19 @@ Context* context() {
     ctx = new Context();
 
     // One NUMA node, one worker. The token defaults to index 0 and the map must
-    // have that entry, because Worker's first initialiser looks it up.
+    // carry that entry: Worker's first initialiser reaches it through
+    // sharedHistories.at(), which throws if the entry is absent.
     ctx->sharedHistories.try_emplace(NumaIndex(0), 1);
 
-    // Exercises the arena AND the parallel-for: resize allocates through the
+    // Exercise the arena AND the parallel-for: resize allocates through the
     // former and clears through the latter, which runs inline when no host has
-    // registered one. 1 MiB, because this is a smoke test and not a benchmark.
+    // registered one. Sized for a smoke test, not a benchmark.
     ctx->tt.resize(1);
 
-    // The manager's callbacks are what the shell would install to print. Here
-    // they are no-ops on purpose: the engine still composes the info lines, so
-    // the formatting paths run, and the gate is not judged on its stdout.
+    // Install no-op callbacks where the shell would install printing ones: the
+    // engine still composes the info lines, so the formatting paths run, and
+    // the gate is not judged on its stdout. They must be non-empty targets --
+    // SearchManager calls them unconditionally.
     ctx->updates.onUpdateNoMoves = [](const InfoShort&) {};
     ctx->updates.onUpdateFull    = [](const InfoFull&) {};
     ctx->updates.onIter          = [](const InfoIteration&) {};
@@ -84,9 +87,9 @@ Context* context() {
     ctx->shared = std::make_unique<SharedState>(ctx->options, ctx->tt, ctx->sharedHistories,
                                                 ctx->stop, ctx->increaseDepth);
 
-    // Thread index 0 makes this the main worker, which is what applies the depth
-    // cap and drives the aspiration loop -- a non-main worker would search until
-    // someone else stopped it, and headless nobody would.
+    // Pass thread index 0: that makes this the main worker, which is what
+    // applies the depth cap and drives the aspiration loop. A non-main worker
+    // searches until someone else stops it, and headless nobody would.
     ctx->worker = ArenaPtr<Worker>(memory_allocator<Worker>(
       arena_alloc, *ctx->shared, std::make_unique<SearchManager>(ctx->updates), usize(0), usize(0),
       usize(1), NumaReplicatedAccessToken{}));
@@ -112,8 +115,8 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
     Context* ctx = &ctxRef;
     Worker&  w   = *ctx->worker;
 
-    // Seeds the refresh cache from this net -- the only thing a worker built
-    // before a net existed was missing. Once per net, not once per search.
+    // Seed the refresh cache from this net: a Worker constructed before any net
+    // exists has none. Once per net, not once per search.
     if (ctx->seeded != &net)
     {
         w.ensure_network_replicated(net);
@@ -143,16 +146,13 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
     w.rootDepth       = 0;
     w.tbConfig        = Tablebases::Config();
 
-    // EVERY headless search is independent. The manager carries state across
-    // searches -- the previous best score, the previous time reduction, the
-    // aspiration seed -- which is right for successive `go` commands on one
-    // engine and wrong here: it makes a result depend on what was searched
-    // before it, and a fuzz driver that walks to a new position every iteration
-    // then seeds the aspiration window from an unrelated one.
-    //
-    // That is not theoretical. Carrying it made the THIRD fuzz execution take 90
-    // seconds where the first took milliseconds, because the window was seeded
-    // from a position with nothing to do with the one being searched.
+    // Reset the manager so EVERY headless search is independent. It carries
+    // state across searches -- the previous best score, the previous time
+    // reduction, the aspiration seed -- which is right for successive `go`
+    // commands on one engine and wrong here: leave it and a result depends on
+    // what was searched before it, and a driver that walks to a new position
+    // every call seeds the aspiration window from an unrelated one, which costs
+    // whole seconds on a search that should take milliseconds.
     //
     // This is ThreadPool::clear's reset plus start_thinking's two per-go fields.
     SearchManager& mgr           = *static_cast<SearchManager*>(w.main_manager());

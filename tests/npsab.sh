@@ -4,9 +4,10 @@
 # The second axis. tests/perfbudget.sh counts retired instructions, which is
 # deterministic and blind to locality: a change that trades instructions for
 # cache footprint reads there as a regression while being faster. Upstream
-# ee72cf49f ("Optimize RankAttacks", 212800 fishtest games, No functional
-# change) is exactly that shape and measures +0.16% Ir. When the instruction
-# axis says regression, THIS is the gate that decides whether it is real.
+# `ee72cf49f` ("Optimize RankAttacks") is exactly that shape -- it shrinks a
+# table and pays in instructions -- and the instruction axis scores it a
+# regression. When that axis says regression, THIS is the gate that decides
+# whether it is real.
 #
 # Three rules inside the protocol, each of which decides whether the reported
 # ratio means anything:
@@ -228,8 +229,8 @@ printf 'head/base nps ratio: median %.4f   spread %.4f .. %.4f   (nodes %s, both
 STRADDLES=$(awk -v lo="$LO" -v hi="$HI" 'BEGIN{print (lo < 1.0 && hi > 1.0) ? "yes" : "no"}')
 if [ "$STRADDLES" = "yes" ]; then
     echo "npsab: NO DIRECTION -- the spread straddles 1.000."
-    echo "  This establishes nothing. Report it as establishing nothing, and use the"
-    echo "  deterministic instruction axis (tests/perfbudget.sh) for anything under ~10%."
+    echo "  This establishes nothing. Report it as establishing nothing, and adjudicate"
+    echo "  on the deterministic instruction axis (tests/perfbudget.sh) instead."
     exit 0
 fi
 

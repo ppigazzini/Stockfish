@@ -33,9 +33,9 @@ namespace Stockfish {
 
 // The engine's page allocator, and the seam that keeps engine/ free of the host.
 //
-// The engine allocates in exactly two places -- the transposition table and the
-// history banks -- and both want large pages when the host can provide them.
-// Rather than call the platform allocator directly, they go through this.
+// Route every engine allocation through here rather than through the platform
+// allocator: the transposition table and the history banks both want large
+// pages, and only the host knows whether it can hand them out.
 //
 // THE DEFAULT IS A WORKING ALLOCATOR, not a stub, which is what lets engine/ run
 // with nothing registered. It is plain aligned malloc: correct, and slower than
@@ -58,8 +58,8 @@ void         set_arena(const Arena& a);
 inline void* arena_alloc(usize bytes) { return arena().alloc(bytes); }
 inline void  arena_free(void* p) { arena().free(p); }
 
-// Placement-new and destructor plumbing. Pure pointer arithmetic with no OS in
-// it -- it lived in platform/memory.h only because the large-page allocator did.
+// Placement-new and destructor plumbing, parameterised on the allocator. Pure
+// pointer arithmetic with no OS in it.
 template<typename T, typename FREE_FUNC>
 void memory_deleter(T* ptr, FREE_FUNC free_func) {
     if (!ptr)
@@ -121,9 +121,10 @@ memory_allocator(ALLOC_FUNC alloc_func, usize num) {
 }
 
 // Owning pointers whose deleter goes through the arena. The deleter is part of
-// the type, which is why the engine needs its own rather than reusing the
-// platform's: LargePagePtr bakes aligned_large_pages_free into every
-// instantiation.
+// the type: a block from arena_alloc must be released through these and never
+// through platform/memory.h's LargePagePtr, which bakes aligned_large_pages_free
+// into every instantiation. Crossing the two frees a block with an allocator
+// that never made it.
 template<typename T>
 struct ArenaDeleter {
     void operator()(T* ptr) const { return memory_deleter<T>(ptr, arena_free); }

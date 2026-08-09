@@ -123,14 +123,12 @@ class Engine {
     std::string                          thread_binding_information_as_string() const;
 
    private:
-    // Declared FIRST so its constructor installs the arena before any member
-    // below it allocates. Member initialisation order is the mechanism, and it
-    // follows DECLARATION order, not the order of the constructor's init list --
-    // this sat eighth with the init list naming it first, which compiled, warned
-    // under -Wreorder, and ran the installer after four members had already been
-    // built. A block taken from the engine's fallback allocator and released by
-    // the host's is heap corruption with no diagnostic, so the position of this
-    // line is the whole guarantee.
+    // Keep this DECLARED FIRST. Members are initialised in declaration order,
+    // not in the order the constructor's init list names them, so this
+    // declaration -- not the init list in engine.cpp -- is what makes the arena
+    // installer run before any member below it allocates. Move it down and a
+    // block taken from the engine's fallback allocator is released by the
+    // host's, which is heap corruption with no diagnostic.
     struct ArenaInstallerTag {
         ArenaInstallerTag();
     } arenaInstaller;
@@ -143,8 +141,9 @@ class Engine {
     StateListPtr states;
 
     OptionsMap                                        options;
-    // The snapshot handed to the engine. A member rather than a local because
-    // SharedState holds a reference to it for the life of the thread pool.
+    // Keep the option snapshot as a member, not a local in resize_threads:
+    // Search::SharedState and every Worker hold it by const reference for the
+    // life of the thread pool, so a local would dangle on return.
     SearchOptions                                     searchOptions;
     ThreadPool                                        threads;
     TranspositionTable                                tt;
