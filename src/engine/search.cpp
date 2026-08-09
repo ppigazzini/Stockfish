@@ -332,7 +332,12 @@ void Search::Worker::start_searching() {
             all.reserve(n);
             for (usize i = 0; i < n; ++i)
                 all.push_back(worker_set().at(worker_set().ctx, i));
-            bestThread = best_worker(all);
+            // best_worker opens with workers.front(). With no host registered
+            // the seam reports zero workers, and this is reachable that way:
+            // Search::go(net, fen, chess960, 0) leaves limits.depth zero, so the
+            // guard above is taken. Keep `this` rather than dereference end().
+            if (!all.empty())
+                bestThread = best_worker(all);
         }
 
     main_manager()->bestPreviousScore        = bestThread->rootMoves[0].score;
@@ -679,7 +684,15 @@ bool Search::Worker::iterative_deepening() {
             double reduction =
               (1.468 + mainThread->previousTimeReduction) / (2.284 * timeReduction);
 
-            double bestMoveInstability = 1.077 + 2.229 * totBestMoveChanges / workers;
+            // Floor the divisor, not the loop bound above: upstream divided by
+            // threads.size(), which is >= 1 by construction, and this divides by
+            // a seam value whose own default reports zero. A zero makes this
+            // NaN, then totalTime NaN, and then every
+            // `elapsed > std::min(totalTime, maximum)` false -- a search that
+            // never stops on time. Widening the loop instead would hand ws.at()
+            // an index it already said it does not have.
+            double bestMoveInstability =
+              1.077 + 2.229 * totBestMoveChanges / std::max<usize>(1, workers);
 
             double highBestMoveEffort = std::clamp(
               interpolate(i64(nodesEffort), i64(75800), i64(104510), 0.969, 0.714), 0.693, 0.838);
