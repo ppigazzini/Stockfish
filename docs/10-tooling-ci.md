@@ -566,6 +566,52 @@ and the check is what tells the two apart.
 **The seed prints first, and every finding prints the seed that produced it.** A fuzz run whose
 failure cannot be replayed is an anecdote.
 
+## `tests/fuzzsearch.sh`
+
+Fuzz the search **in-process**, against engine objects only, under ASan and UBSan.
+
+```sh
+./tests/fuzzsearch.sh --seconds 600                      # a run
+./tests/fuzzsearch.sh --seconds 600 --corpus .fuzz-corpus-search   # keep what it learns
+```
+
+A different instrument from the harnesses above, not a fourth one of them. Those drive the
+shipped binary's stdin, so a mutation spends most of its budget in the command parser -- the
+table above says so of `uci` outright. This one puts nothing between libFuzzer and the node
+body, and it is the only fuzzing in the tree that runs under sanitizers.
+
+**The input is a walk, not a position.** Each byte selects one of the legal moves available, so
+every position searched is legal and reachable by construction. There is no illegal-board false
+positive to triage, which is the failure mode that gets a fuzzer switched off. It reaches
+positions no bench list and no golden corpus contains.
+
+It links `src/engine/` alone and registers no seam, exactly as `enginelink.sh` does, through
+`Search::go`. So any crash is in the engine with no host to blame -- and the seam defaults are
+under the fuzzer too.
+
+**Its first run found real UB.** `SearchManager` had six members with no initialisers, valid
+only because the host assigned them -- `ThreadPool::clear` set four and `start_thinking` two,
+which was the platform initialising engine state from outside. A search with no pool read
+`ponder` before anything wrote it, and UBSan caught the load of `190` as a `bool`. They now
+carry their own initial values.
+
+Two things about the rig are worth knowing, because both made it look like it was working when
+it was not:
+
+- **`-print_funcs=0` is the difference between fuzzing and not.** By default libFuzzer
+  symbolizes and prints the new functions each corpus unit reaches, and on a statically linked
+  sanitized engine that `llvm-symbolizer` pass costs about **ninety seconds**, charged to the
+  fuzz budget. Measured here: 3 executions in 90s with it, 3721 in 20s without. The script's
+  "too few executions" guard is what caught that, rather than reporting a clean run over three
+  inputs -- the same rule as a gate that SKIPPED never being reported green.
+- **The corpus is the fuzzer's memory.** Without `--corpus` every run starts empty and spends
+  its budget rediscovering the same shallow coverage, so a nightly job never gets deeper than
+  its first night. The CI lane caches it and uses `restore-keys` so a key miss still starts from
+  the most recent corpus.
+
+It needs clang, and skips loudly without it. It is not part of the shipped Makefile and adds
+nothing to the binary a player runs.
+
 `Hash` and `Threads` are the only options whose fuzzed value the engine turns straight into an
 allocation, so they are drawn from a bounded pool and emitted **verbatim**. Mangling defeats a
 bound, and truncation is the specific defeat: it rewrites a value the spin parser refuses into
