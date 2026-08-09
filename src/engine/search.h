@@ -324,9 +324,18 @@ class SearchManager: public ISearchManager {
     // wrong answer.
     //
     // Two members carry none. iterValue needs none because
-    // iterative_deepening() fills it before the first read, and `tm` needs none
-    // here because TimeManagement carries its own initialisers and
-    // TimeManagement::init writes startTime at the top of every search.
+    // iterative_deepening() fills it before the first read.
+    //
+    // `tm` is a class and gets its default constructor, but that is not the same
+    // as being initialised: TimeManagement leaves startTime, optimumTime and
+    // maximumTime with no initialiser of their own, and TimeManagement::init
+    // writes startTime and then RETURNS EARLY whenever limits.time[us] is zero,
+    // before the other two. LimitsType::use_time_management() does not exclude
+    // that case -- it is true when only the opposing side has a clock -- so a
+    // `go wtime 0 btime N` reads tm.optimum() and tm.maximum() out of storage
+    // this search never wrote. Fix that in TimeManagement's own declarations,
+    // not here: those three members are private, so this site can do nothing
+    // but default-construct the object.
     Stockfish::TimeManagement tm;
     double                    originalTimeAdjust = -1;
     int                       callsCnt           = 0;
@@ -446,9 +455,11 @@ class Worker {
     const SearchOptions&                                     options;
     TranspositionTable&                                      tt;
 
-    // The two flags every worker shares. stopFlag is read at every node, twice
-    // in search() alone; increaseDepthFlag is read once per iteration, in
-    // iterative_deepening().
+    // The two flags every worker shares. stopFlag is the one on the hot path:
+    // search() reads it at the top of every non-root node and again after every
+    // move it searches there, so the per-node cost is one load plus one per
+    // move; qsearch() never reads it. increaseDepthFlag is read once per
+    // iteration, in iterative_deepening().
     //
     // Keep these REFERENCES. A reference member's binding is fixed at
     // construction, so the compiler may hoist the load of the referent's address

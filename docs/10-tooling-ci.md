@@ -660,7 +660,8 @@ Five mechanical checks over this documentation set:
    documentation when it does;
 4. every script in `tests/` and `scripts/` is named by some page, because a gate nobody can
    discover is a gate nobody runs;
-5. no **tracked** file references the untracked working area, `.gitignore` excepted.
+5. no **tracked** file references the untracked working area, `.gitignore` and `docslint.sh`
+   itself excepted.
 
 Check 5 sweeps every tracked file rather than every page, and that scope is load-bearing: a
 source comment or a workflow file dangles for a reader exactly as a doc line does. Check 2
@@ -768,8 +769,10 @@ Three properties of the rig are load-bearing, and each fails by looking like suc
   two.
 - **A run that executed almost nothing is a broken rig, not a pass.** The script refuses under a
   thousand executions and reports its rate, on the same rule that says a SKIPPED gate is never
-  green. That it can go red at all is `tests/negative_control.sh fuzzsearch`: it plants a null
-  read on the root position, before any move is walked, so the very first input must reach it.
+  green. That guard exits 2 by itself; what `tests/negative_control.sh fuzzsearch` buys is the
+  other half, that the **finding** path can go red at all. It plants a null store in the
+  headless runner behind `Search::go`, which the driver reaches whatever the walk produced, so
+  the first input carries the defect out rather than a lucky one.
 - **The corpus is the fuzzer's memory.** Without `--corpus` every run starts empty and spends
   its budget rediscovering the same shallow coverage, so a nightly job never gets deeper than
   its first night. The CI lane caches it and uses `restore-keys`, so a key miss still starts
@@ -785,11 +788,14 @@ one it honours, turning `Hash value 99999999` into `9999` -- a table the box act
 which exhausts the machine rather than the process and takes the harness down with it, leaving
 no finding to read.
 
-A harness must also refuse to bank a broken **rig** as a finding. Three ways the tb rig can be
-wrong -- an illegal fixture, no table loaded, a search never reached -- and each stops the run
-with a rig fault instead of a verdict, because each of the three otherwise reads as a clean run
-over an input that never reached the decoder. `tests/negative_control.sh` carries a row for each
-detector and a `fuzz-rig` row for the inverse property.
+A harness must also refuse to bank a broken **rig** as a finding. Two ways the tb rig can be
+wrong stop the run with a rig fault instead of a verdict -- an illegal fixture and no table
+loaded -- because either otherwise reads as a clean run over an input that never reached the
+decoder. **The third does not, and the comment beside it says it does**: a run that produced no
+`bestmove` is appended as a finding rather than refused, so a rig that never reached the search
+is credited with an experiment it did not run. `tests/negative_control.sh`'s `fuzz-rig` row is
+the only one exercising a rig detector, and it asserts the inverse property -- that a dead rig
+reads as a rig fault and never as a finding.
 
 `tests/tbfetch.sh` fetches the 3-man set from the mirror `TB_MIRROR` names, and verifies each
 file by its **magic** rather than by HTTP status. A mirror that answers a missing file with a
@@ -951,9 +957,11 @@ the 64-bit configurations, after an avx2 build.
 ### Reachability
 
 A gate runs only if something can start the workflow that names it. `stockfish.yml` is the
-one entry point that fans out; `clang-format.yml` and `codeql.yml` trigger themselves. Every
-other workflow declares only `workflow_call`, so it runs when the umbrella calls it and never
-otherwise.
+one entry point that fans out; `clang-format.yml` and `codeql.yml` trigger themselves, and
+`fuzz.yml` hangs off a cron. Every other workflow declares `workflow_call`, so it runs when the
+umbrella calls it and never otherwise -- `docs.yml`, `golden.yml` and `perfbudget.yml` add a
+`workflow_dispatch` on top, which `lanecheck.sh` deliberately does not count, because a lane
+only a human can click gates no change.
 
 ```mermaid
 flowchart LR

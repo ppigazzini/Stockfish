@@ -129,8 +129,9 @@ passing a typed key where the bare one belongs is still rejected.
 `prefetch_key()`. `Bitboard` is the same underlying type, so a transposition key where a
 `Bitboard` belongs still compiles -- and so does the reverse.
 
-The raw position key is not an accessor at all: it is `StateInfo::key`, reached through the
-public `Position::state()`, and no file outside `position.cpp` reads it.
+The raw position key is not an accessor at all: it is `StateInfo::key`, reachable from outside
+only through the public `Position::state()`, and nothing takes that route. The two readers are
+`Position::key` in `position.h` and `position.cpp` itself.
 
 The sharpest pair is the raw position key and the transposition key, and the type does not
 separate them -- both are `Key`. `Position::adjust_key50` mixes the halfmove clock in only at
