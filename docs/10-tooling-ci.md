@@ -464,9 +464,24 @@ to resolve. Everything else must come from `engine/` or from a seam's **default*
 what this gate is really for. A default is a claim until something links without the host that
 would override it.
 
-**What it still does not prove is that the defaults RUN.** A link resolves a symbol; it does not
-call it. An in-process smoke test that searches with no host registered is the next step and is
-not this script.
+**It also runs.** A link resolves a symbol without ever calling it, so the link half says every
+default is *reachable* and nothing about whether it works. `tests/enginelink_main.cpp` is the
+host: it links against `engine/` only, registers **nothing**, and drives three depth-limited
+searches through `Search::go` (`src/engine/search_go.h`) plus a fourth that repeats the first.
+So the arena's fallback actually allocates, the parallel-for actually clears the transposition
+table inline, the clock is actually read, and the tablebase source actually answers "none
+loaded".
+
+It asserts properties rather than a node count -- a result exists, the best move is not none,
+nodes are non-zero, the root is scored, and a repeat gives the same move. An exact count would
+be a second bench signature to maintain, and this gate is about whether the defaults run, not
+about what they compute.
+
+Two things it had to be taught, both by failing first: the host is compiled from a `tests/`
+directory beside `src/`, because it includes `../src/engine/...` exactly as it does in the repo;
+and it is given the net's **directory**, not a path to a net, because `src/` is gitignored and
+accumulates nets from older builds -- naming one from outside picks a stale net that will not
+parse against the feature set the objects were compiled for.
 
 `tests/negative_control.sh enginelink` plants an engine object calling a platform symbol through
 a forward declaration and asserts the gate goes red. That row exists because the gate was
