@@ -156,8 +156,9 @@ void update_all_stats(const Position& pos,
                       bool            PvNode);
 
 // Detect shuffling moves in order to limit search explosions
-// The thresholds below have no SPRT behind them: keep them out of TUNE unless
-// one is run for them
+// The thresholds below were accepted on a non-regression test, which shows only
+// that they lose nothing -- no result says these values are the right ones, so
+// keep them out of TUNE until one does
 bool is_shuffling(Move move, Stack* const ss, const Position& pos) {
     if (pos.capture_stage(move) || pos.rule50_count() < 10)
         return false;

@@ -737,13 +737,12 @@ if selected fuzz-tb; then
         echo "negative-control: fuzz [tb]   SKIPPED -- no corpus; run tests/tbfetch.sh"
         SKIP=$((SKIP+1))
     else
-        # LIMIT, and it is not the whole harness: the stub dies on EVERY command,
-        # so harness_tb refuses at its reference run ("RIG FAULT -- the clean
-        # tables gave no reference verdict") and never reaches a mutated table.
-        # What this row establishes is that a dead engine cannot read as clean.
-        # The crash path inside the mutation loop -- `killed by signal` -- is
-        # reached by no row here; closing that needs a stub that answers the
-        # reference and dies only afterwards.
+        # LIMIT, and it is not the whole harness: the stub crashes BEFORE it
+        # reads the mutated table, so what this row exercises is harness_tb's
+        # `killed by signal` branch inside the mutation loop, never the prober.
+        # It also needs src/stockfish built -- a failed exec leaves the reference
+        # run with no verdict, harness_tb raises its rig fault, and the row reads
+        # that non-zero status as a detection it never made.
         echo "negative-control: fuzz [tb]   -- an engine that dies on a corrupt table"
         # Serve the REFERENCE run from the real engine, then crash. A stub that
         # dies on its first invocation never reaches the mutation loop: the
@@ -840,10 +839,9 @@ fi
 
 row fuzz-net
 if selected fuzz-net; then
-    # The same limit the tb row carries: this stub dies on every command too, so
-    # harness_net refuses at its reference evaluation and never loads a mutated
-    # net. The row proves a dead engine cannot read as clean; the `killed by
-    # signal` branch inside the mutation loop is reached by no row here.
+    # The same limit the tb row carries: the stub crashes before it reads the
+    # mutated net, so this exercises harness_net's `killed by signal` branch and
+    # says nothing about what the net parser does with corrupt bytes.
     echo "negative-control: fuzz [net]  -- an engine that dies on a corrupt net"
     # Same shape as the tb row: the reference evaluation has to come from a
     # working engine, or the harness refuses before any mutation is tried.
@@ -869,9 +867,10 @@ if selected fuzzsearch; then
     # executions guard already refuses a run that fuzzed nothing -- that exits 2,
     # not 0 -- so what is left to distrust is the expensive case: a rig that
     # builds, links and executes and still cannot carry a defect out of the
-    # engine reports clean. Plant one every input reaches: a null STORE inside
-    # Search::go, which the driver calls at depth 3 whatever the walk produced,
-    # so it fires on the first input rather than on a lucky one.
+    # engine reports clean. Plant one every input reaches: a null STORE in the
+    # headless runner behind Search::go, which the driver calls at depth 3
+    # whatever the walk produced, so it fires on the first input rather than on
+    # a lucky one.
     echo "negative-control: fuzzsearch  -- a defect on the first search"
     mutate src/engine/search_go.cpp \
         '    w.limits          = LimitsType();' \
