@@ -222,8 +222,10 @@ void Engine::go(Search::LimitsType& limits) {
     // Wait before touching searchOptions. Every Worker holds it as a
     // const SearchOptions& and reads out of it for the whole search -- multiPV
     // and the skill level on entry to iterative_deepening, showWDL on every info
-    // line -- so assigning it under a live search is a data race, and one field
-    // is a std::string: a torn int is a wrong number, a torn string is a
+    // line -- so assigning it under a live search is a data race. Every field a
+    // running search reads is a scalar, so that race reads a wrong number;
+    // numaPolicy is a std::string whose buffer this assignment frees, so the
+    // first search-path read of a string field turns the same race into a
     // use-after-free. The UCI specification says `go` arrives only when the
     // engine is idle; uci.cpp accepts one whenever it is sent.
     wait_for_search_finished();
