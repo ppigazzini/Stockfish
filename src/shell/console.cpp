@@ -30,6 +30,7 @@
 
 namespace Stockfish {
 
+// Debug functions used mainly to collect run-time statistics
 constexpr int MaxDebugSlots = 32;
 namespace {
 
@@ -155,6 +156,8 @@ void dbg_clear() {
     extremes.fill({});
 }
 
+// Used to serialize access to std::cout
+// to avoid multiple threads writing at the same time.
 std::ostream& operator<<(std::ostream& os, SyncCout sc) {
 
     static std::mutex m;

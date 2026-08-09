@@ -76,16 +76,6 @@ void  aligned_large_pages_free(void* mem);
 
 bool has_large_pages();
 
-// Frees memory which was placed there with placement new.
-// Works for both single objects and arrays of unknown bound.
-
-// Frees memory which was placed there with placement new.
-// Works for both single objects and arrays of unknown bound.
-
-// Allocates memory for a single object and places it there with placement new
-
-// Allocates memory for an array of unknown bound and places it there with placement new
-
 //
 //
 // aligned large page unique ptr

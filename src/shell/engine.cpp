@@ -64,9 +64,9 @@ int MaxThreads = std::max(1024, 4 * int(get_hardware_concurrency()));
 constexpr NumaAutoPolicy DefaultNumaPolicy = BundledL3Policy{32};
 
 namespace {
-// The Syzygy prober, installed by the host. Unlike the worker set, this seam is
-// correct unregistered -- "no tablebases" is exactly true then -- so the
-// registration is about capability, not correctness.
+// Bind the Syzygy prober to the engine's tb_source seam. Registering it adds a
+// capability rather than fixing a defect: unlike the worker set, this seam is
+// correct unregistered, because "no tablebases are loaded" is exactly true then.
 Tablebases::WDLScore tb_probe_wdl(void*, Position& pos, Tablebases::ProbeState* r) {
     return Tablebases::probe_wdl(pos, r);
 }
@@ -78,25 +78,19 @@ Tablebases::Config tb_rank_root(void*, const SearchOptions& o, Position& pos,
 }
 }  // namespace
 
-// The host's arena: large pages where the OS will give them.
-//
-// INSTALLED FIRST. This tag is the Engine's first member, so its constructor
-// runs before every member declared after it -- and therefore before the
-// transposition table or any history bank exists. A block taken from the
-// engine's default allocator and released by this one is heap corruption with no
-// diagnostic, so the ordering is a correctness requirement, not a preference.
 namespace {
 void host_line(std::string_view text) { sync_cout << text << sync_endl; }
 
-// The pool the engine's parallel-for runs on. A raw pointer at file scope
-// because a function pointer cannot capture, which is also why the seam takes a
+// Hold the pool the engine's parallel-for runs on in a file-scope pointer: a
+// plain function pointer cannot capture, which is also why the seam takes a
 // registration call rather than a closure.
 //
-// Written on the main thread inside resize_threads, before anything reads it.
+// Write it only on the main thread, inside resize_threads, before anything
+// reads it.
 ThreadPool* hostPool = nullptr;
 
-// The worker set, with the pool itself as ctx -- no second global, which is what
-// the seam's void* ctx is for.
+// Pass the pool itself as the worker set's ctx, so it needs no second global --
+// that is what the seam's void* ctx is for.
 void  ws_start_searching(void* c) { static_cast<ThreadPool*>(c)->start_searching(); }
 void  ws_wait_finished(void* c) { static_cast<ThreadPool*>(c)->wait_for_search_finished(); }
 u64   ws_nodes_searched(void* c) { return static_cast<ThreadPool*>(c)->nodes_searched(); }
@@ -111,6 +105,14 @@ void pool_run_on(usize t, std::function<void()> fn) { hostPool->run_on_thread(t,
 void pool_wait_on(usize t) { hostPool->wait_on_thread(t); }
 }  // namespace
 
+// Install the host's seams: process output, the Syzygy prober, and the arena
+// that hands out large pages where the OS will give them.
+//
+// RUN THIS BEFORE ANY OTHER ENGINE MEMBER IS BUILT. ArenaInstallerTag is
+// declared first in engine.h, so this constructor runs before the transposition
+// table or any history bank exists. A block taken from the engine's default
+// allocator and released by the one installed here is heap corruption with no
+// diagnostic.
 Engine::ArenaInstallerTag::ArenaInstallerTag() {
     set_output_sink({host_line, dbg_print});
     Tablebases::set_tb_source({nullptr, tb_max_cardinality, tb_probe_wdl, tb_rank_root});
@@ -119,8 +121,8 @@ Engine::ArenaInstallerTag::ArenaInstallerTag() {
 }
 
 Engine::Engine(std::optional<std::filesystem::path> path) :
-    // The arena is installed by this member's constructor, which runs before
-    // every member declared after it -- see the note above.
+    // Leave this first here for readability only: members initialise in
+    // declaration order, and engine.h is where that order is fixed.
     arenaInstaller(),
     binaryDirectory(path ? CommandLine::get_binary_directory(*path) : std::filesystem::path{}),
     numaContext(NumaConfig::from_system(DefaultNumaPolicy)),
@@ -310,11 +312,12 @@ bool Engine::set_numa_config_from_option(const std::string& o) {
     return true;
 }
 
-// The composition root fills the engine's option snapshot. This is the seam:
-// everything below Engine reads a value, so nothing in engine/ or platform/
-// reaches ucioption.h. A search driven from anywhere else fills this directly.
+// Convert the live option map into the engine's option snapshot here, in the
+// composition root. This is the seam: everything below Engine reads a plain
+// SearchOptions value, so no file under engine/ includes ucioption.h, and a
+// search driven from somewhere with no OptionsMap fills the struct directly.
 //
-// Taken fresh on every use, so a setoption between searches is seen.
+// Take it fresh on every use, so a setoption between searches is seen.
 SearchOptions Engine::search_options() const {
     SearchOptions o;
     o.threads          = usize(int(options["Threads"]));
@@ -415,8 +418,8 @@ void Engine::load_network(const std::filesystem::path& file) {
     // ORDER: re-hand the replicas BEFORE clearing. modify_and_replicate destroys
     // and rebuilds every replica, so each worker's network pointer dangles the
     // moment it returns, and ThreadPool::clear runs Worker::clear, which reads
-    // that pointer to reseed the refresh cache. Clearing first read freed memory
-    // and killed the process on the first `setoption name EvalFile`.
+    // that pointer to reseed the refresh cache. Clear first and that read is a
+    // use-after-free, on the ordinary `setoption name EvalFile` path.
     threads.ensure_network_replicated(network);
     threads.clear();
 }
@@ -424,9 +427,10 @@ void Engine::load_network(const std::filesystem::path& file) {
 void Engine::save_network(const std::optional<std::filesystem::path>& file) {
     network.modify_and_replicate(
       [&file, this](NN::Network& network_) { network_.save(networkFile, file); });
-    // Saving replicates too, so the workers' pointers dangle here just as they do
-    // after a load -- with no crash to announce it, because nothing in this path
-    // evaluates. The next search would. Re-hand them.
+    // Re-hand the replicas here too: saving goes through modify_and_replicate,
+    // so the workers' pointers dangle exactly as they do after a load. Nothing
+    // on this path evaluates, so dropping this line raises nothing here -- the
+    // next search reads the freed replica instead.
     threads.ensure_network_replicated(network);
 }
 
@@ -453,10 +457,10 @@ std::string Engine::visualize() const {
     std::stringstream ss;
     ss << pos;
 
-    // The tablebase rows of the `d` board. A probe is disk I/O -- a platform
-    // service -- so they belong with the command rather than inside the board's
-    // own display operator, which is where they were: three Tablebases symbols
-    // in position.o for the sake of a debug view.
+    // Append the tablebase rows of the `d` board here, not in Position's
+    // operator<<. A probe is disk I/O -- a platform service -- and moving these
+    // lines back into the stream operator makes every engine object that prints
+    // a Position reference Tablebases, for the sake of a debug view.
     if (Tablebases::MaxCardinality >= popcount(pos.pieces()) && !pos.can_castle(ANY_CASTLING))
     {
         StateInfo st;

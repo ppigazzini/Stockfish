@@ -22,7 +22,7 @@ namespace Stockfish {
 
 namespace {
 
-// Runs the work rather than refusing it: for a parallel-for, one thread is the
+// Run the work rather than refuse it: for a parallel-for, one thread is the
 // same answer taking longer. See the header for why the worker-set seam's
 // default must behave differently.
 usize              default_num_threads() { return 1; }

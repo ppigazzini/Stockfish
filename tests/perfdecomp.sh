@@ -8,8 +8,9 @@
 # and branch mispredicts for each -- with the winner named.
 #
 # EVERY NUMBER HERE IS DETERMINISTIC. callgrind simulates, so two runs of the
-# same binary give the same counts; a 0.1% component difference is real and not
-# thermal noise. That is the whole reason to pay its ~50x slowdown.
+# same binary give the same counts and a component difference of any size is
+# real rather than thermal noise. That is the whole reason to pay its ~50x
+# slowdown; the tie band below is about layout, not about measurement error.
 #
 # AND EVERY NUMBER HERE IS A MODEL. The cache simulator is a two-level
 # approximation with a fixed geometry -- it is not this machine's cache, it

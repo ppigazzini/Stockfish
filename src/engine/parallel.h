@@ -28,11 +28,11 @@ namespace Stockfish {
 
 // A parallel-for over the host's workers, and nothing else.
 //
-// The engine has exactly one bulk-parallel job of its own -- zeroing the
-// transposition table, split so that threads on a NUMA node clear a contiguous
-// region. That is a different use from the search's relationship with the pool,
-// and giving it its own narrow seam keeps the search's out of the transposition
-// table's way.
+// The callers are TranspositionTable::resize and ::clear, which zero the table
+// split so that threads on a NUMA node clear a contiguous region -- that is why
+// the seam exposes the numa map and not just a thread count. It is deliberately
+// narrower than the search's relationship with the pool, which goes through
+// WorkerSet.
 //
 // THE DEFAULT RUNS THE WORK, inline on the calling thread, reporting one thread
 // and one node. For a parallel-for that is a correct implementation rather than

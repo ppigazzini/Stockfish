@@ -101,10 +101,11 @@ specifically.
 
 ## NUMA
 
-`src/platform/numa.h` and `src/platform/numa.cpp` carry the topology detection, the thread binding and the
-network replication. The split is by temperature rather than by subject: everything that runs
-before the first search -- topology discovery, the string forms, thread binding -- is in the
-`.cpp`, and what stays in the header is template-bound and could not move.
+`src/platform/numa.h` and `src/platform/numa.cpp` carry the topology detection, the thread
+binding and the network replication. The split is by temperature rather than by subject:
+everything that runs before the first search -- topology discovery, the string forms, thread
+binding -- is in the `.cpp`, and what stays in the header is template-bound and cannot move.
+
 On a multi-socket machine, a thread reading a network resident on another socket pays
 cross-node memory latency on every evaluation, which is most of what the engine does.
 
@@ -112,11 +113,11 @@ The network is therefore **replicated per NUMA node**, and threads are bound so 
 copy local to it. `LazyNumaReplicated` defers the copy until a node actually has a thread on
 it, so a single-socket machine pays for one.
 
-`src/platform/shm.h` and `src/platform/shm_unix.h` back `SystemWideSharedConstant`, which lets several engine
-processes on one machine share one copy of a replicated network rather than each loading its
-own -- relevant when a test harness runs many engines at once. The holder that uses it,
-`LazyNumaReplicatedSystemWide`, is in `src/platform/numa_shared.h` rather than `numa.h`, so shared
-memory reaches the files that own one and not everything that includes `search.h`.
+`src/platform/shm.h` and `src/platform/shm_unix.h` back `SystemWideSharedConstant`, which lets
+several engine processes on one machine share one copy of a replicated network rather than each
+loading its own -- relevant when a test harness runs many engines at once. The holder that uses
+it, `LazyNumaReplicatedSystemWide`, is in `src/platform/numa_shared.h` rather than `numa.h`, so
+shared memory reaches the files that own one and not everything that includes `search.h`.
 
 **This is the largest platform-specific surface in the tree** and the least covered by the
 gates: the topology paths differ per OS, and `bench` exercises one thread on one node.

@@ -193,9 +193,15 @@ struct LimitsType {
 };
 
 
-// A snapshot of the options, plus the thread pool and transposition table.
-// The options arrive as a VALUE rather than a reference into the UCI layer, so
-// nothing here reaches ucioption.h -- see searchoptions.h.
+// Bundle the state every Worker in a search shares: the option snapshot, the
+// transposition table, the per-NUMA-node histories, and the two run-control
+// flags. Every member is a reference, so the host must keep each referent alive
+// for as long as any Worker built from this state exists.
+//
+// `options` is a SearchOptions -- a plain value struct, not a handle on the UCI
+// option model -- which is why nothing reachable from here includes ucioption.h.
+// Widening it to the live option map would make a search impossible to start
+// without the shell's option model behind it; see searchoptions.h.
 struct SharedState {
     SharedState(const SearchOptions&                  opts,
                 TranspositionTable&                   transpositionTable,
@@ -212,9 +218,9 @@ struct SharedState {
     TranspositionTable&                   tt;
     std::map<NumaIndex, SharedHistories>& sharedHistories;
 
-    // The two flags every worker shares. Plain std::atomic, so the engine names
-    // no host type to reach them -- the host owns the objects and hands over the
-    // references.
+    // The two flags every worker shares. Plain std::atomic rather than a host
+    // handle, so the engine names no platform type to reach them: the host owns
+    // the objects and hands over the references.
     std::atomic<bool>& stopFlag;
     std::atomic<bool>& increaseDepthFlag;
 };
@@ -309,16 +315,16 @@ class SearchManager: public ISearchManager {
                    const TranspositionTable& tt,
                    Depth                     depth);
 
-    // EVERY ONE OF THESE CARRIES ITS INITIAL VALUE. They had none, and were
-    // valid only because the host remembered to assign them -- ThreadPool::clear
-    // sets four and start_thinking sets two, which is the platform initialising
-    // engine state from outside.
+    // Keep an initial value on every member below: the constructor binds only
+    // `updates`, so these initialisers are the whole reason a manager is valid
+    // the moment it exists. Hosts that reset per search write these same values
+    // back, but a driver that constructs a manager and searches without one
+    // would otherwise read indeterminate storage -- and `ponder` is a bool, for
+    // which a byte that is neither 0 nor 1 is undefined behaviour rather than a
+    // wrong answer.
     //
-    // The values are exactly what those two assign, so the hosted path is
-    // unchanged; what changes is that a manager is now valid the moment it
-    // exists. An in-process search with no pool read `ponder` before anything
-    // wrote it, and UBSan caught the load of 190 as a bool -- found by
-    // tests/fuzzsearch.sh on its first run, on the EMPTY input.
+    // iterValue is the exception and needs none: iterative_deepening() fills it
+    // before the first read.
     Stockfish::TimeManagement tm;
     double                    originalTimeAdjust = -1;
     int                       callsCnt           = 0;
@@ -341,7 +347,6 @@ class NullSearchManager: public ISearchManager {
 // Search::Worker is the class that does the actual search.
 // It is instantiated once per thread, and it is responsible for keeping track
 // of the search history, and storing data required for the search.
-// Defined in search.cpp; see the note there on why the vote is engine policy.
 class Worker;
 Worker* best_worker(const std::vector<Worker*>& workers);
 
@@ -439,29 +444,30 @@ class Worker {
     const SearchOptions&                                     options;
     TranspositionTable&                                      tt;
 
-    // The two flags every worker shares, read per node.
+    // The two flags every worker shares, read at every node.
     //
-    // REFERENCES, deliberately, and this is measured rather than stylistic. A
-    // reference member's binding is fixed at construction, so the compiler may
-    // hoist the load out of the node; a pointer member is mutable, so any call
-    // that might alias `this` forces a reload. Carrying these as pointers set
-    // once per search cost clang +2.4 instructions PER NODE (+0.0312%) for
-    // exactly that reason, while gcc was unaffected.
+    // Keep these REFERENCES. A reference member's binding is fixed at
+    // construction, so the compiler may hoist the load of the referent's address
+    // out of the node; a pointer member is mutable, so any call that might alias
+    // `this` forces a reload. Turning them into pointers is therefore a per-node
+    // instruction cost, not a style change -- measure it with
+    // tests/perfbudget.sh under both compilers before attempting it.
     //
     // They come in through SharedState, so they are available at construction
     // and the engine still names no host type to reach them.
     std::atomic<bool>&                                       stopFlag;
     std::atomic<bool>&                                       increaseDepthFlag;
 
-    // The replica for THIS worker's NUMA node. A POINTER, null until the net is
-    // resident, and set by ensure_network_replicated.
+    // The replica for THIS worker's NUMA node. A POINTER, null from construction
+    // until ensure_network_replicated sets it.
     //
-    // A worker is deliberately constructible before a net exists: Engine's
-    // constructor sizes the pool while networkFile is still empty. A worker
-    // built then is complete EXCEPT for the refresh cache, which is seeded from
-    // the net's feature-transformer biases; ensure_network_replicated finishes
-    // the job after the load. Resolving eagerly in the constructor instead was
-    // tried, and crashed here on a replica list that had no entries yet.
+    // A worker is constructible before any net exists -- Engine's constructor
+    // sizes the pool while networkFile is still empty -- and is complete then
+    // EXCEPT for the refresh cache, which is seeded from the net's
+    // feature-transformer biases. So nothing on the construction path may
+    // dereference this, and clear() tests it before touching refreshTable.
+    // Resolving a replica in the constructor instead would read a replica list
+    // that has no entries yet.
     //
     // The platform resolves WHICH replica and hands it in, so the engine never
     // learns the network is replicated at all.

@@ -59,9 +59,9 @@ and the unused rows are the price.
 - **A correction counter cannot be read through the wrong key's field.** The four counters live
   in one `CorrectionBundle`, and the accessors on `SharedHistories` return the *counter*, not
   the bundle: `pawn_correction(pos, us)` yields the pawn counter and nothing else, so pairing
-  one key's row with another key's field has no expression. It used to: the accessor returned
-  the row, the caller wrote `.minor`, and the result was a real counter of the wrong kind
-  rather than a fault.
+  one key's row with another key's field has no expression. An accessor returning the *row*
+  would leave that pairing spelled `.minor` on a row the pawn key selected, and the result
+  would be a real counter of the wrong kind rather than a fault.
 
   ```sh
   # h.pawn_correction(pos, us).minor
@@ -78,11 +78,9 @@ and the unused rows are the price.
 
 ## Where it does not
 
-A page that omits its own boundary invites over-trust.
-
-**Five of the six key spaces are distinct types.** `pawn_key()`, `minor_piece_key()`,
-`material_key()` and `non_pawn_key(Color)` return `TypedKey<KeySpace>` values, so one cannot
-stand in for another, for a `Bitboard`, or for the transposition key:
+**Four key spaces are distinct types**, one per `KeySpace` enumerator. `pawn_key()`,
+`minor_piece_key()`, `material_key()` and `non_pawn_key(Color)` return `TypedKey<KeySpace>`
+values, so one cannot stand in for another, for a `Bitboard`, or for the transposition key:
 
 ```sh
 ./tests/negative_control.sh b5-keyspace
@@ -92,23 +90,30 @@ stand in for another, for a `Bitboard`, or for the transposition key:
 ```
 
 The algebra is deliberately tiny: produce, store, pass, mask to an index, truncate to a tag.
-**There is no `operator^`.** Keys are *built* by xor-ing Zobrist words, and
-`Zobrist::psq[pc][s]` is xor-ed into the position, pawn, non-pawn and minor-piece keys alike
-(`position.cpp:501-515`), so a public xor would let any space absorb any other's material --
-the mixing the type exists to prevent. Construction stays on the raw `u64` inside
-`position.cpp`, which is the only file that reads one, and the type begins at the accessors.
+**There is no `operator^`.** Keys are *built* by xor-ing Zobrist words, and one
+`Zobrist::psq[pc][s]` is xor-ed into the position, pawn, non-pawn and minor-piece keys alike:
 
-Two limits, both by design. **Masking does not distinguish spaces**: `key & mask` yields an
-index for any of them, because that is how the history tables are indexed, so a swap at an
-indexing site still compiles. And **the transposition key is still a bare `Key`**: typing it
-cost +0.0212% and +0.0241% on two PGO lanes, because `posKey` is live across `search()` and the
-wrapper perturbs register allocation there -- the cost rule's own prediction, measured. The
-guarantee that matters survives anyway, since passing a typed key where the bare one belongs is
-still rejected.
+```sh
+grep -n 'Zobrist::psq\[pc\]\[s\]' src/engine/position.cpp
+```
 
-**One key space still shares the alias.** `using Key = u64` is now the transposition key alone,
-reached through `key()` and `prefetch_key()`. `Bitboard` is the same underlying type, so a
-transposition key where a `Bitboard` belongs still compiles -- and so does the reverse.
+A public xor would therefore let any space absorb any other's material -- the mixing the type
+exists to prevent. Construction stays on the raw `u64` inside `position.cpp`, which is the only
+file that reads one, and the type begins at the accessors.
+
+Three limits. **Masking does not distinguish spaces**: `key & mask` yields an index for any of
+them, because that is how the history tables are indexed, so a swap at an indexing site still
+compiles. **The two non-pawn keys share `NonPawnKey`**, one type for both colours, so
+`non_pawn_key(WHITE)` where `non_pawn_key(BLACK)` was meant compiles -- the type separates
+spaces, and the colour is an argument, not a space. And **the transposition key is a bare
+`Key`**: wrapping it measured as a cost on the PGO lanes, because `posKey` is live across
+`search()` and a wrapper perturbs register allocation there -- the cost rule below predicting
+its own case. The guarantee that matters survives anyway, since passing a typed key where the
+bare one belongs is still rejected.
+
+**`using Key = u64` is the transposition key alone**, reached through `key()` and
+`prefetch_key()`. `Bitboard` is the same underlying type, so a transposition key where a
+`Bitboard` belongs still compiles -- and so does the reverse.
 
 The raw position key is not an accessor at all: it is `StateInfo::key`, reached through the
 public `Position::state()`, and no file outside `position.cpp` reads it.
@@ -183,8 +188,9 @@ A wrapper is not free, and the direction is not predictable from the source.
 > indexed with. It can cost when many instances are **live at once inside one large
 > function**, because that is a register-allocation problem and the wrapper perturbs it.
 
-`Search::Worker::search` is one 910-line function holding many live values, which is exactly
-the shape the rule warns about. The rule is about what a function *holds*, not what it is
+`Search::Worker::search` is the largest function in the tree and holds many live values, which
+is exactly the shape the rule warns about -- [02-engine-search.md](02-engine-search.md) carries
+the command that measures it. The rule is about what a function *holds*, not what it is
 *parameterised by*: a template argument occupies no register, which is why `NodeType` costs
 nothing on the hottest function in the engine while a runtime flag in the same position would
 not.
@@ -202,9 +208,9 @@ measure it -- `tests/perfbudget.sh`, both tiers and both build modes.
 
    Where a quantity is constructed by arithmetic but only carried afterwards, the type belongs
    at the boundary between the two. The keys are the case in point: every one is built by
-   XOR-ing Zobrist words, and `Zobrist::psq[pc][s]` is XOR-ed into the position, pawn,
-   non-pawn and minor-piece keys alike (`position.cpp:501-515`), so no typed key could permit
-   the construction without also permitting the mixing. Construction stays untyped inside
+   XOR-ing Zobrist words, and one `Zobrist::psq[pc][s]` is XOR-ed into the position, pawn,
+   non-pawn and minor-piece keys alike, so no typed key could permit the construction without
+   also permitting the mixing. Construction stays untyped inside
    `position.cpp`; a type would begin at the accessors, which is the only place the rest of
    the tree sees a key at all. **Type at the boundary or not at all** -- typing one side of it
    reintroduces the cast at the other.

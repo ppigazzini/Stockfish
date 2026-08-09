@@ -2,17 +2,18 @@
 # Fetch the 3-man Syzygy set, verifying each file by MAGIC rather than by status.
 #
 # A mirror that answers a missing file with a body -- an HTML error page, a 404
-# with content, a redirect to a landing page -- would otherwise be stored as a
-# table and fail much later inside the decoder, reported as a corrupt table
-# rather than as a bad download. Both mirrors tried here do exactly that.
+# with content, a redirect to a landing page -- passes `curl -f` and is then
+# stored as a table, failing much later inside the decoder where it reads as a
+# corrupt table rather than as a bad download. Verify the first four bytes.
 #
-# The set is ten files and about 26 KiB, which is what makes it affordable to
-# fetch in a fuzz job rather than commit.
+# The whole 3-man set is small enough to fetch in a fuzz job rather than commit,
+# which is why it is fetched rather than committed.
 #
-# NOT tests/syzygy. That name belongs to tests/instrumented.py, whose
+# NOT tests/syzygy. That name belongs to tests/testing.py, whose
 # download_syzygy() skips its own fetch when the directory already exists and
-# then expects the 4-man set it would have downloaded -- so a 3-man corpus
-# sitting there makes TestSyzygy wait 300 seconds for a line that cannot come.
+# whose TestSyzygy then expects the 4-man set it would have downloaded -- so a
+# 3-man corpus sitting there makes that suite block until its timeout on a line
+# that cannot come.
 #
 # Exit codes:  0 present and verified   1 a file failed verification   2 skipped
 
@@ -23,7 +24,8 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DEST=${1:-$ROOT/tests/syzygy-3man}
 BASE=${TB_MIRROR:-http://tablebase.sesse.net/syzygy/3-4-5}
 
-# The values the engine itself checks, at src/syzygy/tbprobe.cpp:323:
+# The values the engine itself checks -- `Magics` in
+# src/platform/syzygy/tbprobe.cpp, whose mismatch is "Corrupted table in file":
 #   DTZ  D7 66 0C A5      WDL  71 E8 23 5D
 WDL_MAGIC=71e8235d
 DTZ_MAGIC=d7660ca5

@@ -130,17 +130,15 @@ build_side() {
     [ -x "$dir/src/stockfish" ] || die "$label produced no binary"
 }
 
-# callgrind names each called function on a `cfn=` line and the number of calls
-# to it on the `calls=` line immediately after. Function names are interned:
-# `cfn=(12) name` defines id 12, and a later `cfn=(12)` refers back to it with
-# no name, so the table has to be carried while parsing.
-# callgrind interns function names and SHARES one id space between `fn=` (the
-# function being executed) and `cfn=` (a function it calls). A definition
-# `fn=(12) name` makes a later bare `cfn=(12)` refer back to it, so a parser
-# that reads only `cfn=` lines loses every call whose id was first defined by an
-# `fn=` line -- and which ids those are depends on the order the profile happens
-# to reach them, which thread scheduling perturbs. That made two runs of the
-# SAME binary report different call graphs.
+# callgrind names each called function on a `cfn=` line and the count on the
+# `calls=` line immediately after. Names are interned and ONE id space is shared
+# between `fn=` (the function being executed) and `cfn=` (a function it calls):
+# `fn=(12) name` defines id 12, and a later bare `cfn=(12)` refers back to it.
+# So the name table must be built from BOTH line kinds. A parser that records
+# only `cfn=` definitions loses every call whose id was first defined by an
+# `fn=` line, and which ids those are depends on the order the profile reaches
+# them -- which thread scheduling perturbs, so two runs of the SAME binary then
+# report different call graphs.
 extract_calls() {
     local cg=$1 out=$2
     python3 - "$cg" "$out" <<'PYEOF'
