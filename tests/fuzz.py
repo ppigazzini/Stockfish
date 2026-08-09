@@ -93,10 +93,11 @@ TOKENS = [
     "1e9",
 ]
 
-# A LEGAL 3-man position the fetched tables cover (tbhits 4 on a clean run).
-# An illegal one makes the engine refuse the `position` command, and a harness
-# that cannot tell that apart from a defect reports a rig fault as a finding --
-# which this one did on its first run.
+# A LEGAL 3-man position the fetched tables cover, so a clean run reports
+# tbhits. An illegal one makes the engine refuse the `position` command, and a
+# harness that cannot tell a refused fixture from a defect banks its own rig
+# fault as a finding -- which is why the reference run below is checked for
+# tbhits before any mutation is tried.
 TB_FEN = "8/8/8/8/3k4/8/3Q4/3K4 b - - 0 1"
 
 
@@ -136,8 +137,8 @@ def gen_uci(rng):
         # -- and the next unbounded `go` then runs forever. One stop per line.
         # lstrip before the test: a generated line can start with an empty
         # token, and " go" does not startswith("go") while the engine reads it
-        # as one. That gap left an unbounded search with no stop behind it, and
-        # the harness reported the resulting hang as an engine defect.
+        # as one. Without the lstrip such a line gets no stop behind it, runs
+        # forever, and the harness banks its own hang as an engine defect.
         if lines[-1].lstrip().startswith("go"):
             lines.append("stop")
     lines.append("isready")
@@ -364,9 +365,8 @@ def harness_shm(rng, deadline, findings):
     The only input here that is not a file. shm_unix.h hands one process's
     network to another over a Unix socket and an mmapped memfd, so its failures
     need a SECOND PROCESS rather than a mutated byte: two creators racing, and a
-    peer dying mid-transfer. The one defect this layer is known to have produced
-    -- a client disappearing killing the server with SIGPIPE -- is exactly that
-    shape, and it came from production rather than from testing.
+    peer dying mid-transfer. A client disappearing must not take the server down
+    with SIGPIPE, and no single-process test can reach that shape at all.
 
     The property is survivorship. A process that dies because a PEER died is the
     defect; a process killed on purpose is the stimulus.

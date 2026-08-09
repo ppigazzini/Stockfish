@@ -34,15 +34,17 @@ class Worker;
 // on this side, reaching the set through count and at.
 //
 // A ctx POINTER rather than a file-scope global. A function pointer cannot
-// capture, so the alternative is a hidden global -- which the parallel-for seam
-// used, and which makes two engines in one process impossible.
+// capture, so the alternative is a hidden global -- the shape the parallel-for
+// seam has, and the shape that makes two engines in one process impossible,
+// since the second registration overwrites the first's pool.
 //
 // THE STOP FLAG IS NOT HERE. It is read per node, so it reaches the search as a
-// std::atomic<bool>& in SharedState, fixed at construction. Routing it through
+// std::atomic<bool>& in SharedState, fixed at construction. Route it through
 // this struct instead -- even handing over the address once per search rather
-// than calling per node -- cost clang 2.4 instructions per node, because a
-// pointer member must be reloaded after any call that might alias the worker
-// while a reference member need not be. Measured, not assumed.
+// than calling per node -- and the per-node read becomes a load through a
+// pointer member, which the compiler must reload after any call that might
+// alias the worker; a reference fixed at construction needs no reload. Any move
+// in that direction is a per-node cost: measure it with tests/perfbudget.sh.
 struct WorkerSet {
     void* ctx;
 

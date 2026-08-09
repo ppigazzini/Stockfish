@@ -39,9 +39,9 @@ SOURCES=$(git ls-files 'src/*.cpp' 'src/**/*.cpp')
 #
 # A file and not `printf ... | grep -q`: grep -q exits at the first match and
 # closes the pipe, the writer dies of SIGPIPE, and `set -o pipefail` turns that
-# into a failed pipeline. Every match then reads as a miss. This gate reported
-# six false positives that way before the pipe was removed -- the same "check the
-# exit code, not a piped fragment" trap the house rules already name.
+# into a failed pipeline. A match then reads as a MISS, so every covered source
+# is reported uncovered. Keep the corpus in a file so grep has no producer to
+# kill.
 recipe=$(mktemp) || exit 2
 trap 'rm -f "$recipe"' EXIT
 sed 's/#.*$//' "$MAKEFILE" > "$recipe"

@@ -226,16 +226,16 @@ struct SharedHistories {
         return pawnHistory[pos.pawn_key() & pawnHistSizeMinus1];
     }
 
-    // Each accessor returns the COUNTER, not the bundle holding it. The key that
-    // selects the row and the field read out of it are chosen in one place, so
-    // pairing one key's row with another key's field -- which compiled, and
-    // yielded a real counter of the wrong kind rather than a fault -- is no
-    // longer expressible: there is no field left to pick.
+    // Return the COUNTER, never the bundle holding it. Each accessor picks the
+    // key that selects the row and the field read out of that row in one place,
+    // so a caller cannot pair one key's row with another key's field. Handing
+    // out the bundle makes that pairing expressible again, and it type-checks:
+    // the result is a live counter of the wrong kind, not a fault.
     //
     // `us` stays a parameter because it is a different colour from the one that
-    // chooses the row: it is the side to move, and for the non-pawn pair the
-    // template argument is the side whose key is used. Welding those two
-    // together would be wrong, not safer.
+    // selects the row: it is the side to move, while in nonpawn_correction the
+    // template argument is the side whose key is used. Folding the two into one
+    // would be wrong, not safer.
     auto& pawn_correction(const Position& pos, Color us) {
         return correctionHistory[pos.pawn_key() & sizeMinus1][us].pawn;
     }
