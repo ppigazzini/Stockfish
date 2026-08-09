@@ -142,8 +142,11 @@ class Engine {
 
     OptionsMap                                        options;
     // Keep the option snapshot as a member, not a local in resize_threads:
-    // Search::SharedState and every Worker hold it by const reference for the
-    // life of the thread pool, so a local would dangle on return.
+    // every Worker binds it as a const SearchOptions& at construction and reads
+    // it for the life of the thread pool, so a local would dangle the moment
+    // resize_threads returned. ThreadPool::set takes its SharedState by value
+    // and drops it, so the pool itself holds nothing -- the Workers are the
+    // reason this must outlive them.
     SearchOptions                                     searchOptions;
     TranspositionTable                                tt;
     Eval::NNUE::EvalFile                              networkFile;
@@ -155,9 +158,10 @@ class Engine {
 
     // Keep this DECLARED LAST, for the mirror of the reason the arena installer
     // is declared first. Members are destroyed in reverse declaration order, and
-    // every Thread this owns holds a Search::Worker whose members are references
-    // into the five declarations above -- searchOptions, tt, network,
-    // updateContext and sharedHists -- plus the two atomics inside itself.
+    // every Thread this owns holds a Search::Worker bound to declarations above:
+    // searchOptions and tt by reference, one SharedHistories out of sharedHists
+    // by reference, a pointer into a replica owned by network, and -- on the
+    // main thread only -- a SearchManager holding updateContext by reference.
     // Declaring the pool earlier destroys those referents while the Workers
     // still exist, and nothing diagnoses it.
     ThreadPool threads;

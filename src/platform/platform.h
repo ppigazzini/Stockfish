@@ -47,7 +47,9 @@
 
 namespace Stockfish {
 
-// True if and only if the binary is compiled on a little-endian machine
+// True if and only if the machine RUNNING this binary is little-endian: the
+// initialiser reads Le's first byte at run time, so a cross-compile reports the
+// target's byte order and never the build host's.
 static inline const u16  Le             = 1;
 static inline const bool IsLittleEndian = *reinterpret_cast<const char*>(&Le) == 1;
 

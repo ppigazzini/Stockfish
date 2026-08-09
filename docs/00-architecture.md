@@ -107,8 +107,8 @@ flowchart TD
     QS --> MP
 ```
 
-`uci_loop` parses `go` into a `LimitsType`; `ThreadPool::start_thinking` hands it to every
-`Worker`; each runs `iterative_deepening`, which recurses through `search` and drops into
+`UCIEngine::loop` parses `go` into a `LimitsType`; `ThreadPool::start_thinking` hands it to
+every `Worker`; each runs `iterative_deepening`, which recurses through `search` and drops into
 `qsearch` at depth zero. Move ordering comes from `MovePicker`, leaf scores from the NNUE.
 
 The search allocates nothing per node: move lists are automatics, and the transposition
@@ -159,16 +159,21 @@ Where the engine gets each of those services instead:
 - **The option model.** `Search::Worker` takes a `const SearchOptions&`, a snapshot of the
   option values the engine reads (`src/engine/searchoptions.h`), filled by the composition root
   before each search. Every field defaults to a working value, so the search can be driven
-  without a UCI layer having said anything.
-- **The platform.** Injection seams, catalogued below. In each the engine declares a hook,
-  every reader in the zone goes through it, and the host registers before the first search.
+  without a UCI layer having said anything. `Engine::go` waits for the previous search to
+  finish *before* assigning the snapshot, and that wait is not the one
+  `ThreadPool::start_thinking` already does: the assignment happens first, and every live
+  worker is reading the object it overwrites.
+- **The platform.** Injection seams, catalogued below. In each the engine declares a hook, the
+  readers in the zone go through it, and the host registers before the first search. One
+  reader deliberately does not -- see the clock below.
 
 **What is proven.** The engine links alone AND searches alone. `./tests/enginelink.sh` links the
 engine objects with a host that registers nothing, then runs it: three depth-limited searches
-and a repeat, through `Search::go` (`src/engine/search_go.h`). Every seam default is therefore
-exercised rather than merely reachable -- the arena allocates, the parallel-for clears the
-transposition table inline, time management reads the clock, the tablebase source answers "none
-loaded".
+through `Search::go` (`src/engine/search_go.h`), then the first of them twice more, because the
+context is process-static and a repeat has to give the same move. Every seam default is
+therefore exercised rather than merely reachable -- the arena allocates, the parallel-for clears
+the transposition table inline, time management reads the clock, the tablebase source answers
+"none loaded".
 
 ## What this branch is measured against
 
@@ -181,9 +186,10 @@ git rev-parse master              # what master currently is
 git log master -1 --format='%h %ad %s' --date=short
 ```
 
-**A recorded SHA would drift; a merge-base cannot.** `tests/perfcounters.sh` defaults its base
-to `git merge-base HEAD master` for that reason, so a measurement always names the commit it
-was actually taken against rather than one someone last wrote down.
+**A recorded SHA would drift; a merge-base cannot.** For that reason `tests/perfcounters.sh`,
+`tests/perfdecomp.sh` and `tests/match.sh` all default their base to the merge-base above, so a
+measurement always names the commit it was actually taken against rather than one someone last
+wrote down.
 
 Two things follow, and both are checkable rather than asserted:
 
@@ -218,6 +224,17 @@ A default must fail in one of three ways, and which one is a property of the ser
   number, and the number would look fine.
 - **Safe unregistered.** "No tablebases loaded" is exactly true of an engine with none.
 
+**The clock seam has one reader outside it, and the type is why.** `syzygy_extend_pv`
+(`src/engine/search.cpp`) takes `std::chrono::steady_clock` directly, because its budget is
+compared against `Move Overhead`, whose range starts at 0, and `TimePoint` counts whole
+milliseconds: at that resolution `2 * 0 > 0` is false and the abort runs a further millisecond
+past the deadline. So a host that substitutes a clock gets a deterministic search and a
+wall-clock tablebase extension. No link gate can find this class of reader -- a host clock is
+read through an inline function and leaves no undefined symbol -- so the seam is held by hand,
+and `src/engine/clock.h` carries the exception beside the declaration. Closing it means giving
+the seam a sub-millisecond reading, which changes the type all of time management is written
+in.
+
 Two things are handed over without a seam struct, because both are read per node and an
 indirect call there would cost more than the boundary is worth:
 
@@ -228,16 +245,25 @@ indirect call there would cost more than the boundary is worth:
   `ThreadPool::ensure_network_replicated` and handed in, so the engine never learns the network
   is replicated.
 
-### Registration order is a correctness requirement
+### Declaration order is a correctness requirement, at both ends
 
-`Engine::ArenaInstallerTag` is the **first member declared** in `Engine`, so its constructor
-runs before every member below it. Initialisation follows declaration order, not the order of
-the constructor's initialiser list -- naming it first in the list while declaring it lower down
-compiles, warns only under `-Wreorder`, and still runs the installer after every member above
-it has been constructed.
+`Engine`'s member list is load-bearing in both directions, because initialisation follows
+declaration order and destruction follows it in reverse. The initialiser list decides neither
+-- naming a member first there while declaring it lower down compiles, warns only under
+`-Wreorder`, and runs it in declaration order anyway.
 
-A block taken from the engine's fallback allocator and released by the host's is heap corruption
-with no diagnostic, so nothing that allocates may be constructed first.
+- **`Engine::ArenaInstallerTag` is declared first**, so its constructor runs before every
+  member below it can allocate. A block taken from the engine's fallback allocator and released
+  by the host's is heap corruption with no diagnostic.
+- **`ThreadPool threads` is declared last**, so the workers it owns are destroyed before
+  anything they hold references into. A `Search::Worker` binds `searchOptions` and `tt` by
+  reference, one `SharedHistories` out of `sharedHists` by reference, a pointer into a replica
+  owned by `network`, and -- on the main thread -- a `SearchManager` holding `updateContext` by
+  reference. Declare the pool higher up and those referents die while the workers still exist,
+  and nothing diagnoses it.
+
+Neither end is expressible in the initialiser list, which is why `src/shell/engine.h` is where
+the order is fixed and `src/shell/engine.cpp` says so rather than restating it.
 
 `Engine::resize_threads` installs the parallel-for **before** `set_tt_size`, because the table
 clears itself through it. Installing after clears a resized table single-threaded on the first

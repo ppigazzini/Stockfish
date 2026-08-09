@@ -49,11 +49,14 @@ static_assert(sizeof(TimePoint) == sizeof(i64), "TimePoint should be 64 bits");
 // giving this seam a sub-millisecond reading, which changes the type the whole
 // of time management is written in.
 //
-// The cadence is what makes an indirect call affordable. The readers are
-// once-per-process static initialisers plus TimeManagement::elapsed_time,
-// reached from check_time, which throttles itself to one call per callsCnt
-// nodes (search.cpp). Add a reader to the per-node path and this becomes a
-// per-node indirect call.
+// The cadence is what makes an indirect call affordable, and NO READER IS ON
+// THE PER-NODE PATH. The hottest is TimeManagement::elapsed_time, reached from
+// check_time -- which throttles itself to one call per callsCnt nodes -- and
+// from Worker::elapsed once per depth iteration and output_pv once per info
+// line. The rest are colder: one reading per `go` for LimitsType::startTime and
+// a few around the bench loop (uci.cpp), plus two function-local statics that
+// initialise once (search.cpp). Add a reader to the per-node path and this
+// becomes a per-node indirect call.
 //
 // THE DEFAULT IS THE REAL CLOCK, and it is the "same answer, slower" kind of
 // default: an unregistered engine tells the time correctly, one indirect call

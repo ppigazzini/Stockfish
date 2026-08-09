@@ -79,10 +79,6 @@ struct PositionSetError: std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-// Position class stores information regarding the board representation as
-// pieces, side to move, hash keys, castling info, etc. Important methods are
-// do_move() and undo_move(), used by the search to update node info when
-// traversing the search tree.
 std::string square_name(Square s);
 
 // Render a move in UCI notation. Castling is encoded king-takes-rook
@@ -90,6 +86,10 @@ std::string square_name(Square s);
 // file, which is the only form a non-Chess960 GUI accepts.
 std::string move_to_uci(Move m, bool chess960 = false);
 
+// Position class stores information regarding the board representation as
+// pieces, side to move, hash keys, castling info, etc. Important methods are
+// do_move() and undo_move(), used by the search to update node info when
+// traversing the search tree.
 class Position {
    public:
     static void init();
