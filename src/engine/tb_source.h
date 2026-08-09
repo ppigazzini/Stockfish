@@ -79,8 +79,8 @@ enum ProbeState {
 // whenever tables are loaded, so this is the only seam in the tree on the hot
 // path. It is invisible on the default bench, where SyzygyPath is empty and the
 // cardinality guard short-circuits before the call -- so measuring this seam on
-// bench measures the guard. `../zfish` records the same hook and says outright
-// that nothing there has measured it.
+// bench measures the guard, not the call. Measuring it needs SyzygyPath pointed
+// at a corpus and positions chosen to probe.
 struct TbSource {
     void* ctx;
     int (*max_cardinality)(void* ctx);
