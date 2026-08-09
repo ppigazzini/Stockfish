@@ -43,9 +43,20 @@ The registration points are two, and both are ordering-sensitive:
 | `Engine::ArenaInstallerTag` | arena, output sink, tablebase source | the tag is the **first member declared**, so it runs before anything allocates |
 | `Engine::resize_threads` | parallel-for, worker set | both need a pool, and the parallel-for must be installed before `set_tt_size` |
 
+`ThreadPool threads` is the **last member declared**, which is the same rule read backwards:
+reverse destruction order takes the workers down before `searchOptions`, `tt`, `network`,
+`updateContext` and `sharedHists`, every one of which a `Search::Worker` holds by reference or
+by pointer. Declaration order in `engine.h` fixes both ends; the constructor's initialiser list
+fixes neither.
+
 The seams are function pointers rather than closures, so a host that needs per-instance state
-passes it as the `void* ctx` the struct carries -- the worker set uses the pool itself. A
-file-scope pointer is the alternative, and it makes two engines in one process impossible.
+passes it as the `void* ctx` the struct carries -- the worker set uses the pool itself, which
+spares it a global of its own. The parallel-for has no `ctx` and so needs one: `hostPool` in
+`engine.cpp`. **Neither shape makes two engines in one process work.** Each seam's registered
+value is a single file-scope `current` in the engine (`src/engine/worker_set.cpp`,
+`src/engine/parallel.cpp`), so a second `Engine` overwrites the first's registration and the
+first then dispatches onto the second's pool. Fixing that means giving the seams an owner, not
+a `ctx`.
 
 The full catalogue, with each default and what it costs, is in
 [00-architecture.md](00-architecture.md).

@@ -33,10 +33,15 @@ class Worker;
 // that knows what a good move is. The best-move vote is Search::best_worker,
 // on this side, reaching the set through count and at.
 //
-// A ctx POINTER rather than a file-scope global. A function pointer cannot
-// capture, so the alternative is a hidden global -- the shape the parallel-for
-// seam has, and the shape that makes two engines in one process impossible,
-// since the second registration overwrites the first's pool.
+// A ctx POINTER so the host needs no global of its own. A function pointer
+// cannot capture, so without a ctx the host must park its pool somewhere the
+// callbacks can find it -- which is the shape the parallel-for seam forces, and
+// `hostPool` in shell/engine.cpp is exactly that.
+//
+// It does NOT make two engines in one process work: `current` in worker_set.cpp
+// is process-wide, so a second set_worker_set replaces the first engine's set
+// and the first engine then dispatches onto the second's pool. Fixing that
+// means giving the seam an owner, not a ctx.
 //
 // THE STOP FLAG IS NOT HERE. It is read per node, so it reaches the search as a
 // std::atomic<bool>& in SharedState, fixed at construction. Route it through
