@@ -32,6 +32,15 @@ Three things the engine needs that `new` does not give:
 when the table is at least eight huge pages per NUMA node, so a small table does not reserve
 gigabyte pages it cannot fill and cause memory oversubscription.
 
+**The engine does not call these.** It allocates through `engine/arena.h`, a struct of three
+function pointers it declares and the host fills with exactly the three above. Unregistered the
+arena falls back to plain aligned allocation, which is why `tests/enginelink.sh` can link and
+run the engine with no platform object at all.
+
+The installer is the **first member declared** in `Engine`, and that position is the whole
+guarantee: a block taken from the fallback allocator and released by the host's is heap
+corruption with no diagnostic.
+
 Large pages need privilege on Windows (`OpenProcessToken`, `LookupPrivilegeValueA`, resolved
 as function pointers) and `MADV_HUGEPAGE` on Linux. `has_large_pages()` reports whether the
 request succeeded; the engine runs either way.

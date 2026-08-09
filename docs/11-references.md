@@ -136,6 +136,16 @@ perf gates.
 
 ## Gates, lanes and testing
 
+- [libFuzzer](https://llvm.org/docs/LibFuzzer.html) -- the in-process, coverage-guided engine
+  behind `tests/fuzzsearch.sh`. The flag reference is where `-print_funcs`, `-max_total_time`
+  and the corpus arguments are defined.
+- [OSS-Fuzz / CIFuzz](https://google.github.io/oss-fuzz/getting-started/continuous-integration/)
+  -- the reference model for fuzzing in CI: minutes per change, hours on a schedule, and a
+  corpus carried between runs.
+- [AddressSanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) and
+  [UndefinedBehaviorSanitizer](https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html) --
+  what the fuzz lane compiles in, and the only place the engine runs under either.
+
 Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 
 - [GitHub Actions workflow syntax][gha-syntax] -- triggers, `workflow_call`, and job
