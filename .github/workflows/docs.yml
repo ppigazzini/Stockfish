@@ -24,6 +24,15 @@ jobs:
       - name: Lane coverage
         run: ./tests/lanecheck.sh
 
+      # linkcheck.sh and enginelink.sh both build the tree in a worktree, and the
+      # Makefile's build target depends on net. Fetch it ONCE here and let each
+      # gate copy src/*.nnue in, rather than have two gates download it
+      # independently -- a mirror outage would otherwise turn this lane red for
+      # a reason that has nothing to do with the zone boundary.
+      - name: Fetch the net
+        working-directory: src
+        run: make net
+
       # Cheap, and the prerequisite for trusting the two zone checks below: a
       # source the build names nowhere produces no object for them to reason
       # about.

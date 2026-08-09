@@ -82,11 +82,23 @@ jobs:
       # so the job never gets deeper than its first night. restore-keys makes a
       # run whose exact key misses still start from the most recent corpus.
       - name: Restore the corpus
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .fuzz-corpus-search
           key: fuzz-corpus-search-${{ github.run_id }}
           restore-keys: fuzz-corpus-search-
+
+      # Install what the gate needs, so exit 2 cannot mean "this runner lacked a
+      # tool". Every gate here uses exit 2 for SKIPPED and a step fails on any
+      # non-zero status, so an unmet prerequisite is indistinguishable from a
+      # finding. Making the prerequisite explicit is the fix; adding
+      # continue-on-error would make the lane unable to fail at all.
+      - name: Install clang with libFuzzer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang
+          echo 'int main(){return 0;}' > /tmp/probe.cpp
+          clang++ -fsanitize=fuzzer-no-link -c -o /dev/null /tmp/probe.cpp
 
       - name: Fetch the net
         working-directory: src
@@ -99,7 +111,7 @@ jobs:
       # "it crashed once, somewhere, on an input nobody kept".
       - name: Keep the reproducer
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-search-reproducer
           path: fuzz-search-*
