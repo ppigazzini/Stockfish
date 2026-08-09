@@ -13,7 +13,7 @@ Audience: all contributors.
 
 | term | what carries it here |
 |---|---|
-| **bench** | the fixed position list and depth in `src/shell/benchmark.cpp`, run by `bench` in `src/shell/uci.cpp`. The transposition table is cleared between positions, so the total does not depend on their order |
+| **bench** | the fixed position list and depth in `src/shell/benchmark.cpp`, run by `bench` in `src/shell/uci.cpp`. `setup_bench` emits one `ucinewgame` before the first position and none after, so the table carries from each position into the next and the total is a property of the list *in the order it is listed* |
 | **the bench signature** | the node total `bench` prints, asserted by `tests/signature.sh`. The number lives in the commit record, in the `Bench:` line of the last functional commit; `tests/docslint.sh` refuses a page that quotes it |
 | **node** | one execution of `Search::Worker::search<NodeType>` (or `qsearch`). **Not** a NUMA node -- see Section 3 |
 | **ply** | one half-move. `ss->ply` counts from the root of the current search; `Position::game_ply()` counts from the start of the game. They are both `int` and they measure from different origins |
@@ -72,7 +72,7 @@ None of this is chess-programming vocabulary.
 | **seam** | a struct of function pointers the engine declares, reads through a getter, and the host fills once before the first search. The engine names no host type; the host names the engine's. Catalogued in [00-architecture.md](00-architecture.md) |
 | **the composition root** | `src/shell/engine.cpp`: the one file that calls a seam's setter. Nothing else does |
 | **the arena** | `src/engine/arena.h`, the allocation seam. Unregistered it falls back to plain aligned allocation, which is why a block must never be taken from one allocator and released by the other |
-| **a default that refuses** | a seam whose unregistered behaviour would be a *different* answer rather than a slower one, so it declines instead. The worker set refuses a count above one; a silent single-threaded search would still print a number |
+| **a default that refuses** | a seam whose unregistered behaviour would be a *different* answer rather than a slower one, so it declines instead. The unregistered worker set reports **no** workers rather than answering with one; a silent single-threaded search would still print a number, and the number would look fine |
 | **headless** | running the engine with no seam registered. `Search::go` (`src/engine/search_go.h`) is the entry; `tests/enginelink.sh` and `tests/fuzzsearch.sh` are the two callers |
 | **the standalone link** | `tests/enginelink.sh`: compile `src/engine/` alone, link with a stub `main` and nothing else, fail on any undefined symbol. Stronger than a symbol-set intersection, which cannot see an inline call |
 | **the corpus** | the inputs a fuzzer keeps because they reached new coverage. Without one persisted across runs, a nightly job re-derives the same shallow coverage every night |

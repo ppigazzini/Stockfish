@@ -518,8 +518,9 @@ using NumaAutoPolicy = std::variant<SystemNumaPolicy, L3DomainsPolicy, BundledL3
 // be removed, or the user may create custom nodes.
 //
 // As a special case, when performing system-wide replication of read-only data
-// (i.e., LazyNumaReplicatedSystemWide), the system NUMA node is used, rather than
-// custom or L3-aware nodes. See that class's get_discriminator() function.
+// (i.e., LazyNumaReplicatedSystemWide, which lives in numa_shared.h and not in
+// this header), the system NUMA node is used, rather than custom or L3-aware
+// nodes. See that class's get_discriminator() function.
 //
 // It is guaranteed that NUMA nodes are NOT empty: every node exposed by NumaConfig
 // has at least one processor assigned.
