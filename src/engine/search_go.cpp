@@ -25,6 +25,7 @@
 #include <string>
 
 #include "arena.h"
+#include "clock.h"
 #include "history.h"
 #include "movegen.h"
 #include "position.h"
@@ -58,41 +59,49 @@ struct Context {
 };
 
 Context* context() {
-    static Context* ctx = nullptr;
-    if (ctx)
-        return ctx;
+    // A function-local static with a dynamic initialiser, so the compiler emits
+    // the thread-safe guard. The previous shape -- a null pointer tested and
+    // then assigned -- was constant-initialised, which gets NO guard: two
+    // callers could both see null and both construct, leaking one Context and
+    // leaving each holding a different Worker. Never destroyed, deliberately:
+    // the Worker owns arena memory whose allocator the host may already have
+    // torn down by the time static destructors run.
+    static Context* ctx = [] {
+        auto* c = new Context();
 
-    ctx = new Context();
+        // One NUMA node, one worker. The token defaults to index 0 and the map
+        // must carry that entry: Worker's first initialiser reaches it through
+        // sharedHistories.at(), which throws if the entry is absent.
+        c->sharedHistories.try_emplace(NumaIndex(0), 1);
 
-    // One NUMA node, one worker. The token defaults to index 0 and the map must
-    // carry that entry: Worker's first initialiser reaches it through
-    // sharedHistories.at(), which throws if the entry is absent.
-    ctx->sharedHistories.try_emplace(NumaIndex(0), 1);
+        // Exercise the arena AND the parallel-for: resize allocates through the
+        // former and clears through the latter, which runs inline when no host
+        // has registered one. Sized for a smoke test, not a benchmark.
+        c->tt.resize(1);
 
-    // Exercise the arena AND the parallel-for: resize allocates through the
-    // former and clears through the latter, which runs inline when no host has
-    // registered one. Sized for a smoke test, not a benchmark.
-    ctx->tt.resize(1);
+        // Install no-op callbacks where the shell would install printing ones:
+        // the engine still composes the info lines, so the formatting paths
+        // run, and the gate is not judged on its stdout. They must be non-empty
+        // targets -- SearchManager calls them unconditionally.
+        c->updates.onUpdateNoMoves = [](const InfoShort&) {};
+        c->updates.onUpdateFull    = [](const InfoFull&) {};
+        c->updates.onIter          = [](const InfoIteration&) {};
+        c->updates.onBestmove      = [](std::string_view, std::string_view) {};
+        c->updates.onStart         = []() {};
 
-    // Install no-op callbacks where the shell would install printing ones: the
-    // engine still composes the info lines, so the formatting paths run, and
-    // the gate is not judged on its stdout. They must be non-empty targets --
-    // SearchManager calls them unconditionally.
-    ctx->updates.onUpdateNoMoves = [](const InfoShort&) {};
-    ctx->updates.onUpdateFull    = [](const InfoFull&) {};
-    ctx->updates.onIter          = [](const InfoIteration&) {};
-    ctx->updates.onBestmove      = [](std::string_view, std::string_view) {};
-    ctx->updates.onStart         = []() {};
+        c->shared = std::make_unique<SharedState>(c->options, c->tt, c->sharedHistories, c->stop,
+                                                  c->increaseDepth);
 
-    ctx->shared = std::make_unique<SharedState>(ctx->options, ctx->tt, ctx->sharedHistories,
-                                                ctx->stop, ctx->increaseDepth);
+        // Pass thread index 0: that makes this the main worker, which is what
+        // applies the depth cap and drives the aspiration loop. A non-main
+        // worker searches until someone else stops it, and headless nobody
+        // would.
+        c->worker = ArenaPtr<Worker>(memory_allocator<Worker>(
+          arena_alloc, *c->shared, std::make_unique<SearchManager>(c->updates), usize(0), usize(0),
+          usize(1), NumaReplicatedAccessToken{}));
 
-    // Pass thread index 0: that makes this the main worker, which is what
-    // applies the depth cap and drives the aspiration loop. A non-main worker
-    // searches until someone else stops it, and headless nobody would.
-    ctx->worker = ArenaPtr<Worker>(memory_allocator<Worker>(
-      arena_alloc, *ctx->shared, std::make_unique<SearchManager>(ctx->updates), usize(0), usize(0),
-      usize(1), NumaReplicatedAccessToken{}));
+        return c;
+    }();
 
     return ctx;
 }
@@ -138,7 +147,13 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
         return std::nullopt;  // mate or stalemate: nothing to search
 
     w.limits          = LimitsType();
-    w.limits.depth    = depth;
+    // LimitsType's constructor assigns every member EXCEPT startTime, and the
+    // hosted path gets away with it because UCIEngine::parse_limits writes it
+    // first thing. Nothing writes it here, and TimeManagement::init reads it
+    // unconditionally -- before its own early return -- so leaving it out is an
+    // indeterminate read on the one entry point that has no shell above it.
+    w.limits.startTime = now();
+    w.limits.depth     = depth;
     w.nodes           = 0;
     w.tbHits          = 0;
     w.bestMoveChanges = 0;
