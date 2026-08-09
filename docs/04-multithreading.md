@@ -27,8 +27,10 @@ The speedup comes from the shared table: work one thread did is work another doe
 **Per worker** -- the position, the search stack, the root move list, the history tables
 (mostly), the accumulator stack and refresh cache, the node counter.
 
-**Shared** -- the transposition table, the continuation-history planes, the stop flag, and
-the pooled counters.
+**Shared** -- the transposition table, the stop flag, the pooled counters, and the three
+tables `SharedHistories` owns: the continuation-history planes, the pawn history and the
+unified correction history. The transposition table is shared across the whole pool; a
+`SharedHistories` is shared only between the threads on one NUMA node.
 
 ```cpp
 std::atomic_bool stop, increaseDepth;

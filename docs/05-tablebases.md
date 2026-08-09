@@ -85,11 +85,11 @@ return an approximately right verdict; it returns a confident wrong one, and the
 believe it. That property makes this the highest-consequence code in the tree per line.
 
 The table bytes are untrusted input: they are read from disk, and nothing in the engine
-produced them. **They are not validated, and that is a hole rather than a design.** A single
-altered byte in a 3-man WDL table kills the engine with SIGSEGV inside `decompress_pairs` on
-the first probe; the reproducer, the fault site and what is still unknown about it are in
-[10-tooling-ci.md](10-tooling-ci.md). Syzygy files come off public mirrors, so this is a
-mid-game crash a user can reach without doing anything wrong.
+produced them. **Past the four-byte magic nothing is validated, and that is a hole rather than
+a design.** A single altered byte after it in a 3-man WDL table kills the engine with SIGSEGV
+inside `decompress_pairs` on the first probe; the reproducer, the fault site and what is still
+unknown about it are in [10-tooling-ci.md](10-tooling-ci.md). Syzygy files come off public
+mirrors, so this is a mid-game crash a user can reach without doing anything wrong.
 
 The PV extension is where the prober meets the clock, and it is the one place in the engine
 that reads a clock outside the `clock.h` seam. `syzygy_extend_pv` (`src/engine/search.cpp`)
