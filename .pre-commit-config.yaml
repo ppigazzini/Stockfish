@@ -11,16 +11,19 @@ repos:
       - id: check-added-large-files
       - id: check-toml
       - id: check-yaml
-      # Two exclusions, both load-bearing. Byte-exact comparison inputs:
+      # Three exclusions, all load-bearing. Byte-exact comparison inputs:
       # tests/cases/*.golden is matched against engine output verbatim and *.uci
       # is what produces it, so a trailing newline added to either is a
-      # mismatch, not a tidy-up. And src/incbin/ is vendored -- rewriting a
+      # mismatch, not a tidy-up. src/incbin/ is vendored -- rewriting a
       # third-party header to this repo's whitespace taste makes every future
-      # update a conflict, which is why CI's clang-format excludes it too.
+      # update a conflict, which is why CI's clang-format excludes it too. And
+      # tests/instrumented.py and tests/testing.py are upstream's runners, which
+      # are vendored in exactly the same sense: this branch did not write them,
+      # gains nothing from restyling them, and pays for it at every rebase.
       - id: end-of-file-fixer
-        exclude: '\.(golden|uci|nnue|epd|fens)$|^src/incbin/'
+        exclude: '\.(golden|uci|nnue|epd|fens)$|^src/incbin/|^tests/(instrumented|testing)\.py$'
       - id: trailing-whitespace
-        exclude: '\.(golden|uci|nnue|epd|fens)$|^src/incbin/'
+        exclude: '\.(golden|uci|nnue|epd|fens)$|^src/incbin/|^tests/(instrumented|testing)\.py$'
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.2
     hooks:
