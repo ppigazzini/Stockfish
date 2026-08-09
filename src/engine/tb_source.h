@@ -79,6 +79,14 @@ enum ProbeState {
 // tbConfig.cardinality guard short-circuits before the call, so a bench
 // measurement of this seam measures the guard. Measuring the call needs
 // SyzygyPath pointed at a corpus and positions chosen to probe.
+// WHAT A HOST MUST GUARANTEE. probe_wdl MUST write *result on every path,
+// including every early return. The caller in search() branches on it to decide
+// whether the returned WDLScore is a real tablebase verdict, so a prober that
+// returns without writing turns an unrelated value into a tablebase cutoff and
+// stores a fabricated score in the transposition table. Nothing catches it: the
+// bench never sets SyzygyPath, so no gate here probes at all. The bundled
+// default writes FAIL first and null-checks result; a host gets no such help
+// from the compiler, which is why it is stated here.
 struct TbSource {
     void* ctx;
     int (*max_cardinality)(void* ctx);
