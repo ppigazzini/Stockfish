@@ -160,6 +160,31 @@ exercised rather than merely reachable -- the arena allocates, the parallel-for 
 transposition table inline, time management reads the clock, the tablebase source answers "none
 loaded".
 
+## What this branch is measured against
+
+`master` tracks `upstream/master` and carries no work of its own. That makes it the pin, and
+the pin needs no file:
+
+```sh
+git merge-base HEAD master        # the upstream commit this branch forked from
+git rev-parse master              # what master currently is
+git log master -1 --format='%h %ad %s' --date=short
+```
+
+**A recorded SHA would drift; a merge-base cannot.** `tests/perfcounters.sh` defaults its base
+to `git merge-base HEAD master` for that reason, so a measurement always names the commit it
+was actually taken against rather than one someone last wrote down.
+
+Two things follow, and both are checkable rather than asserted:
+
+- **The bench signature must agree.** This branch is refactoring work, so `bench` on `master`
+  and `bench` here print the same node total. When they stop agreeing, either a functional
+  change landed here or upstream moved -- and every performance comparison between the two is
+  VOID until it is resolved, which is what `tests/perfcounters.sh` and `tests/perfbudget.sh`
+  both refuse on.
+- **`master` moving is a fact, not a problem.** Rebasing onto a newer upstream changes the
+  merge-base and therefore the comparison; the number is re-taken, not adjusted.
+
 ## The seams
 
 Each is a struct of function pointers the engine owns, a getter, and a setter the host calls
