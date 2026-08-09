@@ -44,7 +44,7 @@ MUTATED=()
 # same failure one level down: a row that mutates the SAME file twice backs the
 # file up on the first call and then overwrites that backup with the
 # already-mutated content on the second, so restore() puts back a half-mutant
-# and reports success. Observed, not theorised.
+# and reports success.
 restore() {
     local i
     for ((i=${#MUTATED[@]}-1; i>=0; i--)); do

@@ -35,8 +35,8 @@
 #
 # `EXTRACXXFLAGS=-fno-lto` does not turn it off. src/Makefile:502 interpolates
 # EXTRACXXFLAGS into CXXFLAGS and then APPENDS `-flto` at line 964, so the
-# Makefile's flag is last and wins. That was found here by a negative control:
-# an engine file calling aligned_large_pages_free linked clean.
+# Makefile's flag is last and wins. tests/negative_control.sh's `enginelink` row
+# plants a platform call in an engine file and fails if this gate stays green.
 #
 # So this builds through COMPCXX, a wrapper that drops every -flto argument and
 # passes the rest through untouched. Every other flag stays exactly what ships,

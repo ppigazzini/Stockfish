@@ -63,13 +63,27 @@ limits, and releases them together. Every worker gets its own copy of the positi
 own `StateInfo` chain, because `do_move` mutates both.
 
 `stop` is the one flag everything watches. Time management, a `stop` command, and a thread
-finding a mate all set it, and every worker checks it through the throttled `check_time`
-path rather than at every node.
+finding a mate all set it.
+
+**The engine does not reach the pool to read it.** `ThreadPool::stop` is handed to each
+`Search::Worker` as a `std::atomic<bool>&` through `SharedState`, so the search names no host
+type on the path that matters. Workers read it two ways, and both are deliberate:
+
+- **Per node**, relaxed, at the top of `search()` and `qsearch()` -- a load of a reference
+  member and a load of the flag, which is what a `ThreadPool&` cost before the boundary moved.
+- **Throttled**, through `check_time`, which is where the time budget and the info-line cadence
+  are decided.
+
+A reference member and not a pointer: a reference's binding is fixed at construction, so the
+compiler may hoist the address out of the node. A pointer member must be reloaded after any
+call that might alias the worker.
 
 ## Choosing the answer
 
-The threads finish with different best moves. `get_best_thread` runs a **vote** rather than
-taking the deepest or the highest-scoring:
+The threads finish with different best moves. `Search::best_worker` runs a **vote** rather than
+taking the deepest or the highest-scoring. It lives in `engine/search.cpp`, not here: choosing
+between candidate lines is chess policy, and the only thing it needs from the pool is the set of
+workers, which the worker-set seam hands it as a count and an index.
 
 ```cpp
 votes[th->worker->rootMoves[0].pv[0]] += th->worker->rootMoves[0].score - minScore + 14;
