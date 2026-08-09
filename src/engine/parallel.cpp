@@ -31,13 +31,21 @@ std::vector<usize> default_thread_numa_map() { return {}; }
 void               default_run_on(usize, std::function<void()> fn) { fn(); }
 void               default_wait_on(usize) {}
 
-ParallelFor current = {default_num_threads, default_numa_nodes, default_thread_numa_map,
-                       default_run_on, default_wait_on};
+// constexpr, so `current` below stays CONSTANT-initialised. Copy-initialising it
+// from a non-constexpr object would make it dynamically initialised, and any TU
+// whose own static initialiser reached parallel_for() first would then read a
+// zeroed struct and call through a null pointer.
+constexpr ParallelFor defaults = {default_num_threads, default_numa_nodes, default_thread_numa_map,
+                              default_run_on, default_wait_on};
+
+ParallelFor current = defaults;
 
 }  // namespace
 
 const ParallelFor& parallel_for() { return current; }
 
 void set_parallel_for(const ParallelFor& p) { current = p; }
+
+void reset_parallel_for() { current = defaults; }
 
 }  // namespace Stockfish

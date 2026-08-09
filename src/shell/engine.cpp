@@ -209,6 +209,22 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
     resize_threads();
 }
 
+// Uninstall what resize_threads installed. The seams are process-wide while an
+// Engine is not, so without this the parallel-for keeps a function-pointer set
+// that reads hostPool, and the worker set keeps a ctx pointing at this engine's
+// pool -- both dangling the moment `threads` is destroyed a few lines below.
+//
+// The body runs BEFORE any member is destroyed, which is what makes it safe:
+// nothing here can run afterwards. The ARENA is deliberately left installed --
+// ~TranspositionTable frees through arena() during member destruction, so
+// resetting it here would release a host block through the engine's fallback.
+Engine::~Engine() {
+    wait_for_search_finished();
+    reset_worker_set();
+    reset_parallel_for();
+    hostPool = nullptr;
+}
+
 std::variant<u64, PositionSetError>
 Engine::perft(const std::string& fen, Depth depth, bool isChess960) {
     verify_network();
