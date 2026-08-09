@@ -16,6 +16,16 @@ echo "perft testing started"
 # tests/instrumented.py, expect is not always installed, and a gate that cannot
 # run reports nothing rather than failing. The driver takes its five arguments
 # positionally and exits 0 match, 1 wrong or timed out, 2 engine gone.
+#
+# Resolve the interpreter and invoke it by name rather than relying on the
+# shebang. MSYS2 ships the interpreter as `python`, has no `python3`, and
+# `#!/usr/bin/env python3` there fails with 127 -- which the runner reports as
+# every position failing rather than as a missing tool.
+PYTHON=$(command -v python3 || command -v python || true)
+if [ -z "$PYTHON" ]; then
+    echo "perft: no python3 or python on PATH" >&2
+    exit 2
+fi
 EXPECT_SCRIPT=$(mktemp)
 
 cat << 'EOF' > $EXPECT_SCRIPT
@@ -73,7 +83,7 @@ run_test() {
 
   echo -n "Testing depth $depth: ${pos:0:40}... "
 
-  if $EXPECT_SCRIPT "$pos" "$depth" "$expected" "$chess960" "$tmp_file" > /dev/null 2>&1; then
+  if "$PYTHON" "$EXPECT_SCRIPT" "$pos" "$depth" "$expected" "$chess960" "$tmp_file" > /dev/null 2>&1; then
     echo "OK"
     rm -f "$tmp_file"
   else
