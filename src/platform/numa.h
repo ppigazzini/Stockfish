@@ -22,6 +22,11 @@
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
+// Used only inside the _WIN64 blocks below, which no build here compiles, so
+// dropping it during the header split cost nothing on this platform and would
+// have broken the Windows build on a standard library whose transitive includes
+// differ.
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
