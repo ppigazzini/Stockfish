@@ -133,12 +133,39 @@ prepare_tree() {
 # Forcing all three empty on both sides makes the stamp identical and the
 # comparison about the code. It is why this gate must never be used to argue
 # that the SHIPPED binary is unchanged: the shipped binary carries its stamp.
+# EXTRACXXFLAGS CANNOT TURN LTO OFF. src/Makefile:502 interpolates EXTRACXXFLAGS
+# into CXXFLAGS and line 964 appends `-flto` after it, so the Makefile's flag is
+# last and wins. Passing -fno-lto that way builds an LTO binary while the log
+# says otherwise -- and this gate disassembles the linked image, so it keeps
+# working and keeps comparing something other than what it claims.
+#
+# The wrapper is what actually removes it. tests/linkcheck.sh, enginelink.sh and
+# fuzzsearch.sh use the same one.
+nolto_wrapper() {
+    local path=$1
+    local cxx
+    cxx=$( [ "$COMP" = clang ] && echo clang++ || echo g++ )
+    cat > "$path" <<WRAP
+#!/bin/bash
+args=()
+for a in "\$@"; do
+    case "\$a" in
+        -flto|-flto=*|-flto-*|-fwhole-program-vtables) ;;
+        *) args+=("\$a") ;;
+    esac
+done
+exec $cxx "\${args[@]}"
+WRAP
+    chmod +x "$path"
+}
+
 build_nolto() {
     local dir=$1 label=$2
     echo "  building $label (LTO off, build stamp neutralised) ..." >&2
+    nolto_wrapper "$WORK/nolto-cxx"
     ( cd "$dir/src" && make -j"$JOBS" build ARCH="$ARCH" COMP="$COMP" \
-        GIT_SHA= GIT_DATE= GIT_DIFFINDEX= \
-        EXTRACXXFLAGS=-fno-lto EXTRALDFLAGS=-fno-lto ) > "$dir/build.log" 2>&1 \
+        COMPCXX="$WORK/nolto-cxx" \
+        GIT_SHA= GIT_DATE= GIT_DIFFINDEX= ) > "$dir/build.log" 2>&1 \
         || { tail -25 "$dir/build.log" >&2; die "$label failed to build"; }
     [ -x "$dir/src/stockfish" ] || die "$label produced no binary"
 }
