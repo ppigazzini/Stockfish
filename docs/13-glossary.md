@@ -74,6 +74,14 @@ None of this is chess-programming vocabulary.
 | **the build stamp** | `GIT_SHA`, `GIT_DATE` and `GIT_DIFFINDEX`, compiled into `misc.o`. Two revisions embed different strings, which shifts rodata and therefore every rip-relative displacement |
 | **tier** | an enumerated `ARCH=` value. A performance number without its tier is not a number |
 | **hot / cold** | of a page: whether it describes code that moves. [12-writing.md](12-writing.md) |
+| **zone** | one of `src/engine/`, `src/platform/`, `src/shell/`. A file's zone is its directory, so a new file joins one by where it is put. `tests/zones.sh` is the single mapping both zone checks read |
+| **seam** | a struct of function pointers the engine declares, reads through a getter, and the host fills once before the first search. The engine names no host type; the host names the engine's. Catalogued in [00-architecture.md](00-architecture.md) |
+| **the composition root** | `src/shell/engine.cpp`: the one file that calls a seam's setter. Nothing else does |
+| **the arena** | `src/engine/arena.h`, the allocation seam. Unregistered it falls back to plain aligned allocation, which is why a block must never be taken from one allocator and released by the other |
+| **a default that refuses** | a seam whose unregistered behaviour would be a *different* answer rather than a slower one, so it declines instead. The worker set refuses a count above one; a silent single-threaded search would still print a number |
+| **headless** | running the engine with no seam registered. `Search::go` (`src/engine/search_go.h`) is the entry; `tests/enginelink.sh` and `tests/fuzzsearch.sh` are the two callers |
+| **the standalone link** | `tests/enginelink.sh`: compile `src/engine/` alone, link with a stub `main` and nothing else, fail on any undefined symbol. Stronger than a symbol-set intersection, which cannot see an inline call |
+| **the corpus** | the inputs a fuzzer keeps because they reached new coverage. Without one persisted across runs, a nightly job re-derives the same shallow coverage every night |
 
 ## 3. Words that mean two things
 
