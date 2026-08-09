@@ -1,0 +1,71 @@
+# Per-component decomposition groups: NAME <TAB> REGEX
+#
+# One regex per logical component, matched against the demangled symbol names in
+# BOTH profiles, and the SELF costs summed. Rows are tried in order and the first
+# match wins, so a narrow row must precede the wider one it would otherwise be
+# swallowed by -- `NNUE accumulator apply` before `NNUE feature transform`.
+#
+# MATCH THE NAME, NOT THE SIGNATURE. A regex without `::` matches parameter types
+# too: `AccumulatorStack` claimed `Network::evaluate(..., AccumulatorStack&,
+# AccumulatorCaches&)` and left the network-evaluate row matching nothing, which
+# the tool reports rather than printing as zero.
+#
+# WHAT A ROW MEANS. "This much of the work happens here." It is a claim about
+# cost, not about the algorithm; tests/fingerprint.sh owns the call-count claim,
+# which is the one immune to inlining.
+#
+# CHOOSE SYMBOLS THAT SURVIVE INLINING ON BOTH SIDES. A row matching nothing on
+# either side is reported by name rather than printed as a zero, because a zero
+# on one side reads as a total win forever. If a compiler change inlines a symbol
+# away, fix the row; do not delete it. Prefer a callee too large to inline over
+# its caller.
+#
+# The startup rows are kept SEPARATE rather than filtered. Net load and table
+# construction are ~40% of a depth-8 bench, and a decomposition that silently
+# folded them into the engine would describe the loader as much as the search.
+
+# -- startup: the net parse and the tables built before the first search --
+net parse (leb128)	read_leb_128
+# hash_bytes belongs HERE, not in a row of its own: upstream keeps it a call and
+# this branch inlines it into the shared-memory constructor, so separating them
+# reports a 7.9x regression that is one symbol moving inside one component.
+net load / shm	Network::load|SystemWideSharedConstant|EvalFile|load_internal|load_external|hash_bytes
+zeroing (memset)	__memset_
+copying (memcpy)	__memcpy_|__memmove_
+
+# -- NNUE: the evaluation spine --
+NNUE accumulator apply	apply_combined
+NNUE incremental update	update_accumulator_incremental
+NNUE refresh cache	update_accumulator_refresh_cache
+NNUE network evaluate	NNUE::Network::evaluate|evaluate_bucket
+NNUE accumulator stack	AccumulatorStack::|AccumulatorCaches::
+# The affine output layers and the clipped-ReLU stages have NO row: both sides
+# inline them into NNUE::Network::evaluate, so they cannot be separated from it
+# and a row for them would report MATCHED NOTHING forever -- which trains a
+# reader to ignore that diagnostic. Their cost is inside `NNUE network evaluate`.
+NNUE feature transform	FeatureTransformer|HalfKAv2_hm|FullThreats|PP3Wide|append_active_indices
+
+# -- search: the alpha-beta spine --
+search node	Worker::search<
+qsearch	Worker::qsearch
+search driver	iterative_deepening|start_searching|aspiration|best_worker
+worker clear / init	Worker::clear|SharedHistories|ButterflyHistory|ContinuationHistory
+time management	TimeManagement|check_time|Worker::elapsed
+
+# -- move generation and ordering --
+movepick	MovePicker
+move sort	partial_insertion_sort|insertion_sort
+movegen	generate|MoveList
+SEE	see_ge
+
+# -- board --
+do/undo move	Position::do_move|Position::undo_move|Worker::do_move|Worker::undo_move
+threats	update_piece_threats|update_slider_threats|Position::threats
+legality / check	Position::legal|Position::gives_check|Position::pseudo_legal|update_slider_blockers
+attacks / bitboards	Attacks::|attacks_bb|Bitboards::|between_bb|line_bb
+position key / state	adjust_key50|Position::set|Position::fen|StateInfo
+
+# -- shared tables --
+transposition table	TranspositionTable|TTEntry|TTWriter
+history update	update_all_stats|update_quiet_histories|update_continuation
+correction history	CorrectionHistory|correction_value

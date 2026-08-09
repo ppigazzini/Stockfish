@@ -35,6 +35,8 @@ EXCUSED_NAMES=(
   zones.sh
   perfcounters.sh
   perfcounters_report.py
+  perfdecomp.sh
+  perfdecomp.py
 )
 EXCUSED_WHY=(
   "wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
@@ -47,6 +49,8 @@ EXCUSED_WHY=(
   "the zone table, sourced by depcheck.sh and linkcheck.sh rather than run"
   "reads the CPU's hardware counters; a virtualised hosted runner exposes no PMU, so a lane would skip every run"
   "the aggregation half of perfcounters.sh, invoked by it rather than run"
+  "callgrind with the cache and branch simulators, roughly 50x; run by hand when a component moves"
+  "the decomposition half of perfdecomp.sh, invoked by it rather than run"
 )
 
 FAIL=0
