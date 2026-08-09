@@ -6,9 +6,9 @@
 # able to fail is invisible, because it reports success -- which is what everyone
 # was hoping for.
 #
-# Every mutation here PERTURBS A VALUE rather than removing a bound. A mutant
-# that hands the search an evaluation with no ceiling produces an experiment that
-# never terminates, and a timeout is a rig fault, never a detection.
+# No mutation here removes a SEARCH BOUND. A mutant that hands the search an
+# evaluation with no ceiling produces an experiment that never terminates, and a
+# timeout is a rig fault, never a detection.
 #
 # Three ways the rig itself can be wrong, and all three refuse rather than
 # return a verdict:
@@ -22,7 +22,10 @@
 # puts the sources back. The run ends by executing a gate green rather than by
 # asserting the tree is clean.
 #
-# Exit codes:  0 every selected row detected its mutation   1 a row did not   2 skipped
+# Exit codes:  0 every selected row detected its mutation   1 a row did not, or
+# the rig refused   2 the repository root could not be entered. A row that
+# SKIPPED leaves the status at 0, so read the skipped count and never the status
+# alone -- the run below prints it for that reason.
 
 set -u
 set -o pipefail
@@ -734,9 +737,23 @@ if selected fuzz-tb; then
         echo "negative-control: fuzz [tb]   SKIPPED -- no corpus; run tests/tbfetch.sh"
         SKIP=$((SKIP+1))
     else
+        # LIMIT, and it is not the whole harness: the stub dies on EVERY command,
+        # so harness_tb refuses at its reference run ("RIG FAULT -- the clean
+        # tables gave no reference verdict") and never reaches a mutated table.
+        # What this row establishes is that a dead engine cannot read as clean.
+        # The crash path inside the mutation loop -- `killed by signal` -- is
+        # reached by no row here; closing that needs a stub that answers the
+        # reference and dies only afterwards.
         echo "negative-control: fuzz [tb]   -- an engine that dies on a corrupt table"
+        # Serve the REFERENCE run from the real engine, then crash. A stub that
+        # dies on its first invocation never reaches the mutation loop: the
+        # harness refuses at its reference run with a rig fault, the row sees a
+        # non-zero status and credits itself with a detection it never made.
+        rm -f "$NCSTUB/tbcrash.n"
         stub tbcrash '#!/bin/bash
-echo "info string Found 5 WDL and 5 DTZ tablebase files (up to 3-man)."
+n=$(cat "'"$NCSTUB"'/tbcrash.n" 2>/dev/null || echo 0)
+echo $((n + 1)) > "'"$NCSTUB"'/tbcrash.n"
+[ "$n" -eq 0 ] && exec "'"$ROOT"'/src/stockfish" "$@"
 cat >/dev/null
 kill -SEGV $$'
         if EXE="$NCSTUB/tbcrash" ./tests/fuzz.py --seconds 1 --harness tb >/dev/null 2>&1; then
@@ -823,8 +840,18 @@ fi
 
 row fuzz-net
 if selected fuzz-net; then
+    # The same limit the tb row carries: this stub dies on every command too, so
+    # harness_net refuses at its reference evaluation and never loads a mutated
+    # net. The row proves a dead engine cannot read as clean; the `killed by
+    # signal` branch inside the mutation loop is reached by no row here.
     echo "negative-control: fuzz [net]  -- an engine that dies on a corrupt net"
+    # Same shape as the tb row: the reference evaluation has to come from a
+    # working engine, or the harness refuses before any mutation is tried.
+    rm -f "$NCSTUB/netcrash.n"
     stub netcrash '#!/bin/bash
+n=$(cat "'"$NCSTUB"'/netcrash.n" 2>/dev/null || echo 0)
+echo $((n + 1)) > "'"$NCSTUB"'/netcrash.n"
+[ "$n" -eq 0 ] && exec "'"$ROOT"'/src/stockfish" "$@"
 cat >/dev/null
 kill -SEGV $$'
     if EXE="$NCSTUB/netcrash" ./tests/fuzz.py --seconds 1 --harness net >/dev/null 2>&1; then
@@ -838,11 +865,13 @@ rm -rf "$NCSTUB"
 
 row fuzzsearch
 if selected fuzzsearch; then
-    # The in-process fuzzer's own failure has never been observed, and its
-    # failure mode is the expensive one to trust: it exits 0 both when nothing is
-    # wrong and when the rig never reached the engine. Plant a defect the first
-    # input must reach -- a null read on the root position, before any move is
-    # walked -- and require the gate to go red.
+    # The in-process fuzzer's FINDING path has never been observed. Its
+    # executions guard already refuses a run that fuzzed nothing -- that exits 2,
+    # not 0 -- so what is left to distrust is the expensive case: a rig that
+    # builds, links and executes and still cannot carry a defect out of the
+    # engine reports clean. Plant one every input reaches: a null STORE inside
+    # Search::go, which the driver calls at depth 3 whatever the walk produced,
+    # so it fires on the first input rather than on a lucky one.
     echo "negative-control: fuzzsearch  -- a defect on the first search"
     mutate src/engine/search_go.cpp \
         '    w.limits          = LimitsType();' \
@@ -886,7 +915,7 @@ COVERAGE_EXCUSED_WHY=(
   "this script -- it cannot be its own negative control"
   "a harness imported by instrumented.py rather than a gate; instrumented.py's row covers it"
   "the zone table, sourced by the four zone-aware gates; it asserts nothing itself"
-  "a report rather than a pass/fail gate: it exits 0 for any ratio and 1 only when the node counts differ, so the only thing to control is the VOID refusal, which perfbudget's row already covers"
+  "a report rather than a pass/fail gate: it exits 0 for any ratio, and 1 only when the node counts differ or perfcounters_report.py could not report, so the only thing to control is the VOID refusal, which perfbudget's row already covers"
   "the aggregation half of perfcounters.sh, invoked by it rather than run"
   "a report rather than a pass/fail gate, and its VOID refusal is the same one perfbudget's row covers"
   "the decomposition half of perfdecomp.sh, invoked by it rather than run"
