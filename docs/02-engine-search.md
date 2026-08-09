@@ -127,6 +127,38 @@ reaches. `skip_quiets` is read at every call rather than fixed at construction, 
 search decides mid-node that it has seen enough quiet moves and the picker has to honour that
 from the next call on.
 
+## What a worker is given
+
+`Search::SharedState` is everything a `Search::Worker` is built from, and it names no host type:
+a `const SearchOptions&` snapshot, the transposition table, the shared history banks, and the
+two `std::atomic<bool>&` flags every worker watches. The worker resolves the rest through the
+seams in [00-architecture.md](00-architecture.md).
+
+**A worker is legal before a network exists.** `Engine` sizes the pool while `EvalFile` is still
+empty, so `Worker::network` is a `const Eval::NNUE::Network*` that starts null and
+`Worker::clear` skips the refresh cache while it is. The cache is seeded from the net's
+feature-transformer biases, so it is the one part that cannot be filled early;
+`ensure_network_replicated` fills it after a load, and `Worker::evaluate` cannot be reached
+before then.
+
+`SearchManager` carries its own initial values -- `ponder`, `stopOnPonderhit`, `callsCnt`,
+`originalTimeAdjust`, `previousTimeReduction`, `bestPreviousScore`, `bestPreviousAverageScore`.
+Leaving them to the caller makes a search that runs without `ThreadPool::start_thinking` read
+them uninitialised, which UBSan reports as a load of a non-`bool` value into `ponder`.
+
+## `Search::go` -- searching without a host
+
+`engine/search_go.h` runs one depth-limited, single-threaded search from a FEN with no seam
+registered. It exists so the defaults can be **run**, not merely linked: `tests/enginelink.sh`
+and `tests/fuzzsearch.sh` are both built on it.
+
+Each call is independent. The manager's cross-search state is reset per call, because carrying
+it seeds the aspiration window from whatever was searched last -- right for successive `go`
+commands on one engine, wrong for a driver that walks to an unrelated position each iteration.
+
+The heavy blocks are process-static and reused, so it is **not reentrant**: one search at a
+time.
+
 ## `search.cpp` -- the driver
 
 `Worker::iterative_deepening` is what every thread runs, and it is three nested loops rather
