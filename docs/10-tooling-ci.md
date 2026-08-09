@@ -66,8 +66,8 @@ passes.
 
 These answer "does it still cost the same?", which no value gate above can.
 
-**There are four of them because there are four questions.** Picking the wrong one produces
-a confident wrong verdict, so pick by what the change CLAIMS:
+**There are five of them because there are five questions.** Picking the wrong one produces a
+confident wrong verdict, so pick by what the change CLAIMS:
 
 | the change claims | gate | why |
 |---|---|---|
@@ -75,6 +75,11 @@ a confident wrong verdict, so pick by what the change CLAIMS:
 | "this costs nothing" (a refactor) | `tests/perfbudget.sh` | deterministic; an instruction increase in a behaviour-preserving change is a real red flag |
 | "this is faster" (an optimisation) | `tests/npsab.sh`, and probably fishtest | the instruction axis can report the wrong sign -- see below |
 | "this moved no cache line" | `tests/perfcounters.sh` | the only axis that sees a miss, a mispredict or a stall, and the only one that runs above AVX2 |
+| "and if it did, where?" | `tests/perfdecomp.sh` | per-component instructions, misses and mispredicts; deterministic, and a model |
+
+The last two divide one question between them. `perfcounters.sh` measures the hardware and
+cannot say which code moved; `perfdecomp.sh` says which code moved and is measuring a simulator.
+Neither replaces the other, and where they disagree the hardware is the fact.
 
 ### `tests/perfbudget.sh`
 

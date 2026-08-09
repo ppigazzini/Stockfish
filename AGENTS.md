@@ -71,16 +71,21 @@ single-threaded, so every gate above stays green while a data race is present.
 make -j build ARCH=x86-64-avx2 sanitize=thread && python3 ../tests/instrumented.py --sanitizer-thread ./stockfish
 ```
 
-## Performance: the three axes, and which one answers what
+## Performance: the five axes, and which one answers what
 
 `signature.sh` proves the engine searched the SAME TREE. It says nothing about what that tree
-cost. These three do, and they are not interchangeable.
+cost. These five do, and they are not interchangeable.
 
 ```sh
-../tests/perfbudget.sh <base-rev> [<head-rev>]   # retired instructions, deterministic
-../tests/textequal.sh  <base-rev> [<head-rev>]   # per-symbol codegen equivalence, LTO off
-../tests/npsab.sh      <base-rev> [<head-rev>]   # interleaved paired wall clock
+../tests/perfbudget.sh   <base-rev> [<head-rev>]  # retired instructions, deterministic
+../tests/textequal.sh    <base-rev> [<head-rev>]  # per-symbol codegen equivalence, LTO off
+../tests/npsab.sh        <base-rev> [<head-rev>]  # interleaved paired wall clock
+../tests/perfcounters.sh [<base>] [<head>]        # PMU: cycles, IPC, cache/branch, ALL tiers
+../tests/perfdecomp.sh   [<base>] [<head>]        # per-component Ir/misses, deterministic
 ```
+
+The last two default their base to `git merge-base HEAD master`, which is the upstream commit
+this branch forked from. `master` tracks `upstream/master`, so there is no pin file to drift.
 
 **Measure with gcc AND clang, and let PGO decide.** One compiler cannot distinguish a change
 from its own codegen. Run `perfbudget.sh` with `--comp gcc` and `--comp clang`, and with
@@ -102,6 +107,8 @@ anything. A regression under PGO still does not land.
 | "this is pure code motion" | `textequal.sh` first | a codegen-equivalence proof has no noise floor. One run settles it. |
 | "this costs nothing" (a refactor) | `perfbudget.sh` | deterministic to ~0.001% here; an instruction increase in a refactor is a genuine red flag |
 | "this is faster" (an optimisation) | `npsab.sh` | see the trap below -- the instruction axis can invert the sign |
+| "this moved no cache line" | `perfcounters.sh` | the ONLY axis that sees a miss or a mispredict, and the only one that runs above avx2 |
+| "and if it did, where?" | `perfdecomp.sh` | per-component instructions and misses, deterministic -- but a simulated cache, not this one |
 
 **The trap, measured on this repository.** `ee72cf49f` "Optimize RankAttacks" is marked *No
 functional change* and passed a 212,800-game SPRT. It shrinks a table 4x, trading instructions
@@ -123,7 +130,7 @@ it as a pass.
 | **Startup is 42% of a depth-8 bench** (1.15e9 of 2.72e9 Ir): net load plus magic tables. A whole-process instruction ratio describes the loader as much as the engine. Subtract startup by measurement, and only on the instruction axis. | `tests/perfbudget.sh` does it per binary |
 | **A node count that moved makes the comparison VOID**, not expensive. Fix the behaviour change first; `signature.sh` owns it. | both perf gates refuse |
 | **callgrind implements no AVX-512** and dies on the first instruction it does not know. The instruction axis tops out at avx2/bmi2, below the tier a player builds. Instructions at avx2, time at native; never quote one tier's instruction ratio beside another tier's time ratio. | `perfbudget.sh` refuses an avx512 ARCH |
-| **LTO is on by default** (`-flto=full` clang, `-flto -flto-partition=one` gcc). Per-TU objects hold IR, so there is nothing to disassemble until the link, and the linked image renumbers every address when a TU moves. `textequal.sh` builds with `EXTRACXXFLAGS=-fno-lto` for that reason -- and therefore does NOT prove the shipped build unchanged. | quote both halves |
+| **LTO is on by default** (`-flto=full` clang, `-flto -flto-partition=one` gcc), and **`EXTRACXXFLAGS=-fno-lto` CANNOT TURN IT OFF**: `Makefile:502` interpolates EXTRACXXFLAGS into CXXFLAGS and line 964 appends `-flto` after it, so the Makefile's flag wins. Every gate needing LTO off builds through a `COMPCXX` wrapper that strips the argument. A gate that passed the flag and believed it was measuring something else entirely. | `textequal.sh`, `linkcheck.sh`, `enginelink.sh`, `fuzzsearch.sh` |
 | **PGO is what ships.** `make profile-build` is upstream's own recipe and what fishtest measures. A refactor free at plain `-O3` can cost real work under PGO, because splitting a function changes what the profile can attribute. | measure both |
 | **An instruction count cannot see a latency win and is not neutral about one.** Extra accumulator chains, unrolling for ILP, software prefetch -- all can only ADD retired instructions. callgrind is blind to prefetch outright. | decide the axis before optimising |
 | **nps cannot resolve a few percent.** A cold first run reads far low; a batched best-of-N measures the order as much as the binaries, because the second batch runs on a hotter core. Interleave, alternate the order, report the median of the paired ratios AND its spread. A spread straddling 1.000 has established no direction. | `tests/npsab.sh` |

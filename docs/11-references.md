@@ -125,8 +125,16 @@ perf gates.
 - [Agner Fog's optimisation manuals][agner] -- instruction tables and microarchitecture.
 - [What every programmer should know about memory][drepper] -- cache lines and data layout,
   the background for the 32-byte transposition cluster.
-- [Callgrind manual][callgrind] -- the instrument `tests/perfbudget.sh` and
-  `tests/fingerprint.sh` drive, including what it simulates and what it does not.
+- [Callgrind manual][callgrind] -- the instrument `tests/perfbudget.sh`,
+  `tests/fingerprint.sh` and `tests/perfdecomp.sh` drive, including what it simulates and what
+  it does not. The **cache and branch simulators** and the **output-file format** are the two
+  sections `perfdecomp.sh` depends on: name-compression ids are defined on first appearance,
+  and the cost line after `calls=` is the callee's inclusive cost.
+- [`perf_event_open(2)`][perfevent] -- the interface `tests/perf_counters.cpp` uses instead of
+  the `perf` CLI. `read_format`, `PERF_FORMAT_TOTAL_TIME_ENABLED/RUNNING` and
+  `perf_event_paranoid` are the three parts that decide whether a reading is trustworthy.
+- [Linux perf wiki][perfwiki] -- what each `PERF_COUNT_HW_*` event actually counts on which
+  microarchitecture, and why a cache-miss counter is not portable between them.
 - [Valgrind manual][valgrind] | [Memcheck][memcheck] | [Helgrind][helgrind] -- the
   sanitizer lanes' instruments.
 - [ThreadSanitizer][tsan] | [UndefinedBehaviorSanitizer][ubsan] -- what each lane in
@@ -173,6 +181,8 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 [agner]:            https://www.agner.org/optimize/
 [bash-pitfalls]:    https://mywiki.wooledge.org/BashPitfalls
 [callgrind]:        https://valgrind.org/docs/manual/cl-manual.html
+[perfevent]: https://man7.org/linux/man-pages/man2/perf_event_open.2.html
+[perfwiki]: https://perfwiki.github.io/main/
 [clang-attr]:       https://clang.llvm.org/docs/AttributeReference.html
 [clang-cli]:        https://clang.llvm.org/docs/ClangCommandLineReference.html
 [clang-cxx]:        https://clang.llvm.org/cxx_status.html
