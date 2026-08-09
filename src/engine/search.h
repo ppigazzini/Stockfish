@@ -460,6 +460,12 @@ class Worker {
     Eval::NNUE::AccumulatorCaches refreshTable;
 
     friend class Stockfish::ThreadPool;
+
+    // The engine's own headless entry (search_go.cpp) sets the same root state
+    // the platform's pool sets, so it needs the same access the pool has. A
+    // friend rather than a public setter: nothing outside these two should be
+    // able to hand a worker a root position.
+    friend struct HeadlessRunner;
     friend class SearchManager;
 };
 
