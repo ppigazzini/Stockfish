@@ -44,6 +44,12 @@ HASH=${HASH:-16}
 # is one place to bump when CI moves.
 FASTCHESS_REF=${FASTCHESS_REF:-894616028492ae6114835195f14a899f6fa237d3}
 CACHE=${CACHE:-${TMPDIR:-/tmp}/refish-fastchess}
+# Empty means the book fastchess ships. It is balanced, which suits a liveness
+# gate and suits nothing else: from an equal start most games draw, so the
+# result carries almost no information per game. An unbalanced book gives one
+# side a real edge in every opening and is what a strength measurement uses;
+# pass one with --book. The two are not comparable to each other.
+BOOK=${BOOK:-}
 
 usage() {
     cat <<'EOF'
@@ -59,6 +65,8 @@ usage: tests/match.sh [<base-rev>] [<head-rev>] [options]
   --comp C         gcc or clang (default gcc)
   --threads N      UCI Threads per engine (default 1)
   --jobs N         parallel build jobs (default: nproc)
+  --book FILE      opening book in EPD (default: the balanced one fastchess
+                   ships; an unbalanced book is what a strength measurement uses)
 
 A match cannot measure strength at the sizes this runs. It measures whether the
 engine plays. Compare the Elo against the error bar fastchess prints beside it.
@@ -75,6 +83,7 @@ while [ $# -gt 0 ]; do
         --comp)        COMP=$2; shift 2 ;;
         --threads)     THREADS=$2; shift 2 ;;
         --jobs)        JOBS=$2; shift 2 ;;
+        --book)        BOOK=$2; shift 2 ;;
         -h|--help)     usage; exit 0 ;;
         -*) echo "match: unknown argument: $1" >&2; usage >&2; exit 2 ;;
         *) POS+=("$1"); shift ;;
@@ -123,7 +132,15 @@ if [ ! -x "$CACHE/fastchess" ]; then
         exit 2
     fi
 fi
-BOOK="$CACHE/app/tests/data/openings.epd"
+if [ -z "$BOOK" ]; then
+    BOOK="$CACHE/app/tests/data/openings.epd"
+    BOOKKIND="balanced, bundled with fastchess"
+else
+    # Absolute, because fastchess is run from the scratch directory below and a
+    # relative --book would resolve against that instead of the caller's cwd.
+    BOOK="$(cd "$(dirname "$BOOK")" 2>/dev/null && pwd)/$(basename "$BOOK")"
+    BOOKKIND="supplied"
+fi
 [ -f "$BOOK" ] || { echo "match: SKIPPED -- no opening book at $BOOK" >&2; exit 2; }
 
 # ---------------------------------------------------------------- engines
@@ -142,6 +159,7 @@ build_side() {
 
 echo "match: base=$BASE_SHA (upstream)  head=$HEAD_SHA (refish)"
 echo "match: $((ROUNDS * 2)) games, tc=$TC, concurrency=$CONCURRENCY, arch=$ARCH, comp=$COMP, threads=$THREADS"
+echo "match: book $(basename "$BOOK") ($BOOKKIND), $(wc -l < "$BOOK") positions"
 echo "match: building both sides with profile-build, which is what ships ..."
 build_side base || { echo "match: SKIPPED -- base did not build" >&2; tail -5 "$WORK/build-base.log" >&2; exit 2; }
 build_side head || { echo "match: SKIPPED -- head did not build" >&2; tail -5 "$WORK/build-head.log" >&2; exit 2; }
