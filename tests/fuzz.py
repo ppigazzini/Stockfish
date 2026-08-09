@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Bounded, seeded fuzzing of the three inputs the engine did not produce.
+"""Bounded, seeded fuzzing of what the engine consumes but did not produce.
 
-Three harnesses, because they fail differently and none substitutes for another:
+Four harnesses, because they fail differently and none substitutes for another:
 
   uci  mutated command text at the shipped binary. Finds parser defects and
        essentially never reaches the search behind them, because a mutated line
@@ -11,6 +11,9 @@ Three harnesses, because they fail differently and none substitutes for another:
        believes, so "did not crash" is not the property that matters.
   net  a mutated network file through EvalFile. The engine embeds a network, so
        the failure mode is a REPLACEMENT net rather than a missing one.
+  shm  concurrent engines contending for the shared network segment. The only
+       stimulus here that is not a file: it needs a SECOND PROCESS, so nothing
+       single-process reaches its shape at all.
 
 The seed prints first. The value of a fuzz run is a reproducible failure.
 

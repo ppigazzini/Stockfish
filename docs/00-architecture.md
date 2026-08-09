@@ -16,6 +16,7 @@ ls src/engine src/engine/nnue src/engine/nnue/features src/engine/nnue/layers
 ls src/platform src/platform/syzygy
 ls src/shell
 ls src/universal                        # runtime ISA dispatch entry points
+ls src/incbin                           # vendored, not ours
 ```
 
 | File | Owns |
@@ -34,6 +35,7 @@ ls src/universal                        # runtime ISA dispatch entry points
 | `engine/evaluate.h/.cpp` | the evaluation entry point and its trace |
 | `engine/nnue/` | the network: feature transformer, accumulator, layers, feature sets |
 | `engine/score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from |
+| `engine/hashing.h` | `hash_bytes`, arithmetic over bytes with no OS in it, so both zones can call it: the net's content hash from `engine/`, the shared-memory segment name from `platform/` |
 | `engine/arena.h`, `output_sink.h`, `tb_source.h`, `clock.h`, `parallel.h`, `worker_set.h` | the seams, catalogued below |
 | `platform/memory.h/.cpp` | aligned and large-page allocation |
 | `platform/numa.h/.cpp`, `numa_shared.h`, `shm.h`, `shm_unix.h` | NUMA topology, replication, cross-process sharing |
@@ -64,10 +66,12 @@ Tune::init(uci->engine_options());
 uci->loop();
 ```
 
-`Position::init()` must follow `Attacks::init()`: `Position::set` calls `set_check_info`,
-which reads the attack tables. A `Position` built before them does not crash -- it reads
-zeroed attack sets, finds no checkers and generates no piece moves, so the failure presents
-as a search bug rather than a startup bug.
+`Position::init()` must follow `Attacks::init()`, and reads the attack tables twice over.
+`Position::init` itself calls `attacks_bb` to enumerate the reversible one-piece moves the
+cuckoo table is built from; `Position::set` later calls `set_check_info`, which calls
+`both_attacks_bb`. Neither crashes on zeroed tables. The cuckoo table simply comes out empty,
+so `upcoming_repetition` never fires, and a `Position` built too early finds no checkers and
+generates no piece moves -- both present as a search bug rather than a startup bug.
 
 The network is **not** loaded here. It is a runtime input the UCI layer loads later, because
 the UCI layer owns the `EvalFile` option. The binary resolves it relative to the working
@@ -120,25 +124,31 @@ table, the accumulator stack and the refresh cache are allocated once outside an
 | **engine** | the chess library: types, bitboards, position, movegen, search, per-worker state, the TT, evaluation | nothing outside the engine |
 | **platform** | the OS runtime: the clock, memory, threads, NUMA, shared memory | engine |
 | **shell** | the process: `main`, the UCI loop, the option table, bench, tuning | engine, platform |
+| **vendor** | `incbin/`, the vendored include-binary header, and `universal/`, the fat-binary entry shims | outside the dependency rules |
 
 `platform` is not a layer *beneath* the engine: it is the runtime that hosts the engine, so it
 may depend on engine types and not the other way round.
 
-A file's zone is **its directory**, so a new file joins a zone by where it is put, and one
-that belongs to none is reported rather than silently exempt. `tests/zones.sh` holds the
-mapping and both checks read it.
+A file's zone is **its directory**, so a new file joins a zone by where it is put, and one in
+a directory the mapping does not name resolves to `unassigned` -- reported by both checks
+rather than silently exempt. `tests/zones.sh` holds the mapping and both checks read it.
 
-**One edge is checked, because only one is a defect rather than a choice**: an engine file that
-reaches a shell one. `./tests/depcheck.sh` reads includes and `./tests/linkcheck.sh` reads
-symbols, and `tests/depcheck.baseline` and `tests/linkcheck.baseline` list what exists. A
-baseline expires in both directions -- an entry describing an edge that no longer happens fails
-too, so a fixed edge cannot quietly stay listed as debt.
+**At the include level one edge is checked, because only one is a defect rather than a choice**:
+an engine file that includes a shell header. `./tests/depcheck.sh` reads includes and
+`tests/depcheck.baseline` lists what exists -- one entry, `types.h -> tune.h`, which is
+deliberate rather than debt. `./tests/linkcheck.sh` asks the same question of symbols, and it
+asks it twice: `tests/linkcheck.baseline` for the engine-to-shell edge and
+`tests/linkcheck-platform.baseline` for the engine-to-platform one. A baseline expires in both
+directions -- an entry describing an edge that no longer happens fails too, so a fixed edge
+cannot quietly stay listed as debt.
 
-**Both symbol baselines are empty** -- `tests/linkcheck.baseline` for the engine-to-shell edge
-and `tests/linkcheck-platform.baseline` for the engine-to-platform one -- so no engine object
-references a shell-defined or a platform-defined symbol. `./tests/enginelink.sh` states the same
-thing in the form that admits no argument: it links `engine/` alone, against a stub `main` and
-nothing else, and every symbol resolves.
+**Both symbol baselines are empty**, so no engine object references a shell-defined or a
+platform-defined symbol. That is a weaker statement than it sounds: `linkcheck.sh` intersects
+symbol sets, so it cannot see a reference to a symbol nothing in the tree defines, and it
+cannot see an inlined platform call at all -- an inlined function leaves no symbol reference,
+and both baselines read empty while the engine calls it. `./tests/enginelink.sh` is the form
+that admits no argument: it links `engine/` alone, against a stub `main` and nothing else, and
+every symbol resolves or the link names what is missing.
 
 Where the engine gets each of those services instead:
 
@@ -192,12 +202,12 @@ once. `src/shell/engine.cpp` is the composition root.
 
 | Seam | Hands over | Default, unregistered | Registered by |
 |---|---|---|---|
-| `engine/arena.h` | `alloc`, `alloc_hinted`, `free` | plain aligned allocation | `Engine::ArenaInstallerTag`, **first** |
+| `engine/arena.h` | `alloc`, `alloc_hinted`, `free` | plain aligned allocation | `Engine::ArenaInstallerTag`, whose position is the guarantee |
 | `engine/output_sink.h` | `line`, `debug_dump` | prints to stdout unsynchronised | `Engine::ArenaInstallerTag` |
 | `engine/tb_source.h` | `max_cardinality`, `probe_wdl`, `rank_root_moves` | no tablebases loaded | `Engine::ArenaInstallerTag` |
 | `engine/clock.h` | `now` | reads `std::chrono::steady_clock` | nothing; the default is the clock |
 | `engine/parallel.h` | thread count, NUMA map, `run_on`, `wait_on` | runs the work inline | `Engine::resize_threads` |
-| `engine/worker_set.h` | `start_searching`, the counters, `count`, `at` | reports no workers | `Engine::resize_threads` |
+| `engine/worker_set.h` | `start_searching`, `wait_for_search_finished`, the counters, `count`, `at` | reports no workers | `Engine::resize_threads` |
 
 A default must fail in one of three ways, and which one is a property of the service:
 
@@ -222,8 +232,9 @@ indirect call there would cost more than the boundary is worth:
 
 `Engine::ArenaInstallerTag` is the **first member declared** in `Engine`, so its constructor
 runs before every member below it. Initialisation follows declaration order, not the order of
-the constructor's initialiser list -- naming it first in the list and declaring it eighth
-compiles, warns under `-Wreorder`, and runs the installer after four members exist.
+the constructor's initialiser list -- naming it first in the list while declaring it lower down
+compiles, warns only under `-Wreorder`, and still runs the installer after every member above
+it has been constructed.
 
 A block taken from the engine's fallback allocator and released by the host's is heap corruption
 with no diagnostic, so nothing that allocates may be constructed first.
@@ -272,10 +283,18 @@ including it. Four edges decide most of that closure:
   declaration cannot replace it.
 - **Shared memory does not ride along with it.** `LazyNumaReplicatedSystemWide` is the only user
   of `shm.h` in this family, and it lives in `numa_shared.h`, which includes both `numa.h` and
-  `shm.h`. `engine.h` owns one by value and includes it; `search.h` holds one only by reference
-  and forward-declares, so `shm.h` and `shm_unix.h` reach the files that own one rather than
-  every consumer of `search.h`. `numa.h` includes `<variant>` itself: it needs it for the policy
-  variant, and taking `shm.h` out of it removed the transitive path it had been arriving by.
+  `shm.h`. `shell/engine.h` owns one by value and includes `numa_shared.h`; `platform/thread.h`
+  forward-declares it and only takes one by reference; `search.h` includes `numa.h` and never
+  names the holder at all. So the shared-memory headers reach the files that own or pass one
+  rather than every consumer of `search.h`, which is two files -- re-establish it rather than
+  trust it:
+
+  ```sh
+  grep -rl 'shm\.h' --include=*.h --include=*.cpp src
+  ```
+
+  `numa.h` includes `<variant>` directly, for the policy variant, so this edge cannot silently
+  become the path a standard header arrives by.
 - **`types.h` includes `tune.h` after its own `#endif`**, deliberately outside the include
   guard and commented "Global visibility to tuning setup". Anything that touches `types.h` or
   the tunable constants has to account for it. This one is **kept on purpose**: no committed
@@ -297,13 +316,15 @@ including it. Four edges decide most of that closure:
 Measure the closure rather than trusting a number here:
 
 ```sh
-cd src && g++ -std=c++17 -E -I. search.cpp | grep -c ''
+cd src && g++ -std=c++17 -E -I. engine/search.cpp | grep -c ''          # total lines
+cd src && g++ -std=c++17 -E -I. -H engine/search.cpp 2>&1 >/dev/null \
+  | grep -c '\./\(engine\|platform\|shell\)'                           # project headers only
 ```
 
-**That figure is dominated by the standard library**, not by this tree, so it is a poor proxy
-for build time and a poor way to score an include change. What the project headers control is
-coupling -- which files a change forces to be re-checked -- and the way to see that is which
-headers reach `search.h`, not how many lines the preprocessor emits.
+**The first figure is dominated by the standard library**, not by this tree, so it is a poor
+proxy for build time and a poor way to score an include change. The second is the one an
+include change moves: it counts what a change forces to be re-checked. Score an include change
+on that, not on how many lines the preprocessor emits.
 
 ## Concurrency
 

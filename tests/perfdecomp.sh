@@ -9,8 +9,9 @@
 #
 # EVERY NUMBER HERE IS DETERMINISTIC. callgrind simulates, so two runs of the
 # same binary give the same counts and a component difference of any size is
-# real rather than thermal noise. That is the whole reason to pay its ~50x
-# slowdown; the tie band below is about layout, not about measurement error.
+# real rather than thermal noise. That is what pays for the simulator's
+# order-of-magnitude slowdown, and it is why the depth stays small; the tie band
+# below is about layout, not about measurement error.
 #
 # AND EVERY NUMBER HERE IS A MODEL. The cache simulator is a two-level
 # approximation with a fixed geometry -- it is not this machine's cache, it
@@ -44,10 +45,12 @@ usage: tests/perfdecomp.sh [<base-rev>] [<head-rev>] [options]
   <base-rev>    default: the merge-base with master, which IS the upstream pin
   <head-rev>    default: HEAD
 
-  --depth N     bench depth (default 8; callgrind is ~50x, so keep it small)
+  --depth N     bench depth (default 8; callgrind simulates every instruction,
+                so keep it small)
   --arch ARCH   build architecture (default x86-64-avx2; avx512 is not available
                 to callgrind at all)
   --comp C      gcc or clang (default gcc)
+  --jobs N      parallel build jobs (default: nproc)
 EOF
 }
 

@@ -4,6 +4,7 @@
 # after types.h's own #endif so the SPSA macros reach anywhere types.h does, and
 # removing it would make every future tuning run add an include first.
 #
-# The console includes went with the output sink: the engine no longer prints,
-# it emits through a seam.
+# Nothing else belongs here. The engine does not print; it emits through the
+# output-sink seam, so an engine file including a console or UCI header is a new
+# violation to close rather than an entry to add.
 types.h -> tune.h

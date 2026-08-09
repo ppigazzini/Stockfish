@@ -1,9 +1,9 @@
 # Engine objects that reference a symbol only a shell object defines.
 #
-# EMPTY, and it stays that way. B7's seams closed the last three: the option
-# snapshot, the two renderers that were engine code all along, and the output
-# sink -- the engine now says things through a function pointer the host
-# registers, with a printing default.
+# EMPTY, and it stays that way. The engine reads its options from a snapshot it
+# is handed, renders its own text, and says things through the output sink --
+# function pointers the host registers, with a printing default -- so no engine
+# object needs a symbol the shell defines.
 #
 # There is no debt left to grandfather here, so the next entry to appear is the
 # first, and it fails the gate rather than joining a list.
