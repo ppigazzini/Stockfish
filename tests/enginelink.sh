@@ -6,8 +6,8 @@
 # from the one tests/linkcheck.sh asks. That one intersects symbol sets: "does
 # any engine object name a symbol some platform object defines?" It cannot see a
 # reference to a symbol that nothing in the tree defines, and it cannot see an
-# inline call at all -- the platform clock was reached by three inline calls
-# while both baselines read zero.
+# INLINE call at all -- an inlined platform function leaves no symbol reference,
+# so both of that gate's baselines read zero while the engine calls it.
 #
 # The linker's question has neither blind spot. Either every symbol an engine
 # object needs is resolved by another engine object or by the language runtime,
@@ -22,10 +22,10 @@
 # IT ALSO RUNS. A link resolves a symbol without ever calling it, so linking
 # alone says every seam default is REACHABLE and nothing about whether it works.
 # tests/enginelink_main.cpp is the host: it links against engine/ only,
-# registers NOTHING, and runs three depth-limited searches through
-# Search::go -- so the arena's fallback actually allocates, the parallel-for
-# actually clears the transposition table inline, the clock is actually read,
-# and the tablebase source actually answers "none loaded".
+# registers NOTHING, and drives depth-limited searches through Search::go -- so
+# the arena's fallback actually allocates, the parallel-for actually clears the
+# transposition table inline, the clock is actually read, and the tablebase
+# source actually answers "none loaded".
 #
 # LTO MUST BE OFF, and turning it off is not what it looks like. Under LTO a GCC
 # object holds IR; the linker needs the plugin to read it, and WITHOUT the plugin
@@ -76,9 +76,10 @@ exec $CXX "\${args[@]}"
 WRAP
 chmod +x "$BUILD/nolto"
 # src AND scripts: the Makefile's net target shells out to ../scripts/net.sh.
-# The nets are copied in so the build never reaches the network, and they must
-# be present at LINK time too -- incbin embeds one through an .s file that opens
-# it relative to the working directory.
+# The nets are copied into the copied src/, not merely made reachable: the build
+# must never touch the network, and `INCBIN(EmbeddedNNUE, EvalFileDefaultName)`
+# in engine/nnue/network.cpp embeds the default net through an assembler
+# directive whose path resolves against the directory make compiles in.
 git ls-files -z src scripts | tar --null -T - -cf - | ( mkdir -p "$BUILD/w" && tar -xf - -C "$BUILD/w" )
 cp src/*.nnue "$BUILD/w/src/" 2>/dev/null
 if ! ( cd "$BUILD/w/src" && make -j"$JOBS" build ARCH="$ARCH" COMPCXX="$BUILD/nolto" ) \
@@ -88,7 +89,8 @@ if ! ( cd "$BUILD/w/src" && make -j"$JOBS" build ARCH="$ARCH" COMPCXX="$BUILD/no
     exit 2
 fi
 
-# Objects are flattened by notdir, so a zone is looked up from the stem.
+# Look the zone up from the STEM: `OBJS = $(notdir ...)` flattens every object
+# into src/, so an object name carries no directory to read a zone from.
 objs=""
 for o in "$BUILD"/w/src/*.o; do
     [ -e "$o" ] || continue

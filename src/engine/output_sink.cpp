@@ -24,13 +24,12 @@ namespace Stockfish {
 
 namespace {
 
-// Prints. See the header: a discarding default would be silence, and silence is
-// the failure mode that costs the most to diagnose.
+// Print unsynchronised. See the header: a discarding default would be silence,
+// and silence is the failure mode that costs the most to diagnose.
 void default_line(std::string_view text) { std::cout << text << std::endl; }
 
-// Nothing to dump: the counters belong to the host. This one IS a no-op, and
-// legitimately so -- the engine is asking whether anybody keeps such counters,
-// and standalone the answer is no.
+// Dump nothing. This one IS a no-op and legitimately so: the debug counters
+// belong to the host, and with none attached there are none to print.
 void default_debug_dump() {}
 
 OutputSink current = {default_line, default_debug_dump};

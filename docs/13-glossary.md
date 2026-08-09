@@ -1,25 +1,17 @@
 # Glossary
 
-The vocabulary the rest of the set uses. Owns no source.
+The vocabulary the rest of the set uses without stopping to define it. Owns no source.
 
-The words the rest of this set uses without stopping to define them, in tiers that must not
-be confused:
-
-- **Section 1 is the engine's vocabulary.** Chess-programming or Stockfish terms; the entry
-  says which symbol carries the word here. It does not teach the concept -- the domain
-  reference is a link in [11-references.md](11-references.md).
-- **Section 2 is this repository's own vocabulary.** Words for the gates and the build that
-  no chess-programming reference will define.
-- **Section 3 is the words that mean two things here.** Each entry is a disambiguation
-  rather than a definition.
-- **Section 4 is the testing field's vocabulary.** The literature owns it, which is what
-  makes it worth using: a term there is searchable outside this repository and a step name
-  is not.
+The four tiers must not be confused, because a word can sit in more than one. An engine term
+names a symbol here; a repository term names a gate and no chess-programming reference will
+define it; a testing term is the literature's, which is what makes it worth using, since it is
+searchable outside this repository and a step name is not. Section 3 is the words that mean two
+things here, and each of its entries is a disambiguation rather than a definition.
 
 Audience: all contributors.
 
-Every entry names the file, symbol or step that owns it, and none quotes a number a gate
-computes.
+An entry names the file, symbol or step that carries the word. Where it would otherwise
+quote a number a gate computes, it names the gate instead.
 
 ## 1. The engine's vocabulary
 
@@ -31,7 +23,7 @@ computes.
 | **ply** | one half-move. `ss->ply` counts from the root of the current search; `Position::game_ply()` counts from the start of the game. They are both `int` and they measure from different origins |
 | **depth** | `using Depth = int`, deliberately. A depth-scaled product feeds a history bonus, two score margins, a move count, a history magnitude and a reduction denominator, so a type carrying it would need six output types |
 | **`Value`** | the search's score domain, `using Value = int`. The band above `VALUE_TB_WIN_IN_MAX_PLY` is reserved for tablebase verdicts and mates, which is why `evaluate.cpp` clamps into it |
-| **key** | a `u64` Zobrist hash. Seven distinct spaces share the alias: the position key, the transposition key (`Position::adjust_key50` mixes the halfmove clock in), the pawn, minor-piece, material and two non-pawn keys |
+| **key** | a `u64` Zobrist hash, in one of several spaces. The pawn, minor-piece, material and non-pawn accessors return `TypedKey<KeySpace>` values that cannot substitute for one another; the raw position key and the transposition key (`Position::adjust_key50` mixes the halfmove clock in) both stay a bare `Key`, and nothing separates those two. See [09-type-design.md](09-type-design.md) |
 | **the transposition table** | `src/engine/tt.cpp`: clusters of three `TTEntry` in 32 bytes, shared across threads without a lock. `depth8` is the occupancy test, which is why `DEPTH_UNSEARCHED` and `DEPTH_NONE` are negative and distinct |
 | **cluster** | the 32-byte unit the table is an array of, sized to divide a cache line so one probe touches one line |
 | **the history tables** | `src/engine/history.h`. Every one is a gravity table: `operator<<` moves the stored value toward the bonus in proportion to its distance from the clamp `D`, which is a template parameter, one per table |
@@ -48,7 +40,7 @@ computes.
 | **psqt and positional** | the network's two output heads. Their sum is the raw evaluation; their difference is the complexity term `evaluate.cpp` blends with |
 | **optimism** | the per-worker search disposition blended into the evaluation, one of the three reasons Lazy SMP threads diverge |
 | **Lazy SMP** | the threading model: N workers on one root, sharing the transposition table, with no work queue and no split points |
-| **the vote** | `ThreadPool::get_best_thread`, which picks the answer by weighted agreement across threads rather than by taking the deepest or highest-scoring |
+| **the vote** | `Search::best_worker` (`src/engine/search.cpp`), which picks the answer by weighted agreement across workers rather than by taking the deepest or highest-scoring |
 | **WDL, DTZ** | the two Syzygy results -- win/draw/loss, and distance to a zeroing move. `src/platform/syzygy/tbprobe.cpp` |
 | **cursed win, blessed loss** | a win the fifty-move rule takes away, and a loss it rescues. `WDLCursedWin` and `WDLBlessedLoss` in `syzygy/tbprobe.h` exist because the tables are generated under two rules at once |
 | **cardinality** | the largest piece count the loaded tablebases cover. Zero with no `SyzygyPath`, which is what makes the Step 6 probe one predictable branch for a user with no tables |

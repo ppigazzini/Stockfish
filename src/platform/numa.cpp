@@ -29,9 +29,11 @@
 #include <limits>
 #include <string_view>
 
-// The cold half of NumaConfig: topology discovery, the string forms, and thread
-// binding. All of it runs before the first search, and none of it belongs in a
-// header that reaches search.cpp through search.h.
+// Keep the cold half of NumaConfig here: topology discovery, the string forms,
+// and thread binding. Nothing defined here runs per search node, and numa.h is
+// on search.cpp's include path through search.h, so anything moved back into
+// the header is parsed and offered for inlining in every engine translation
+// unit for code that runs a handful of times per process.
 
 namespace Stockfish {
 
