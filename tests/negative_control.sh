@@ -437,7 +437,7 @@ if selected reprosearch; then
     # breaks exactly that and nothing else.
     echo "negative-control: reprosearch -- ucinewgame leaves the TT warm"
     mutate src/shell/engine.cpp \
-        '    tt.clear(threads);
+        '    tt.clear();
     threads.clear();' \
         '    threads.clear();'
     if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
@@ -476,9 +476,13 @@ if selected depcheck-stale; then
     # register and becomes a permanent excuse, so an entry describing an edge
     # that no longer happens has to fail too.
     echo "negative-control: depcheck    -- a baseline entry that no longer happens"
+    # Anchor on the newline-prefixed data line: the same text also appears in the
+    # file's header prose, and mutate() refuses an anchor it finds twice.
     mutate tests/depcheck.baseline \
-        'search.cpp -> uci.h' \
-        'search.cpp -> uci.h
+        '
+types.h -> tune.h' \
+        '
+types.h -> tune.h
 movegen.cpp -> uci.h'
     if ./tests/depcheck.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- a stale baseline entry passed"; FAIL=$((FAIL+1))
@@ -665,11 +669,11 @@ if selected enginelink; then
     #
     # An engine file calling a PLATFORM symbol. This must fail the link, and it
     # only does so while the objects hold machine code: `EXTRACXXFLAGS=-fno-lto`
-    # cannot turn LTO off (src/Makefile:502 interpolates EXTRACXXFLAGS into
-    # CXXFLAGS, line 964 appends -flto after it), and `ld` without the plugin
-    # warns on an IR object and STILL EXITS 0. A gate built that way reports
-    # CLEAN on exactly this mutation, so this row is what proves the COMPCXX
-    # wrapper is still stripping the flag.
+    # cannot turn LTO off (src/Makefile interpolates EXTRACXXFLAGS into its
+    # CXXFLAGS assignment and then appends -flto after it), and `ld` without
+    # the plugin warns on an IR object and STILL EXITS 0. A gate built that way
+    # reports CLEAN on exactly this mutation, so this row is what proves the
+    # COMPCXX wrapper is still stripping the flag.
     echo "negative-control: enginelink  -- an engine object calling a platform symbol"
     mutate src/engine/search.cpp \
         'void Search::Worker::start_searching() {' \
@@ -850,7 +854,7 @@ COVERAGE_EXCUSED_WHY=(
   "a wall-clock measurement rather than a pass/fail gate; it carries its own A/A control, which is the same check from the inside"
   "this script -- it cannot be its own negative control"
   "a harness imported by instrumented.py rather than a gate; instrumented.py's row covers it"
-  "the zone table, sourced by depcheck.sh and linkcheck.sh; it asserts nothing itself"
+  "the zone table, sourced by the four zone-aware gates; it asserts nothing itself"
 )
 
 echo

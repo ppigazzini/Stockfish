@@ -58,7 +58,7 @@ flowchart TD
     B -->|no| S["evaluate_side, per perspective"]
     S --> C{"last usable accumulator<br/>computed for this side?"}
     C -->|yes| F["forward_update_incremental<br/>walk forward from it"]
-    C -->|no| H{"king move, 2-back computed,<br/>>= 15 pieces, same board half,<br/>not castling?"}
+    C -->|no| H{"king move, 2-back computed,<br/>MIN_PC_COUNT_HYBRID pieces,<br/>same board half, not castling?"}
     H -->|yes| HY["update_accumulator_hybrid"]
     H -->|no| R["update_accumulator_refresh_cache<br/>then backward_update_incremental"]
 ```
@@ -76,9 +76,11 @@ refreshing.
 was computed from, so a refresh diffs against that cached board rather than starting from the
 biases -- usually a handful of features rather than all of them.
 
-The `MIN_PC_COUNT_HYBRID` guard of 15 pieces is why the hybrid path is an opening and
-middlegame optimisation: with few pieces left a refresh is cheap enough that the extra
-bookkeeping does not pay.
+`MIN_PC_COUNT_HYBRID` in `AccumulatorStack::evaluate_side` is why the hybrid path is an
+opening and middlegame optimisation: below that piece count a refresh is cheap enough that the
+extra bookkeeping does not pay. The "not castling" clause is spelled `dirtyPiece.add_sq ==
+SQ_NONE` -- castling is the one king move that also moves a second piece, and the two-ply
+reuse assumes exactly one.
 
 ## The feature sets
 

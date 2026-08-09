@@ -8,11 +8,11 @@ topology and thread binding, cross-process shared memory, native threads with a 
 size, and runtime ISA dispatch.
 
 It is the largest per-platform surface in the tree and the one `bench` exercises least: a
-single-threaded run on one node touches the allocator and nothing else here.
+single-threaded run on one node touches the allocator and nothing else here. `numa.h` alone is
+the largest header in `src/`, and `shm.h` plus `shm_unix.h` come to more again:
 
 ```sh
-wc -l src/platform/memory.h src/platform/memory.cpp src/platform/numa.h src/platform/numa.cpp src/platform/numa_shared.h \
-     src/platform/shm.h src/platform/shm_unix.h src/platform/thread_native.h src/universal/entry_x86.cpp
+wc -l $(git ls-files 'src/platform/*.h' 'src/platform/*.cpp') | sort -n
 ```
 
 Audience: anyone porting to a new OS, or changing threading, allocation or the build's
@@ -33,9 +33,10 @@ when the table is at least eight huge pages per NUMA node, so a small table does
 gigabyte pages it cannot fill and cause memory oversubscription.
 
 **The engine does not call these.** It allocates through `engine/arena.h`, a struct of three
-function pointers it declares and the host fills with exactly the three above. Unregistered the
-arena falls back to plain aligned allocation, which is why `tests/enginelink.sh` can link and
-run the engine with no platform object at all.
+function pointers it declares and `Engine::ArenaInstallerTag` fills with
+`aligned_large_pages_alloc`, `aligned_large_pages_alloc_with_hint` and
+`aligned_large_pages_free`. Unregistered the arena falls back to plain aligned allocation,
+which is why `tests/enginelink.sh` can link and run the engine with no platform object at all.
 
 The installer is the **first member declared** in `Engine`, and that position is the whole
 guarantee: a block taken from the fallback allocator and released by the host's is heap
@@ -46,9 +47,12 @@ as function pointers) and `MADV_HUGEPAGE` on Linux. `has_large_pages()` reports 
 request succeeded; the engine runs either way.
 
 `memory_deleter` and `memory_allocator` are the templates that pair a custom allocator with a
-`unique_ptr`, so an aligned block is freed by the function that allocated it. **Mixing them is
-heap corruption with no diagnostic**, which is why the pairing is a template rather than a
-convention.
+`unique_ptr`, so an aligned block is freed by the function that allocated it. They live in
+`src/engine/arena.h`, not here, because they are pure pointer arithmetic with no OS in them;
+`memory.h` builds `LargePagePtr` and `AlignedPtr` from them, and `arena.h` builds `ArenaPtr`.
+**Crossing the two is heap corruption with no diagnostic** -- `ArenaPtr` releases through
+`arena_free`, `LargePagePtr` bakes `aligned_large_pages_free` into every instantiation -- which
+is why the pairing is in the type rather than in a convention.
 
 ## `numa.h`, `numa.cpp` -- topology, binding and replication
 
@@ -113,12 +117,19 @@ base it tracks them through.
 `shm.h` enters. Several engine processes on one machine -- which is what a test harness
 runs -- would otherwise each load their own copy of the network.
 
-`SharedMemoryBackend<T>` has three specialisations (Windows, POSIX, and a
-`SharedMemoryBackendFallback` that simply allocates locally), so a platform without shared
-memory still works and simply does not share.
+`SharedMemoryBackend<T>` is defined three times over, one per `#if` arm: Windows, POSIX under
+`USE_UNIX_SHM`, and a dummy whose `is_valid()` is always false, so a platform with no shared
+memory compiles and simply does not share. `SharedMemoryBackendFallback<T>` is a fourth type
+and a different thing -- it allocates a local large-page copy, and it is what
+`SystemWideSharedConstant<T>` falls back to when the real backend reports invalid.
 
-The segment is named from `getExecutablePathHash()`: two different builds must not attach to
-each other's segment, and the executable's path is what distinguishes them.
+`SystemWideSharedConstant<T>` static-asserts `T` trivially destructible and trivially
+copy/move-constructible: the object lives in a segment another process may outlive, so nobody
+can run its destructor and it must contain no pointer into the process that wrote it.
+
+The segment is named from a hash of the content, plus `getExecutablePathHash()` as a
+discriminator: two different builds must not attach to each other's segment, and the
+executable's path is what distinguishes them.
 
 `shm_unix.h` carries the POSIX implementation:
 

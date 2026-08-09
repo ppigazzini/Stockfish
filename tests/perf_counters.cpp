@@ -25,8 +25,9 @@
 // so it covers every tier the engine actually ships and reports what the
 // instruction axis is structurally unable to.
 //
-// It uses perf_event_open directly rather than the `perf` CLI, which is a
-// separate package and absent on plenty of machines that can still count.
+// Call perf_event_open directly rather than shelling out to the `perf` CLI:
+// `perf` is a separate package, absent on plenty of machines whose PMU works,
+// and depending on it turns a measurable host into a skipped one.
 //
 // PROTOCOL. Counters go to a FILE the caller names, as one `perfcounters:` line
 // of key=value. Not to stderr: `bench` writes its progress there, so a shared
