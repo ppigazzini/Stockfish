@@ -1,19 +1,19 @@
-import collections
-import fnmatch
-import io
+import subprocess
+from typing import List
 import os
+import collections
+import time
+import sys
+import traceback
+import fnmatch
+from contextlib import redirect_stdout
+import io
+import tarfile
 import pathlib
 import queue
-import shutil
-import subprocess
-import sys
-import tarfile
-import tempfile
 import threading
-import time
-import traceback
-from contextlib import redirect_stdout
-
+import tempfile
+import shutil
 import requests
 
 CYAN_COLOR = "\033[36m"
@@ -46,7 +46,7 @@ class Valgrind:
 class EPD:
     @staticmethod
     def create_bench_epd():
-        with open(f"{os.path.join(PATH, 'bench_tmp.epd')}", "w") as f:
+        with open(f"{os.path.join(PATH,'bench_tmp.epd')}", "w") as f:
             f.write(
                 """
 Rn6/1rbq1bk1/2p2n1p/2Bp1p2/3Pp1pP/1N2P1P1/2Q1NPB1/6K1 w - - 2 26
@@ -58,7 +58,7 @@ r4rk1/1b2ppbp/pq4pn/2pp1PB1/1p2P3/1P1P1NN1/1PP3PP/R2Q1RK1 w - - 0 13
 
     @staticmethod
     def delete_bench_epd():
-        os.remove(f"{os.path.join(PATH, 'bench_tmp.epd')}")
+        os.remove(f"{os.path.join(PATH,'bench_tmp.epd')}")
 
 
 class Syzygy:
@@ -83,7 +83,9 @@ class Syzygy:
                 with tarfile.open(tarball_path, "r:gz") as tar:
                     tar.extractall(tmpdirname)
 
-                shutil.move(os.path.join(tmpdirname, file), os.path.join(PATH, "syzygy"))
+                shutil.move(
+                    os.path.join(tmpdirname, file), os.path.join(PATH, "syzygy")
+                )
 
 
 class OrderedClassMembers(type):
@@ -93,7 +95,7 @@ class OrderedClassMembers(type):
 
     def __new__(self, name, bases, classdict):
         classdict["__ordered__"] = [
-            key for key in classdict if key not in ("__module__", "__qualname__")
+            key for key in classdict.keys() if key not in ("__module__", "__qualname__")
         ]
         return type.__new__(self, name, bases, classdict)
 
@@ -104,10 +106,9 @@ class TimeoutException(Exception):
         self.message = message
         self.timeout = timeout
 
-
 class UnexpectedOutputException(Exception):
     def __init__(self, actual: str, expected: str):
-        self.actual = actual
+        self.actual   = actual
         self.expected = expected
 
 
@@ -122,7 +123,7 @@ class MiniTestFramework:
     def has_failed(self) -> bool:
         return self.failed_test_suites > 0
 
-    def run(self, classes: list[type]) -> bool:
+    def run(self, classes: List[type]) -> bool:
         self.start_time = time.time()
 
         for test_class in classes:
@@ -190,11 +191,13 @@ class MiniTestFramework:
             self.passed_tests += 1
         except Exception as e:
             if isinstance(e, TimeoutException):
-                self.print_failure(f" {method} (hit execution limit of {e.timeout} seconds)")
+                self.print_failure(
+                    f" {method} (hit execution limit of {e.timeout} seconds)"
+                )
 
             if isinstance(e, UnexpectedOutputException):
                 self.print_failure(
-                    f' {method} encountered unexpected output: "{e.actual}" when output matching "{e.expected}" was expected'
+                    f" {method} encountered unexpected output: \"{e.actual}\" when output matching \"{e.expected}\" was expected"
                 )
 
             if isinstance(e, AssertionError):
@@ -216,7 +219,8 @@ class MiniTestFramework:
         traceback_output = "".join(traceback.format_tb(sys.exc_info()[2]))
 
         colored_traceback = "\n".join(
-            f"  {CYAN_COLOR}{line}{RESET_COLOR}" for line in traceback_output.splitlines()
+            f"  {CYAN_COLOR}{line}{RESET_COLOR}"
+            for line in traceback_output.splitlines()
         )
 
         print(colored_traceback)
@@ -249,13 +253,11 @@ class MiniTestFramework:
 class Stockfish:
     def __init__(
         self,
-        prefix: list[str],
+        prefix: List[str],
         path: str,
-        args: list[str] | None = None,
+        args: List[str] = [],
         cli: bool = False,
     ):
-        if args is None:
-            args = []
         self.path = path
         self.process = None
         self.args = args
@@ -275,7 +277,7 @@ class Stockfish:
     def start(self):
         if self.cli:
             self.process = subprocess.run(
-                [*self.prefix, self.path, *self.args],
+                self.prefix + [self.path] + self.args,
                 capture_output=True,
                 text=True,
             )
@@ -288,14 +290,16 @@ class Stockfish:
             return
 
         self.process = subprocess.Popen(
-            [*self.prefix, self.path, *self.args],
+            self.prefix + [self.path] + self.args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
             bufsize=1,
         )
-        self.reader_thread = threading.Thread(target=self._read_process_output, daemon=True)
+        self.reader_thread = threading.Thread(
+            target=self._read_process_output, daemon=True
+        )
         self.reader_thread.start()
 
     def _read_process_output(self):
@@ -346,7 +350,7 @@ class Stockfish:
             raise ValueError("Callback function is required")
 
         for line in self.readline():
-            if callback(line):
+            if callback(line) == True:
                 return
 
     def expect_for_line_matching(self, line_match: str, expected: str):
@@ -379,7 +383,7 @@ class Stockfish:
                 raise TimeoutException(
                     f"No matching output received after {timeout} seconds",
                     timeout,
-                ) from None
+                )
 
             if line is None:
                 self._check_process_alive()
@@ -390,7 +394,7 @@ class Stockfish:
     def clear_output(self):
         self.output = []
 
-    def get_output(self) -> list[str]:
+    def get_output(self) -> List[str]:
         return self.output
 
     def quit(self):
