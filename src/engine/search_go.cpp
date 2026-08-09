@@ -48,6 +48,12 @@ struct Context {
     SearchManager::UpdateContext         updates;
     std::unique_ptr<SharedState>         shared;
     ArenaPtr<Worker>                     worker;
+
+    // Which net the worker's refresh cache was last seeded from. Seeding writes
+    // the whole cache, so doing it per search dominates the cost of a shallow
+    // one -- tests/fuzzsearch.sh managed 3 executions in 90 seconds before this.
+    // ensure_network_replicated is a load-time operation, not a per-search one.
+    const Eval::NNUE::Network* seeded = nullptr;
 };
 
 Context* context() {
@@ -106,9 +112,13 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
     Context* ctx = &ctxRef;
     Worker&  w   = *ctx->worker;
 
-    // Seeds the refresh cache from this net. Idempotent, and the only thing a
-    // worker built before a net existed was missing.
-    w.ensure_network_replicated(net);
+    // Seeds the refresh cache from this net -- the only thing a worker built
+    // before a net existed was missing. Once per net, not once per search.
+    if (ctx->seeded != &net)
+    {
+        w.ensure_network_replicated(net);
+        ctx->seeded = &net;
+    }
 
     ctx->states.clear();
     ctx->states.emplace_back();
@@ -132,6 +142,28 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
     w.nmpMinPly       = 0;
     w.rootDepth       = 0;
     w.tbConfig        = Tablebases::Config();
+
+    // EVERY headless search is independent. The manager carries state across
+    // searches -- the previous best score, the previous time reduction, the
+    // aspiration seed -- which is right for successive `go` commands on one
+    // engine and wrong here: it makes a result depend on what was searched
+    // before it, and a fuzz driver that walks to a new position every iteration
+    // then seeds the aspiration window from an unrelated one.
+    //
+    // That is not theoretical. Carrying it made the THIRD fuzz execution take 90
+    // seconds where the first took milliseconds, because the window was seeded
+    // from a position with nothing to do with the one being searched.
+    //
+    // This is ThreadPool::clear's reset plus start_thinking's two per-go fields.
+    SearchManager& mgr           = *static_cast<SearchManager*>(w.main_manager());
+    mgr.ponder                   = false;
+    mgr.stopOnPonderhit          = false;
+    mgr.callsCnt                 = 0;
+    mgr.originalTimeAdjust       = -1;
+    mgr.previousTimeReduction    = 0.85;
+    mgr.bestPreviousScore        = VALUE_INFINITE;
+    mgr.bestPreviousAverageScore = VALUE_INFINITE;
+    mgr.tm.clear();
 
     ctx->stop.store(false);
     ctx->increaseDepth.store(true);
