@@ -541,6 +541,41 @@ rather than quote it. And both binaries hashing identically means one side was m
 which yields a beautifully tight ratio of 1.0000 and means nothing -- so equal hashes at
 different revisions are a skip, not a result.
 
+## `tests/perfdecomp.sh`
+
+Where the cost is, per component, deterministically.
+
+```sh
+./tests/perfdecomp.sh                       # merge-base with master, against HEAD
+./tests/perfdecomp.sh --depth 8 --comp clang
+```
+
+`perfcounters.sh` says *whether* the machine executed the program differently. This says
+*where*. It runs callgrind with the cache and branch simulators on both sides, sums self cost
+per symbol, groups the symbols by `tests/perfcomponents.tsv`, and prints instructions, D1 read
+misses and conditional mispredicts per component with the winner named.
+
+**Every figure is deterministic and every figure is a model.** Two runs of one binary give the
+same counts, so a 0.1% component difference is real rather than thermal -- that is what pays for
+the ~50x slowdown. But the cache simulator has one fixed geometry, is not this machine's cache,
+and knows nothing about the prefetcher or out-of-order execution. It ranks locality; it does not
+predict time. Where the two axes disagree, `perfcounters.sh` measured the hardware and this
+measured a model of it. It also implements no AVX-512, which is why `perfcounters.sh` exists
+beside it.
+
+`tests/perfdecomp.py` parses the callgrind output file rather than `callgrind_annotate`, which
+wraps a long C++ symbol across output lines and cannot be column-parsed. Two properties of that
+format are load-bearing: a name-compression id is defined on its **first** appearance and that
+may be a `cfn=` line, and the cost line following `calls=` is the callee's **inclusive** cost,
+which must be skipped or the whole NNUE evaluation is counted inside `search` and again inside
+itself.
+
+**Two diagnostics that make a broken grouping visible.** A component whose regex matches nothing
+on either side is named rather than printed as a zero, because a zero on one side reads as a
+total win forever. And the largest *ungrouped* symbols are listed for both sides, which is how a
+symbol that is a call upstream and inlined here -- reading as a 7.9x regression in its component
+-- gets caught.
+
 ## `tests/docslint.sh`
 
 Five mechanical checks over this documentation set:
