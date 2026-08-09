@@ -127,7 +127,6 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
     binaryDirectory(path ? CommandLine::get_binary_directory(*path) : std::filesystem::path{}),
     numaContext(NumaConfig::from_system(DefaultNumaPolicy)),
     states(new std::deque<StateInfo>(1)),
-    threads(),
     networkFile{std::nullopt, ""},
     network(numaContext, get_default_network()) {
 
