@@ -26,10 +26,9 @@ namespace {
 // host attached. It reports no workers, because standalone there are none to
 // hand out -- and unlike the parallel-for's default, which runs the work inline,
 // a worker set cannot honestly pretend: fewer workers is a DIFFERENT answer, not
-// the same answer more slowly. mcfish's resize refuses above one for exactly
-// that reason rather than silently searching with fewer threads than asked for.
-std::atomic<bool> defaultStop{false};
-std::atomic<bool> defaultIncreaseDepth{false};
+// the same answer more slowly. A resize must therefore REFUSE a count above one
+// rather than silently search with fewer threads than were asked for: a degraded
+// run still produces a number, and the number looks fine.
 
 void  noop(void*) {}
 u64   zero_u64(void*) { return 0; }
@@ -37,12 +36,7 @@ usize zero_usize(void*) { return 0; }
 
 Search::Worker* no_worker(void*, usize) { return nullptr; }
 
-std::atomic<bool>* default_stop(void*) { return &defaultStop; }
-std::atomic<bool>* default_increase_depth(void*) { return &defaultIncreaseDepth; }
-
-WorkerSet current = {nullptr,    noop,         noop,         zero_u64,
-                     zero_u64,   zero_usize,   no_worker,    default_stop,
-                     default_increase_depth};
+WorkerSet current = {nullptr, noop, noop, zero_u64, zero_u64, zero_usize, no_worker};
 
 }  // namespace
 
