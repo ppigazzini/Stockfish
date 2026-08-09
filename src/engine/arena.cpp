@@ -20,6 +20,18 @@
 
 #include <cstdlib>
 
+// The guard platform/memory.cpp carries, repeated rather than included: these
+// toolchains do not declare std::aligned_alloc, and engine/ must not include a
+// platform header. Without it this file does not compile at all on an ARCH the
+// Makefile enumerates -- e2k is in the ARCH list, and any libstdc++ configured
+// without _GLIBCXX_HAVE_ALIGNED_ALLOC is in the same position.
+#if defined(__APPLE__) || defined(__ANDROID__) || defined(__OpenBSD__) \
+  || (defined(__GLIBCXX__) && !defined(_GLIBCXX_HAVE_ALIGNED_ALLOC) && !defined(_WIN32)) \
+  || defined(__e2k__)
+    #define ARENA_POSIX_ALIGNED_ALLOC
+    #include <stdlib.h>
+#endif
+
 namespace Stockfish {
 
 namespace {
@@ -33,6 +45,9 @@ void* default_alloc(usize bytes) {
     const usize     rounded   = ((bytes + Alignment - 1) / Alignment) * Alignment;
 #if defined(_WIN32)
     return _aligned_malloc(rounded, Alignment);
+#elif defined(ARENA_POSIX_ALIGNED_ALLOC)
+    void* mem = nullptr;
+    return posix_memalign(&mem, Alignment, rounded) == 0 ? mem : nullptr;
 #else
     return std::aligned_alloc(Alignment, rounded);
 #endif
