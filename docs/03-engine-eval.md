@@ -170,8 +170,10 @@ How it gets into the binary depends on which binary:
 | universal | `#embed EvalFileDefaultName` in `universal/nnue_embed.cpp`, guarded by `__has_embed`, falling back to a generated `network_dump.inc` |
 | macOS x86-64 slice | neither: the net is embedded only in the arm64 slice, and the x86 slice `mmap`s it out of its own executable at an offset patched in after the link |
 
-`#embed` is a C++26 feature, so the two universal objects compile at `-std=c++20` with
-`-Wno-c++26-extensions` while the rest of the engine is `-std=c++17`.
+`#embed` is a C++26 feature used as an extension, so `universal/nnue_embed.cpp` compiles at
+`-std=c++20` with `-Wno-c++26-extensions`. The per-architecture entry object beside it takes
+`-std=c++20` and not the warning flag -- it uses no `#embed` -- while the rest of the engine is
+`-std=c++17`.
 
 The `padding` variable beside the array is not decoration: `#embed` yields exactly the file's
 bytes, while `network_dump.inc` is a C string literal with a trailing NUL, so

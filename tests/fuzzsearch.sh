@@ -38,6 +38,7 @@ usage: tests/fuzzsearch.sh [--seconds N] [--arch ARCH] [--jobs N] [--corpus DIR]
 
   --seconds N   fuzz for N seconds (default 120)
   --arch ARCH   build architecture (default x86-64-avx2)
+  --jobs N      parallel build jobs (default: nproc)
   --corpus DIR  keep the corpus here and reuse it next time
 
 A corpus is the fuzzer's memory. Without --corpus every run starts from an empty

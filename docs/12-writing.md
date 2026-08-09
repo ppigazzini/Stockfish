@@ -38,8 +38,8 @@ and **what breaks otherwise**. Two of the three is where the defects live.
 | "the states are in a deque" | "`StateListPtr` is a `deque` because the search holds pointers into it and a `vector` would invalidate them on resize" |
 | "evaluation is clamped" | "the evaluation is clamped strictly inside the tablebase band, so an estimate can never be read as a proven verdict" |
 
-The failure clause is what makes prose load-bearing. Without it a reader has a description;
-with it they have a reason not to break something.
+Of the three, the failure clause is the one that turns a description into a reason not to
+break something.
 
 ## Verify, do not recall
 
@@ -181,17 +181,20 @@ and it is noise the moment the change merges.
 The one surface where history is the **subject** rather than the contamination. A commit
 message may say what the code used to do, because that is what a commit is.
 
-**Every commit ends with a `Bench:` line or the words "No functional change".** This is not a
-convention, it is checked: the wiki's `pre-push` hook refuses a push otherwise, matching
+**Every commit upstream accepts carries a `Bench:` line or the words "No functional change".**
+This is not a convention, it is checked: the wiki's `pre-push` hook refuses a push otherwise,
+matching
 
 ```
 bench_regex='\b[Bb]ench[ :]+[1-9][0-9]{5,7}\b'
 no_functional_change_regex='\b[Nn]o[[:space:]][Ff]unctional[[:space:]][Cc]hange\b'
 ```
 
-so the bench number must be 6 to 8 digits and stand on its own line. Which of the two applies
-is the same question `CONTRIBUTING.md` asks: a functional change is tested on fishtest, a
-non-functional one is not, unless it might affect performance.
+so the bench number must be 6 to 8 digits. **The regexes ask only that the body contain one
+form or the other**; that the `Bench:` line comes last and stands alone is this project's
+shape, not something the hook can enforce. Which of the two applies is the same question
+`CONTRIBUTING.md` asks: a functional change is tested on fishtest, a non-functional one is not,
+unless it might affect performance.
 
 #### A functional change
 

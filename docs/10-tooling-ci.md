@@ -47,7 +47,9 @@ differently at one vector width.
 
 ### `tests/perft.sh`
 
-Move generation, by node count at depth, including five Chess960 rows.
+Move generation, by node count at depth, over standard and Chess960 positions. Most of the rows
+are Chess960, because standard-chess castling hides a whole class of bug
+([01-engine-board.md](01-engine-board.md)).
 
 The counts are **facts about chess**, not a golden. A mismatch is always a movegen bug and
 never an update candidate.
@@ -364,15 +366,18 @@ asserting the sources were put back.
 
 Rows that cannot run report SKIPPED and are counted separately. A skipped row proves nothing.
 
-**It also enumerates the gates it does not cover**, because the failure this script exists to
+**It reports its own coverage, script by script**, because the failure this script exists to
 prevent applies to itself: a gate with no row is simply absent from it, and absence is quiet.
 `lanecheck.sh` asks whether a gate is dispatched and `docslint.sh` asks whether it is
 documented; **neither asks whether it can fail**, so a merge gate can be fully wired, fully
 described and inert, and nothing in the tree says so.
 
-Every script in `tests/` needs a row or an excuse, and the excuse list expires in both
-directions as `lanecheck.sh`'s does: an excused script that has a row is a stale excuse, and an
-excuse naming a script the tree no longer carries fails too.
+Every script in `tests/` needs a row or an excuse -- a `NO ROW` line fails the run -- and the
+excuse list expires in both directions as `lanecheck.sh`'s does: an excused script that has a
+row is a stale excuse, and an excuse naming a script the tree no longer carries fails too. The
+excuses are for scripts that cannot fail on their own: a report that exits 0 for any ratio, an
+aggregation half invoked by another gate, the zone table, and `match.sh`, whose planted defect
+would be scored by the same clock the box perturbs.
 
 ## `tests/lanecheck.sh`
 
@@ -529,7 +534,9 @@ would override it.
 **It also runs.** A link resolves a symbol without ever calling it, so the link half says every
 default is *reachable* and nothing about whether it works. `tests/enginelink_main.cpp` is the
 host: it links against `engine/` only, registers **nothing**, and drives three depth-limited
-searches through `Search::go` (`src/engine/search_go.h`) plus a fourth that repeats the first.
+searches through `Search::go` (`src/engine/search_go.h`), then runs the first of them twice
+more, because the context is process-static and a worker that works only once leaks state
+between searches.
 So the arena's fallback actually allocates, the parallel-for actually clears the transposition
 table inline, the clock is actually read, and the tablebase source actually answers "none
 loaded".
@@ -761,7 +768,8 @@ Three properties of the rig are load-bearing, and each fails by looking like suc
   two.
 - **A run that executed almost nothing is a broken rig, not a pass.** The script refuses under a
   thousand executions and reports its rate, on the same rule that says a SKIPPED gate is never
-  green.
+  green. That it can go red at all is `tests/negative_control.sh fuzzsearch`: it plants a null
+  read on the root position, before any move is walked, so the very first input must reach it.
 - **The corpus is the fuzzer's memory.** Without `--corpus` every run starts empty and spends
   its budget rediscovering the same shallow coverage, so a nightly job never gets deeper than
   its first night. The CI lane caches it and uses `restore-keys`, so a key miss still starts

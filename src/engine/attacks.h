@@ -66,8 +66,9 @@ inline Bitboard reverse_bb(Bitboard bb) {
     #endif
 }
 
-// Hyperbola quintessence implementation for ARM, thanks to the availability of an
-// efficient bit reversal instruction.
+// Hyperbola quintessence implementation for the targets that reverse a 64-bit
+// word in one instruction: AArch64 (rbit) and 64-bit LoongArch (bitrev.d), both
+// selected by USE_HYPERBOLA_QUINT above.
 // See https://www.chessprogramming.org/Hyperbola_Quintessence
 struct Magic {
     // For rooks: file attacks, rank attacks. For bishops: diagonal/antidiagonal
