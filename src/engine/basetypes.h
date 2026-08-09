@@ -186,13 +186,13 @@ class MultiArray {
 // The space is a template parameter rather than a field: it costs no register
 // and it makes two spaces different TYPES, which is the whole point.
 //
-// Keep the algebra tiny. A key is produced, stored, passed, masked to an index
-// and truncated to a tag, and nothing else. In particular do not add an
-// operator^: keys are BUILT by xor-ing Zobrist words, and the same word is
-// xor-ed into several spaces, so a public xor would let any space absorb any
-// other's material -- exactly the mixing the type exists to prevent. The raw
-// u64s are maintained in position.cpp; the type begins at the accessors in
-// position.h.
+// Keep the algebra tiny. A key is produced, stored, passed, compared with
+// another key of its own space, masked to an index and truncated to a tag, and
+// nothing else. In particular do not add an operator^: keys are BUILT by
+// xor-ing Zobrist words, and the same word is xor-ed into several spaces, so a
+// public xor would let any space absorb any other's material -- exactly the
+// mixing the type exists to prevent. The raw u64s are maintained in
+// position.cpp; the type begins at the accessors in position.h.
 enum class KeySpace : u8 {
     Pawn,
     MinorPiece,

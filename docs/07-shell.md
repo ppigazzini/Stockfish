@@ -57,12 +57,15 @@ recognised set:
 
 ```
 uci  isready  setoption  ucinewgame  position  go  stop  ponderhit  quit
-bench  perft  eval  d  flip  compiler  license  help
+bench  speedtest  eval  d  flip  compiler  export_net  license  help
 ```
 
 Everything after `quit` in that list is a Stockfish extension rather than UCI: `d` prints the
 board, `eval` prints the evaluation breakdown, `flip` inverts the position, `compiler` prints
-the build's toolchain, and `bench` runs the benchmark.
+the build's toolchain, `export_net` writes the resident network out, `bench` runs the
+benchmark and `speedtest` runs the long-form one. **`perft` is not among them** -- it is
+`go perft N`, parsed as a limit inside `go`, so a bare `perft` gets "Unknown command". A line
+whose first character is `#` is ignored, which is what lets a command file carry comments.
 
 **`go` runs on a separate thread; the loop keeps reading.** That is what lets `stop` arrive
 during a search. It is also why end-of-input has to be treated as `quit` -- a pipe that closes
@@ -103,8 +106,11 @@ bench [ttSize] [threads] [limit] [fenFile] [limitType]
 defaulting to `16 1 13 default depth`. The defaults are the contract -- a signature is only
 comparable against another signature taken with the same arguments.
 
-The transposition table is cleared between positions, so the number does not depend on the
-order they run in.
+**`setup_bench` emits one `ucinewgame`, before the first position, and none after.** The table
+is cleared once and then carries from each position into the next, so the total is a property
+of the whole list *in the order it is listed*: reordering the positions, or dropping one,
+changes the number without changing the engine. That is why the position list is fixed and why
+`bench 16 1 13 <fenFile>` on a different file is not comparable to the default signature.
 
 **It is single-threaded by default on purpose.** A multi-threaded search is non-deterministic
 by design ([04-multithreading.md](04-multithreading.md)), so a multi-threaded bench could not

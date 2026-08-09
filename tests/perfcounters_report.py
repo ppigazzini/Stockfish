@@ -18,8 +18,8 @@ import contextlib
 import sys
 from pathlib import Path
 
-# Counters the C tool emits, in the order worth reading: what the work was, then
-# how well the machine ran it, then the two things that make it run badly.
+# Counters tests/perf_counters.cpp emits, in the order worth reading: the work,
+# then how well the machine ran it, then the two things that make it run badly.
 COUNTERS = [
     ("instructions", "instructions"),
     ("cycles", "cycles"),

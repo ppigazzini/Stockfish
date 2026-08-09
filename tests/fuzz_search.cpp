@@ -18,10 +18,10 @@
 
 // Fuzz the real search IN-PROCESS: no shell, no UCI text, no subprocess.
 //
-// tests/fuzz.py already fuzzes the shipped binary's stdin. That is a real gate,
-// but it drives a subprocess with text, so a mutation spends most of its budget
-// inside the command parser rather than inside the search. This driver puts
-// nothing between the fuzzer and the node body.
+// tests/fuzz.py's uci harness already fuzzes the shipped binary's stdin. That is
+// a real gate, but it drives a subprocess with text, so a mutation spends most
+// of its budget inside the command parser rather than inside the search. This
+// driver puts nothing between the fuzzer and the node body.
 //
 // THE INPUT IS A WALK, NOT A POSITION. Each byte selects one of the legal moves
 // available, modulo their count, and the walk plays it. So every position

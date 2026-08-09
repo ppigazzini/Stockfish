@@ -1,9 +1,10 @@
 # The value domain
 
-What the engine's quantities mean, which of them the compiler can tell apart, and -- stated
-as plainly as the rest -- which of them it cannot.
+What the engine's quantities mean, which of them the compiler can tell apart, and which of
+them it cannot.
 
-`src/engine/types.h` owns most of it; `src/engine/history.h` owns the history clamps and
+`src/engine/types.h` owns most of it; `src/engine/basetypes.h` owns `TypedKey` and the
+`KeySpace` enumerators, `src/engine/history.h` the history clamps, and
 `src/engine/position.h` the key accessors. The theory each family rests on is linked in
 [11-references.md](11-references.md).
 
@@ -48,9 +49,9 @@ and the unused rows are the price.
 
 - **A `Direction` cannot reach a `Square` parameter**, and the reverse. `operator+(Square,
   Direction)` is the only bridge.
-- **A history bonus cannot be transposed with its clamp.** `StatsEntry<T, D>` takes the clamp
-  as a *template parameter*, one per table, so `operator<<(int bonus)` has nothing beside the
-  bonus to swap it with. A design that passed the limit as a second argument would make both
+- **A history bonus cannot be transposed with its clamp.** `StatsEntry<T, D, Shared>` takes the
+  clamp as a *template parameter*, one per table, so `operator<<(int bonus)` has nothing beside
+  the bonus to swap it with. A design that passed the limit as a second argument would make both
   directions of the swap compile.
 - **A non-PV root cannot be named.** `NodeType` is `{NonPV, PV, Root}`, one tag rather than
   two independent booleans. Four combinations for three meanings would make a non-PV root
@@ -64,17 +65,23 @@ and the unused rows are the price.
   would be a real counter of the wrong kind rather than a fault.
 
   ```sh
-  # h.pawn_correction(pos, us).minor
-  # error: StatsEntry<short int, 1024, true> has no member named 'minor'
-  ./tests/negative_control.sh b5-mismatch
+  printf '#include "history.h"\n#include "position.h"\nusing namespace Stockfish;\n%s\n' \
+    'int f(SharedHistories& h, const Position& p, Color us){ return h.pawn_correction(p,us).minor; }' \
+    > /tmp/t.cpp
+  g++ -std=c++20 -Isrc/engine -fsyntax-only /tmp/t.cpp   # StatsEntry<...> has no member 'minor'
   ```
+
+  `./tests/negative_control.sh b5-mismatch` is the same check as a gate row.
 
   **It does not stop one accessor being substituted for another.** They share a signature, so
   `minor_piece_correction` where `pawn_correction` was meant still compiles; only the bench
   signature catches that, and `./tests/negative_control.sh b5-swap` is it going red.
-- **A widened domain type is caught at compile time.** `types.h` closes with the relationships
-  that imply each width -- `PIECE_NB` against `COLOR_NB`, `SQUARE_NB` against the bitboard
-  width -- so an assertion cannot go stale against a literal.
+- **An enumerator that outgrows its enum is a hard error**, and no assertion is needed for it.
+  Every enum in `types.h` fixes an underlying type -- `Color : u8`, `Square : u8`,
+  `Direction : i8`, `MoveType : u16` -- and a fixed underlying type makes an enumerator outside
+  its range ill-formed, not silently truncated. That is why the widths are written on the enums
+  and not restated in a `static_assert`: `types.h` contains none, and a restatement is the thing
+  that could go stale.
 
 ## Where it does not
 
@@ -83,14 +90,21 @@ and the unused rows are the price.
 values, so one cannot stand in for another, for a `Bitboard`, or for the transposition key:
 
 ```sh
-./tests/negative_control.sh b5-keyspace
-# tt.probe(pos.pawn_key())                    -- cannot convert
-# Bitboard b = pos.pawn_key()                 -- cannot convert
-# pos.pawn_key() == pos.minor_piece_key()     -- no match for operator==
+for probe in 'auto f(TranspositionTable& t, const Position& p){ return t.probe(p.pawn_key()); }' \
+             'Bitboard f(const Position& p){ return p.pawn_key(); }' \
+             'bool f(const Position& p){ return p.pawn_key() == p.minor_piece_key(); }'; do
+  printf '#include "position.h"\n#include "tt.h"\nusing namespace Stockfish;\n%s\n' "$probe" > /tmp/k.cpp
+  g++ -std=c++20 -Isrc/engine -fsyntax-only /tmp/k.cpp && echo "ACCEPTED (should not be): $probe"
+done
 ```
 
-The algebra is deliberately tiny: produce, store, pass, mask to an index, truncate to a tag.
-**There is no `operator^`.** Keys are *built* by xor-ing Zobrist words, and one
+`./tests/negative_control.sh b5-keyspace` runs the same three probes as a gate row, plus the
+legal form -- because a row that only checked the rejections would pass if the header stopped
+compiling at all.
+
+The algebra is deliberately tiny: produce, store, pass, compare against a key of the same
+space, mask to an index, truncate to a tag. **There is no `operator^`.** Keys are *built* by
+xor-ing Zobrist words, and one
 `Zobrist::psq[pc][s]` is xor-ed into the position, pawn, non-pawn and minor-piece keys alike:
 
 ```sh
@@ -106,10 +120,10 @@ them, because that is how the history tables are indexed, so a swap at an indexi
 compiles. **The two non-pawn keys share `NonPawnKey`**, one type for both colours, so
 `non_pawn_key(WHITE)` where `non_pawn_key(BLACK)` was meant compiles -- the type separates
 spaces, and the colour is an argument, not a space. And **the transposition key is a bare
-`Key`**: wrapping it measured as a cost on the PGO lanes, because `posKey` is live across
-`search()` and a wrapper perturbs register allocation there -- the cost rule below predicting
-its own case. The guarantee that matters survives anyway, since passing a typed key where the
-bare one belongs is still rejected.
+`Key`**: `posKey` is live across `search()`, which is the shape the cost rule below warns
+about, so wrapping it is an experiment to re-run with `tests/perfbudget.sh --pgo` under both
+compilers rather than a tidy-up to apply. The guarantee that matters survives anyway, since
+passing a typed key where the bare one belongs is still rejected.
 
 **`using Key = u64` is the transposition key alone**, reached through `key()` and
 `prefetch_key()`. `Bitboard` is the same underlying type, so a transposition key where a
@@ -126,10 +140,11 @@ can see it, because perft counts leaves and a key that desyncs and resyncs produ
 count.
 
 What limits the exposure is scope rather than typing. `adjust_key50` is templated on
-`AfterMove` for exactly this reason, and both call sites choose correctly: the prefetch inside
-`do_move` takes the default, because `st->rule50` has already been advanced there, and
-`prefetch_key` takes `<true>` because it runs before the move -- and returns the key unadjusted
-on a capture or a pawn move, where the child's clock resets below the threshold.
+`AfterMove` for exactly this reason, and all three call sites choose correctly: `Position::key`
+and the transposition prefetch inside `do_move` take the default, because `st->rule50` has
+already been advanced by the time either runs, and `prefetch_key` takes `<true>` because it
+runs before the move -- and returns the key unadjusted on a capture or a pawn move, where the
+child's clock resets below the threshold.
 
 **Two arguments of the same type transpose in silence.** `Move(from, to)` takes two
 `Square`s and is reversible, and so is any pair of `Color`s or same-typed keys. No type in
@@ -141,7 +156,7 @@ than a silent swap.
 
 ```sh
 printf '#include "types.h"\nusing namespace Stockfish;\nint main(){File f=FILE_A;Rank r=RANK_1;return make_square(r,f);}\n' > /tmp/t.cpp
-g++ -std=c++20 -Isrc -fsyntax-only /tmp/t.cpp    # error: cannot convert Rank to File
+g++ -std=c++20 -Isrc/engine -fsyntax-only /tmp/t.cpp    # error: cannot convert Rank to File
 ```
 
 **A wrong index that is in range.** Every enum here is a distinct type over an integer, not a
@@ -195,8 +210,9 @@ the command that measures it. The rule is about what a function *holds*, not wha
 nothing on the hottest function in the engine while a runtime flag in the same position would
 not.
 
-**The rule is predictive, not exact.** Treat a type on a hot path as an experiment and
-measure it -- `tests/perfbudget.sh`, both tiers and both build modes.
+**The rule is predictive, not exact.** Treat a type on a hot path as an experiment and measure
+it: `tests/perfbudget.sh` with `--comp gcc` and `--comp clang`, and again with `--pgo`, because
+one compiler cannot distinguish a change from its own codegen and PGO is what ships.
 
 ## Adding a type
 
@@ -217,5 +233,6 @@ measure it -- `tests/perfbudget.sh`, both tiers and both build modes.
 4. **Make the mutation fail.** Break the code on purpose in the way the type is meant to stop,
    build it, and confirm the compiler rejects it. Arguing that it would fail is not watching
    it fail.
-5. Gate it: the bench signature must not move, and `tests/perfbudget.sh` at two tiers.
+5. Gate it: the bench signature must not move, and `tests/perfbudget.sh` under both compilers
+   and with `--pgo`.
 6. Add a row here -- to the table of what the compiler catches, to the boundary, or to both.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Play this branch against upstream, and report the result honestly.
+# Play this branch against upstream at a fixed time control.
 #
 # The perf axes measure the engine's cost. This measures the only thing a player
 # experiences: games. It builds both revisions, fetches and builds fastchess at
@@ -12,8 +12,8 @@
 # illegal move, no forfeit on time, over positions no bench list and no golden
 # corpus contains.
 #
-# Read the liveness lines first and the score last. They are in that order below
-# for that reason.
+# Read the liveness lines first and the score last. A score computed over games
+# that did not play is a number about the box, not about the engine.
 #
 # TIMEOUTS ARE THE MEASUREMENT'S HEALTH, NOT A DETAIL. A forfeit on time is a
 # game the loser did not play, and on a busy box both sides forfeit at random.
@@ -39,7 +39,9 @@ COMP=${COMP:-gcc}
 JOBS=${JOBS:-$(nproc 2>/dev/null || echo 4)}
 THREADS=${THREADS:-1}
 HASH=${HASH:-16}
-# The revision games.yml pins. Same tool, same behaviour, one place to bump.
+# Pin the revision .github/workflows/games.yml pins. A match played against a
+# different fastchess is comparing tool behaviour as well as engines, and there
+# is one place to bump when CI moves.
 FASTCHESS_REF=${FASTCHESS_REF:-894616028492ae6114835195f14a899f6fa237d3}
 CACHE=${CACHE:-${TMPDIR:-/tmp}/refish-fastchess}
 
@@ -54,7 +56,9 @@ usage: tests/match.sh [<base-rev>] [<head-rev>] [options]
   --tc SPEC        fastchess time control (default 4+0.04)
   --concurrency N  parallel games (default 4; more than the box has forfeits games)
   --arch ARCH      build architecture (default x86-64-avx2)
+  --comp C         gcc or clang (default gcc)
   --threads N      UCI Threads per engine (default 1)
+  --jobs N         parallel build jobs (default: nproc)
 
 A match cannot measure strength at the sizes this runs. It measures whether the
 engine plays. Compare the Elo against the error bar fastchess prints beside it.

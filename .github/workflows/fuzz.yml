@@ -28,15 +28,15 @@ on:
 # and continue-on-error would only have made it a check nobody is required to
 # read. It is out until the defects are fixed.
 #
-# Nothing was deleted. The harness, tbfetch.sh, the verdict comparison against a
-# clean reference, and the fuzz-tb / fuzz-rig / fuzz-verdict negative-control
-# rows all remain, and run by hand:
+# Everything `tb` needs is still in the tree -- the harness, tbfetch.sh, the
+# verdict comparison against a clean reference, and the fuzz-tb / fuzz-rig /
+# fuzz-verdict negative-control rows -- so it runs by hand:
 #
 #   ./tests/tbfetch.sh && ./tests/fuzz.py --seconds 600 --harness tb
 #
 # Restoring it in the commit that closes E1 and E2 means adding `tb` to the
-# matrix AND putting back the corpus fetch, which went with it rather than
-# staying here as a step that can never run:
+# matrix AND adding back the fetch step it needs, which does not sit here as a
+# step that can never run:
 #
 #   - name: Fetch the 3-man tablebases
 #     if: matrix.harness == 'tb'
@@ -65,10 +65,9 @@ jobs:
   # mutation spends most of its budget in the command parser. This one links
   # src/engine/ alone, registers no seam, and puts nothing between libFuzzer and
   # the node body -- under ASan and UBSan, which the stdin harnesses do not run.
-  #
-  # Its first run found real UB: SearchManager had six members with no
-  # initialisers, valid only because the host assigned them, and a search with no
-  # host read `ponder` before anything wrote it.
+  # Because it registers no seam, it is also the only lane that reads a member
+  # the host would otherwise have assigned: see the initialiser comment on
+  # SearchManager in src/engine/search.h.
   FuzzSearch:
     name: search (in-process, ASan+UBSan)
     runs-on: ubuntu-24.04
@@ -88,11 +87,11 @@ jobs:
           key: fuzz-corpus-search-${{ github.run_id }}
           restore-keys: fuzz-corpus-search-
 
-      # Install what the gate needs, so exit 2 cannot mean "this runner lacked a
-      # tool". Every gate here uses exit 2 for SKIPPED and a step fails on any
-      # non-zero status, so an unmet prerequisite is indistinguishable from a
-      # finding. Making the prerequisite explicit is the fix; adding
-      # continue-on-error would make the lane unable to fail at all.
+      # Install the toolchain fuzzsearch.sh needs and probe it here, so a red
+      # step means a finding and never "this runner lacked a tool": the gate
+      # exits 2 for SKIPPED and any non-zero status fails a step, so the two are
+      # indistinguishable from the run's status alone. Do not reach for
+      # continue-on-error instead -- it would leave the lane unable to fail.
       - name: Install clang with libFuzzer
         run: |
           sudo apt-get update

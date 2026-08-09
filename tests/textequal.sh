@@ -29,7 +29,9 @@
 # hold IR, not machine code, so there is nothing to disassemble until the link,
 # and the linked image renumbers every address when a translation unit moves.
 #
-# Exit codes:  0 identical   1 differs   2 skipped (could not build or compare)
+# Exit codes:  0 identical   1 differs   2 skipped (no objdump, or no net to
+# build against). A side that fails to build or disassembles to nothing exits 1
+# through die, not 2 -- so read the message, never the code alone.
 
 set -u
 set -o pipefail
@@ -88,9 +90,9 @@ BASE_REV=$1
 HEAD_REV=${2:-HEAD}
 
 
-# A numeric option that is not a number is a silently wrong verdict, and a
-# tolerance nobody bounds is the "raise it until the change fits" failure this
-# gate exists to prevent.
+# Refuse a non-numeric --jobs rather than pass it to make: `make -j""` builds
+# with unbounded parallelism and `make -jabc` fails inside the build, which
+# arrives here as "the side did not build" and hides the typo that caused it.
 num() {
     case "$2" in
         ''|*[!0-9.]*|*.*.*) die "$1 must be a number, got '$2'" ;;
@@ -133,11 +135,14 @@ prepare_tree() {
 # Forcing all three empty on both sides makes the stamp identical and the
 # comparison about the code. It is why this gate must never be used to argue
 # that the SHIPPED binary is unchanged: the shipped binary carries its stamp.
-# EXTRACXXFLAGS CANNOT TURN LTO OFF. src/Makefile:502 interpolates EXTRACXXFLAGS
-# into CXXFLAGS and line 964 appends `-flto` after it, so the Makefile's flag is
-# last and wins. Passing -fno-lto that way builds an LTO binary while the log
-# says otherwise -- and this gate disassembles the linked image, so it keeps
-# working and keeps comparing something other than what it claims.
+#
+# EXTRACXXFLAGS CANNOT TURN LTO OFF. src/Makefile interpolates EXTRACXXFLAGS
+# into its CXXFLAGS assignment, and the per-compiler block below that appends
+# `-flto=full` (clang) or `-flto -flto-partition=one` (gcc) AFTER it, so the
+# Makefile's flag is last and wins. Passing -fno-lto that way builds an LTO
+# binary while the log says otherwise -- and this gate disassembles the linked
+# image, so it keeps working and keeps comparing something other than what it
+# claims.
 #
 # The wrapper is what actually removes it. tests/linkcheck.sh, enginelink.sh and
 # fuzzsearch.sh use the same one.
@@ -173,8 +178,8 @@ build_nolto() {
 # Normalise a disassembly so that only the INSTRUCTIONS remain comparable:
 #
 #   - drop the instruction address at the start of each line;
-#   - drop objdump's trailing "# <addr> <sym+off>" annotation, which restates an
-#     absolute address;
+#   - lift the NAME out of objdump's trailing "# <addr> <sym>" annotation into
+#     the operand, and drop the annotation, which is an absolute address;
 #   - rewrite an absolute branch/call target to its symbol alone, so a callee
 #     that moved does not diff every one of its call sites;
 #   - key each instruction by its enclosing symbol and its position within that

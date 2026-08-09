@@ -5,15 +5,17 @@
 # reports nothing, so it never goes red, so nobody notices it stopped working --
 # and it still looks like coverage in a directory listing.
 #
-# A script qualifies as dispatched when a workflow runs it, another gate runs
-# it, or it appears in EXCUSED below with a reason. The excuse list is the hole,
-# so it expires in its own direction: an excused script that IS dispatched is
-# reported as a stale excuse, and an excuse naming a script that no longer
-# exists fails too.
+# A script qualifies as dispatched when a REACHABLE workflow names it, or when
+# it appears in EXCUSED below with a reason. Being run by another local gate
+# does not qualify -- see dispatch_corpus. The excuse list is the hole, so it
+# expires in its own direction: an excused script that IS dispatched is reported
+# as a stale excuse, and an excuse naming a script the tree does not carry fails
+# too.
 #
 # Two extraction traps, both of which produce a false green:
 #   * a script named only in a COMMENT is not a script the workflow runs;
-#   * a word boundary that accepts a suffix lets `foo.sh` satisfy `foobar.sh`.
+#   * a match that ignores what surrounds the name lets `subnet.sh` in a
+#     workflow satisfy `net.sh`, and `net.shx` satisfy it too.
 #
 # Exit codes:  0 every gate dispatched   1 findings   2 skipped
 
@@ -47,7 +49,7 @@ EXCUSED_WHY=(
   "invoked by the Makefile's net target"
   "downloads the tablebase corpus a fuzz harness needs; a lane would re-fetch it every run, so it is run by hand"
   "callgrind over the whole call graph, far costlier than the budget gate; run by hand before a decomposition"
-  "the zone table, sourced by depcheck.sh and linkcheck.sh rather than run"
+  "the zone table, sourced by depcheck.sh, linkcheck.sh, enginelink.sh and fuzzsearch.sh rather than run"
   "reads the CPU's hardware counters; a virtualised hosted runner exposes no PMU, so a lane would skip every run"
   "the aggregation half of perfcounters.sh, invoked by it rather than run"
   "callgrind with the cache and branch simulators, roughly 50x; run by hand when a component moves"
@@ -85,7 +87,7 @@ excuse_for() {
 
 # A name is dispatched only when it appears with a path separator in front and
 # a non-name character after, so `perft.sh` cannot be satisfied by `xperft.sh`
-# and `net.sh` cannot be satisfied by `subnet.shx`.
+# and `net.sh` cannot be satisfied by `subnet.sh` or by `net.shx`.
 # A here-string, not a pipe. With `set -o pipefail`, `grep -q` exits on the
 # first match and the producer dies of SIGPIPE, whose status pipefail then
 # propagates -- so an EARLY match reads as no match while a late one does not,
@@ -96,10 +98,14 @@ dispatched() {
     grep -qE "[/[:space:]\"']${pat}([[:space:]\"';)|&]|$)" <<< "$CORPUS"
 }
 
-# A workflow is REACHABLE when something can start it: a push, a pull request, a
-# schedule, a manual dispatch, or a `uses:` from another reachable workflow. A
+# A workflow is REACHABLE when something can start it without a human: a push, a
+# pull request, a schedule, a release, or a `uses:` from another workflow. A
 # workflow that is only `workflow_call` and that nobody calls can never run, so
 # every script it names is dispatched by nothing.
+#
+# The limit: a `uses:` counts whoever writes it, reachable or not, so a chain of
+# unstartable callers would satisfy this test. The chain's head is still
+# reported, because every workflow is judged on its own triggers here.
 #
 # This is the same failure the check exists to catch, one level up: without the
 # reachability pass a gate named only by an unstartable lane reports as

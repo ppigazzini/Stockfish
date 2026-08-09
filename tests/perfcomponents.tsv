@@ -13,7 +13,8 @@
 #
 # WHAT A ROW MEANS. "This much of the work happens here." It is a claim about
 # cost, not about the algorithm; tests/fingerprint.sh owns the call-count claim,
-# which is the one immune to inlining.
+# which is immune to inlining at the callee but not at the caller -- a function
+# inlined into its caller leaves the profile entirely.
 #
 # CHOOSE SYMBOLS THAT SURVIVE INLINING ON BOTH SIDES. A row matching nothing on
 # either side is reported by name rather than printed as a zero, because a zero
@@ -40,13 +41,13 @@ copying (memcpy)	__memcpy_|__memmove_
 NNUE accumulator apply	apply_combined
 NNUE incremental update	update_accumulator_incremental
 NNUE refresh cache	update_accumulator_refresh_cache
-NNUE network evaluate	NNUE::Network::evaluate|evaluate_bucket
+NNUE network evaluate	NNUE::Network::evaluate
 NNUE accumulator stack	AccumulatorStack::|AccumulatorCaches::
 # The affine output layers and the clipped-ReLU stages have NO row: both sides
 # inline them into NNUE::Network::evaluate, so they cannot be separated from it
 # and a row for them would report MATCHED NOTHING forever -- which trains a
 # reader to ignore that diagnostic. Their cost is inside `NNUE network evaluate`.
-NNUE feature transform	FeatureTransformer|HalfKAv2_hm|FullThreats|PP3Wide|append_active_indices
+NNUE feature transform	FeatureTransformer|HalfKAv2_hm|FullThreats|PP_3Wide|append_active_indices
 
 # -- search: the alpha-beta spine --
 search node	Worker::search<
@@ -63,7 +64,7 @@ SEE	see_ge
 
 # -- board --
 do/undo move	Position::do_move|Position::undo_move|Worker::do_move|Worker::undo_move
-threats	update_piece_threats|update_slider_threats|Position::threats
+threats	update_piece_threats|Position::threats
 legality / check	Position::legal|Position::gives_check|Position::pseudo_legal|update_slider_blockers
 attacks / bitboards	Attacks::|attacks_bb|Bitboards::|between_bb|line_bb
 position key / state	adjust_key50|Position::set|Position::fen|StateInfo

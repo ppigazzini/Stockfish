@@ -1,7 +1,10 @@
 #!/bin/bash
-# The three zones of src/, shared by tests/depcheck.sh (which reads includes)
-# and tests/linkcheck.sh (which reads symbols). ONE definition: two checks that
-# disagreed about which file is engine would be worse than either alone.
+# The three zones of src/, sourced by every gate that has to ask which zone a
+# file or an object belongs to: tests/depcheck.sh (which reads includes),
+# tests/linkcheck.sh (which reads symbols), and tests/enginelink.sh and
+# tests/fuzzsearch.sh (which select the engine objects to link). ONE definition:
+# checks that disagreed about which file is engine would be worse than any of
+# them alone.
 #
 # A zone is a DIRECTORY under src/, so a file joins a zone by where it is put and
 # a file added outside all three joins none. Both callers must therefore report

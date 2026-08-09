@@ -19,14 +19,14 @@ programme runs under is absolute:
 
 ```sh
 cd src
-make -j build ARCH=x86-64-avx2       # ~16 s on 16 cores
-make -j profile-build ARCH=...       # PGO+LTO -- what actually ships
+make -j build ARCH=x86-64-avx2       # the working build
+make -j profile-build ARCH=...       # PGO+LTO -- what actually ships, far slower
 make help                            # every ARCH
 ```
 
-The Python gates need one dependency the hosted runner happens to ship. `tests/testing.py`
-imports `requests`, so on a fresh checkout without it the gate dies with `ModuleNotFoundError`
-and proves nothing while CI stays green:
+The Python gates need one dependency no build target installs. `tests/testing.py` imports
+`requests`, so on a fresh checkout without it the gate dies with `ModuleNotFoundError` -- it
+proves nothing rather than reporting a finding:
 
 ```sh
 uv sync                                                  # ruff, ty, pre-commit
@@ -58,7 +58,7 @@ cd src && ../tests/signature.sh $(git log --format=%b | grep -m1 -oE 'Bench: *[0
 
 ```sh
 ../tests/signature.sh <ref>   # the anchor, per arch
-../tests/perft.sh             # movegen, incl. 5 Chess960 rows
+../tests/perft.sh             # movegen, standard and Chess960
 ../tests/reprosearch.sh       # node counts repeat across ucinewgame
 python3 ../tests/instrumented.py --none ./stockfish
 ```
@@ -85,7 +85,9 @@ cost. These five do, and they are not interchangeable.
 ```
 
 The last two default their base to `git merge-base HEAD master`, which is the upstream commit
-this branch forked from. `master` tracks `upstream/master`, so there is no pin file to drift.
+this branch forked from. Keep local `master` at `upstream/master` and never commit on it: there
+is no pin file to drift, so a commit of your own on `master` silently moves the baseline both
+gates measure against, and every earlier number stops being comparable.
 
 **Measure with gcc AND clang, and let PGO decide.** One compiler cannot distinguish a change
 from its own codegen. Run `perfbudget.sh` with `--comp gcc` and `--comp clang`, and with
@@ -199,10 +201,11 @@ covers the change -- not the prose. No capitalised shouting to mark a section, n
 describing what the commit does or does not establish, no summary of the body above it. State
 the fact and stop.
 
-**Footers: `Bench:` and `BREAKING CHANGE:` only.** No `Co-Authored-By:` for a tool or an
-assistant, and no generated-by advertisement of any kind. A footer naming a non-author is a
-false claim about who wrote the change, and every blame view repeats it forever. Tooling that
-appends one by default must be configured not to, rather than having it stripped in a later
-rewrite.
+**No footer names a non-author.** The footers this branch writes are `Bench:` and
+`BREAKING CHANGE:`; `closes` and a human `Co-authored-by:` follow
+[docs/12-writing.md](docs/12-writing.md). Never a `Co-Authored-By:` for a tool or an assistant,
+and never a generated-by advertisement of any kind: a footer naming a non-author is a false
+claim about who wrote the change, and every blame view repeats it forever. Configure tooling
+that appends one by default not to, rather than stripping it in a later rewrite.
 
 **Don't** `git push` -- commit locally and stop unless asked.

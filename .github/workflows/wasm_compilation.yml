@@ -43,8 +43,11 @@ jobs:
         run: |
           source $GITHUB_WORKSPACE/emsdk/emsdk_env.sh
           em++ --version
-          # engine/evaluate.h: src/ is three zone directories now, so a bare
-          # filename resolves to nothing and grep exits 2, failing the lane.
+          # Keep the zone directory on the path: EvalFileDefaultName is defined
+          # in src/engine/evaluate.h, and grep exits 2 on a path that is not
+          # there. This job runs `shell: bash`, which is `-e -o pipefail`, so
+          # that exit fails the step instead of building with an empty
+          # --preload-file and a binary that finds no net.
           net=$(grep -oE 'nn-[0-9a-f]+\.nnue' engine/evaluate.h | head -1)
           make clean
           COMPCXX=em++ make -j build ARCH=${{ matrix.arch }} EXTRALDFLAGS="--preload-file $net"
