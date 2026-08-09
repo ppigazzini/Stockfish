@@ -16,7 +16,9 @@ The threads diverge for three reasons, all of them in the code:
   cutoff to another;
 - each worker carries its own `optimism` values, which `evaluate.cpp` blends into the returned
   value, so their evaluations differ;
-- they start at staggered depths, so they reach different nodes in different orders.
+- each opens its aspiration window at a width derived from `threadIdx`, so the same root move
+  fails high or low on different threads at different iterations
+  ([02-engine-search.md](02-engine-search.md)).
 
 The speedup comes from the shared table: work one thread did is work another does not repeat.
 
@@ -69,8 +71,10 @@ finding a mate all set it.
 `Search::Worker` as a `std::atomic<bool>&` through `SharedState`, so the search names no host
 type on the path that matters. Workers read it two ways, and both are deliberate:
 
-- **Per node**, relaxed, at the top of `search()` and `qsearch()` -- a load of a reference
-  member and a load of the flag, which is what a `ThreadPool&` cost before the boundary moved.
+- **Per node**, relaxed, twice inside `search()` and nowhere in `qsearch()`: Step 2 aborts
+  before doing any work, and Step 20 discards the value a recursive call returned, because a
+  search that stopped mid-move returns a number that must not reach the best move, the PV or
+  the transposition table.
 - **Throttled**, through `check_time`, which is where the time budget and the info-line cadence
   are decided.
 
@@ -86,13 +90,13 @@ between candidate lines is chess policy, and the only thing it needs from the po
 workers, which the worker-set seam hands it as a count and an index.
 
 ```cpp
-votes[th->worker->rootMoves[0].pv[0]] += th->worker->rootMoves[0].score - minScore + 14;
+votes[th->rootMoves[0].pv[0]] += th->rootMoves[0].score - minScore + 14;
 ```
 
 Each thread votes for its best move with a weight derived from its score, shifted so the
-weakest thread's score is the origin and offset by a constant so that a thread which found
-nothing still votes. A move several threads agree on beats a move one thread scored slightly
-higher.
+weakest thread's score is the origin and offset by a tuned constant so that a thread which
+found nothing still votes. A move several threads agree on beats a move one thread scored
+slightly higher.
 
 The vote is then overridden in the cases where a score is a fact rather than an estimate: a
 proven mate wins regardless of votes, and a shorter mate beats a longer one. Aborted searches
@@ -116,8 +120,10 @@ it, so a single-socket machine pays for one.
 `src/platform/shm.h` and `src/platform/shm_unix.h` back `SystemWideSharedConstant`, which lets
 several engine processes on one machine share one copy of a replicated network rather than each
 loading its own -- relevant when a test harness runs many engines at once. The holder that uses
-it, `LazyNumaReplicatedSystemWide`, is in `src/platform/numa_shared.h` rather than `numa.h`, so
-shared memory reaches the files that own one and not everything that includes `search.h`.
+it, `LazyNumaReplicatedSystemWide`, is in `src/platform/numa_shared.h` rather than `numa.h`.
+`thread.h` forward-declares it and takes one by reference; only a file that owns one by value
+includes `numa_shared.h`. Put it in `numa.h` instead and shared memory would reach everything
+that includes `search.h`, which includes `numa.h` for `NumaReplicatedAccessToken`.
 
 **This is the largest platform-specific surface in the tree** and the least covered by the
 gates: the topology paths differ per OS, and `bench` exercises one thread on one node.

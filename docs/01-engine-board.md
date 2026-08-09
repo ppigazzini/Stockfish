@@ -12,9 +12,11 @@ Audience: board and movegen.
 
 Fixed-width enums for the things that have a fixed range -- `Color`, `Square`, `File`,
 `Rank`, `Piece`, `PieceType`, `Direction`, `CastlingRights`, `Bound`, `MoveType` -- and plain
-aliases for the things that are computed with: `Value`, `Bitboard`, `Depth`, and `Key` --
-which is now the transposition key alone. The pawn, minor-piece, material and non-pawn keys
-are `TypedKey<KeySpace>` values and cannot substitute for one another; see
+aliases for the things that are computed with: `Value`, `Bitboard`, `Depth`, and `Key`. `Key`
+is the transposition key: `Position::key()` and `Position::prefetch_key()` are the only
+accessors that return one. The pawn, minor-piece, material and non-pawn keys are stored raw in
+`StateInfo` but reached only through accessors returning `TypedKey<KeySpace>`, so outside
+`position.cpp` they cannot substitute for one another; see
 [09-type-design.md](09-type-design.md).
 
 The encodings are load-bearing rather than arbitrary:
@@ -36,17 +38,20 @@ margins, a move count, a history magnitude and a reduction denominator -- six di
 codomains -- so a type carrying depth through arithmetic would need six output types, which
 is the same as needing none.
 
-`types.h` ends with `#include "tune.h"` placed **after** its own `#endif`, deliberately
-outside the include guard, so the tuning macros are visible anywhere `types.h` reaches. That
-is how a developer can drop a `TUNE(...)` line beside a constant without adding an include.
+`types.h` ends with `#include "../shell/tune.h"` placed **after** its own `#endif`,
+deliberately outside the include guard, so the tuning macros are visible anywhere `types.h`
+reaches. That is how a developer can drop a `TUNE(...)` line beside a constant without adding
+an include. It is also the one engine-to-shell include in the tree, and the sole entry in
+`tests/depcheck.baseline`.
 
 ## `bitboard.h` -- square sets
 
 A `Bitboard` is a `u64`, one bit per square, LSB = a1. Shifts and masks do the geometry:
 `shift<NORTH>` is `<< 8`, and the file masks stop a shift wrapping around the board edge.
 
-`pop_lsb` is the hottest line in the engine -- it is how every move loop advances -- so it
-compiles to a single `tzcnt`/`blsr` pair where the ISA has them.
+`pop_lsb` is how every move loop advances, so it is written as `lsb(b)` followed by
+`b &= b - 1` and nothing else -- a `tzcnt`/`blsr` pair where the ISA has them. Anything added
+to it is added to every iteration of every move loop in the engine.
 
 ## `attacks.cpp` -- slider attacks, three ways
 
@@ -60,15 +65,22 @@ implementation compiles is decided by the macros at the top of `attacks.h`:
 | neither, with `USE_PEXT` | BMI2 available | PEXT extracts the occupancy index directly, so the table is dense |
 | neither, without PEXT | everything else | magic bitboards: multiply the masked occupancy, shift, index |
 
-Hyperbola quintessence computes file, diagonal and antidiagonal attacks arithmetically; rank
-attacks come from `RankAttacks` in either case.
+Hyperbola quintessence computes attacks arithmetically from a reversal. **The two variants
+differ in how they get the rank**, and that is not cosmetic. `USE_HYPERBOLA_QUINT` reverses
+the whole 64-bit word, so the same `hyperbola()` serves every direction including the rank.
+`USE_DUAL_HYPERBOLA_QUINT` reverses bytes within 128-bit lanes, which works for file, diagonal
+and antidiagonal -- those put every square in a different byte -- and cannot work for a rank,
+where all eight squares share one. So the AVX2 path alone carries `RankAttacks`, a table
+indexed by the slider's file and the six inner bits of the rank occupancy, `alignas(64)
+constexpr` so it is built at compile time rather than at startup.
 
 `DualMagic::both_attacks_bb` returns the bishop and rook attack sets for one square in a
-single call, `alignas(32)` so the pair of lookups sits in one cache line. Callers that need
-both -- `slider_blockers`, `see_ge` -- get them without touching two structures.
-
-`RankAttacks` is `alignas(64) constexpr`, so it is generated at compile time rather than at
-startup and is cache-line aligned where it is read.
+single call. `DualMagic` is `alignas(32)` because the body starts with
+`_mm256_load_si256(reinterpret_cast<const __m256i*>(this))`: the four masks are the first 32
+bytes of the struct and are loaded as one aligned vector, so reordering a member above them or
+dropping the alignment turns a legal aligned load into a fault. `Position::set_check_info` and
+`Position::attackers_to` are the callers that need both sets, and they get them without
+touching two structures.
 
 **Which implementation is compiled changes the code but not the answer.** Every tier must
 produce the same attack sets, and what holds that is the compile matrix benching one signature
@@ -136,9 +148,14 @@ on every generated move, and most generated moves are never made.
   from its own king.
 
 En passant is not one of them. It cannot be settled by a pin test, because the capture
-removes a pawn from a square the moving pawn never occupied, so `generate<LEGAL>`
-(`movegen.cpp:282`) routes an `EN_PASSANT` move through the full check instead of the pin
-shortcut, alongside king moves and pinned pieces.
+removes a pawn from a square the moving pawn never occupied. `generate<LEGAL>` in
+`src/engine/movegen.cpp` therefore routes an `EN_PASSANT` move through the full `legal()`
+check instead of the pin shortcut, alongside king moves and pinned pieces -- one filter
+predicate, three disjuncts:
+
+```sh
+grep -n 'type_of() == EN_PASSANT' src/engine/movegen.cpp
+```
 
 Generation is templated on `GenType` -- `CAPTURES`, `QUIETS`, `EVASIONS`, `NON_EVASIONS`,
 `LEGAL` -- and on colour, so the direction constants fold and the generator for one side has

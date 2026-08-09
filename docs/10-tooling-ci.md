@@ -58,6 +58,11 @@ It cannot see a key that desyncs and resyncs, because perft counts leaves.
 
 Node counts repeat across `ucinewgame` at varying node limits.
 
+It compares one binary against itself, at the default thread count, so it establishes that
+`ucinewgame` resets everything a search reads -- and nothing about whether those node counts
+are the right ones, which is `signature.sh`'s question, or about what a second thread would
+do to them.
+
 ### `tests/instrumented.py`
 
 The CLI and interactive suite, driven under valgrind, TSan, UBSan and
@@ -79,7 +84,7 @@ confident wrong verdict, so pick by what the change CLAIMS:
 | "this is pure code motion" | `tests/textequal.sh` | a codegen-equivalence proof has no noise floor; one run settles it |
 | "this costs nothing" (a refactor) | `tests/perfbudget.sh` | deterministic; an instruction increase in a behaviour-preserving change is a real red flag |
 | "this is faster" (an optimisation) | `tests/npsab.sh`, and probably fishtest | the instruction axis can report the wrong sign -- see below |
-| "this moved no cache line" | `tests/perfcounters.sh` | the only axis that sees a miss, a mispredict or a stall, and the only one that runs above AVX2 |
+| "this moved no cache line" | `tests/perfcounters.sh` | the only axis that measures a miss or a mispredict on the hardware, and the only counting axis that runs above AVX2 |
 | "and if it did, where?" | `tests/perfdecomp.sh` | per-component instructions, misses and mispredicts; deterministic, and a model |
 
 The last two divide one question between them. `perfcounters.sh` measures the hardware and
@@ -122,9 +127,9 @@ Four properties, each deliberate:
   a mutation that forces `Position::adjust_key50` out of line. Never raise it to fit a change.
 
 **The limit that matters, and it is not theoretical.** Upstream `ee72cf49f` "Optimize
-RankAttacks" is marked *No functional change* and passed a 212,800-game SPRT. It shrinks a
-table 4x, trading retired instructions for cache footprint. This gate scores it **+0.16%, a
-regression** -- it does not merely miss the win, it reports the wrong sign. An instruction
+RankAttacks" is marked *No functional change* and passed an SPRT on fishtest. It shrinks a
+table 4x, trading retired instructions for cache footprint. This gate scores it a
+**regression** -- it does not merely miss the win, it reports the wrong sign. An instruction
 count cannot see a latency or locality win and is not neutral about one; the same applies to
 extra accumulator chains, unrolling for ILP, and software prefetch, which callgrind does not
 model at all.
@@ -132,20 +137,20 @@ model at all.
 So: **never let this gate alone veto a change whose claim is locality, prefetch or latency
 hiding.**
 
-**And the verdict on that class is compiler-dependent.** The same three commits measured
-under both compilers the tree builds with:
+**And the verdict on that class is compiler-dependent.** Three upstream commits, each marked
+*No functional change*, under both compilers the tree builds with:
 
-| Commit | gcc | clang |
-|---|---|---|
-| `d70dec7d6` Optimize attacks | -0.8231% | -0.5096% |
-| `a255ad59e` Optimize evasions | -0.0778% | -0.0881% |
-| `ee72cf49f` Optimize RankAttacks | **+0.1628%** | **-0.1427%** |
+```sh
+for c in d70dec7d6 a255ad59e ee72cf49f; do
+  for comp in gcc clang; do ./tests/perfbudget.sh --comp "$comp" "$c~1" "$c"; done
+done
+```
 
-The two changes that genuinely retire fewer instructions agree in sign under both compilers.
-The locality change does not -- gcc calls it a regression and clang calls it an improvement.
-That gives a usable rule: **a sign that flips between gcc and clang means the change is not
-an instruction-count change at all**, and the instruction axis is the wrong instrument for
-it.
+`d70dec7d6` "Optimize attacks" and `a255ad59e` "Optimize evasions" genuinely retire fewer
+instructions, and both compilers agree they are improvements. `ee72cf49f` is the locality
+change, and the two disagree about its sign. That gives a usable rule: **a sign that flips
+between gcc and clang means the change is not an instruction-count change at all**, and the
+instruction axis is the wrong instrument for it.
 
 callgrind implements no AVX-512 and dies on the first instruction it does not know, so the
 instruction axis stops at avx2/bmi2 -- below the tier a player builds. The script refuses
@@ -173,11 +178,10 @@ investigate it when it is large, and do not let it alone veto a change. That is 
 about which measurement answers the question, not a licence to skip one. A change still reports
 both, and a regression under PGO still does not land.
 
-**One `-O3` lane is not evidence; the pattern across lanes is.** A header change measured
-across that grid on this tree exceeds tolerance at exactly one (tier, compiler) pair and is
-free at every other, and which pair it is moves from change to change -- a change free at
-avx2/gcc goes above tolerance at bmi2/gcc, and the reverse. A reading that changes sign or
-vanishes when the compiler or the tier changes is not an instruction-count change at all.
+**One `-O3` lane is not evidence; the pattern across lanes is.** A header change can exceed
+tolerance at one (tier, compiler) pair and be free at every other, and which pair that is does
+not repeat from change to change. A reading that changes sign or vanishes when the compiler or
+the tier changes is not an instruction-count change at all.
 
 **A startup probe that moves makes the subtracted search figure move the other way.** The gate
 reports `total - startup`, so a change whose whole process retires fewer instructions can still
@@ -213,14 +217,15 @@ Interleaved paired wall-clock A/B, reporting the median of the paired ratios and
 ./tests/npsab.sh HEAD~1
 ```
 
-Three rules are built in, each of which has produced a published wrong number somewhere:
-alternate which binary runs first, because the second slot in a round runs on a hotter core;
-report the spread, not just the median; and read the engine's own bench clock, which starts
-after the network load and so contains no startup.
+Three rules are built in, and each closes a way a wall-clock A/B reports a number that is not
+the change: alternate which binary runs first, because the second slot in a round runs on a
+hotter core; report the spread, not just the median; and read the engine's own bench clock,
+which starts after the network load and so contains no startup.
 
 **A spread that straddles 1.000 has established no direction**, and the tool says so rather
-than reporting the median as a result. On an ordinary developer box that is the expected
-outcome for anything under roughly ten percent -- which is why the instruction axis exists.
+than reporting the median as a result. On a box doing anything else at the same time that is
+the expected outcome for a change of the size a refactor makes -- which is why the instruction
+axis exists.
 
 ## `tests/match.sh`
 
@@ -233,18 +238,26 @@ Play this branch against upstream and report whether the engine **played**.
 
 It builds both revisions with `profile-build`, fetches and builds fastchess at the revision
 `games.yml` already pins, and plays a match at a fixed time control. Every other gate here
-compares the engine against a number; this one is the only thing in the tree that puts it in
-front of an opponent over positions no bench list and no golden corpus contains.
+compares the engine against a recorded answer; this one is the only thing in the tree that puts
+it in front of an opponent.
 
-**It does not measure strength, and it is not a substitute for fishtest.** At the game counts
-it is meant for, the error bar fastchess prints beside the Elo is wider than any refactor could
-move -- read the two together or quote neither. What it does establish is liveness: no crash,
-no disconnect, no illegal move, no forfeit on time.
+**It does not measure strength, and it is not a substitute for fishtest.** At the sizes it
+runs, the error bar fastchess prints beside the Elo is wider than any refactor could move --
+read the two together or quote neither. What it does establish is liveness: no crash, no
+disconnect, no illegal move, no forfeit on time.
+
+**It judges no move.** A game that completes is a pass however badly it was played, and a
+defect both binaries share is invisible to it exactly as it is to every other differential
+gate here.
 
 **A timeout is a rig fault, not a result.** A forfeit on time is a game the loser did not play,
 and on a busy box both sides forfeit at random, so a non-zero timeout count is reported apart
 from the score rather than folded into it. A background build invalidates a match exactly as it
 invalidates `npsab.sh`.
+
+**No workflow runs it**, and `tests/lanecheck.sh` carries the excuse for that: a hosted runner
+is not idle, so a match run there forfeits on time and scores the box rather than the engine.
+It runs when someone remembers it.
 
 ## The build and packaging scripts
 
@@ -316,6 +329,11 @@ Three properties, each of which a naive comparison gets wrong:
 A `.uci` file is engine input, piped raw, so a `#` line is a command the engine answers
 `Unknown command` to. The gate refuses one rather than letting the case diverge for a reason
 unrelated to what it tests.
+
+**It sees the sessions in `tests/cases/` and the fields the filter leaves.** A command no
+`.uci` file sends is unchecked, and so is every field filtered as machine-dependent -- a
+`hashfull` that starts reporting nonsense passes here. Adding a case is how the covered surface
+grows; there is no other mechanism.
 
 **Re-recording a golden records whatever the engine currently does**, so an update over a
 broken build makes the break the expected output. Update only from a tree whose signature
@@ -428,6 +446,11 @@ split.
 Comments are stripped before matching, so a filename mentioned only in a comment does not count
 as a build rule.
 
+**Two limits, both in what "named" means.** It reads `src/**/*.cpp` only, so a header that no
+translation unit includes is invisible to it. And it asks whether the bare filename appears
+anywhere in the comment-stripped `src/Makefile`, not whether the object reaches the binary at a
+given `ARCH` -- a source named only by a rule that never fires still counts as covered.
+
 ## `tests/linkcheck.sh`
 
 The same rule as `depcheck.sh`, asked of the linker instead of the preprocessor.
@@ -443,7 +466,8 @@ through a forward declaration with no include at all, is invisible to the first 
 plain to this one -- `tests/negative_control.sh linkcheck` injects exactly that case and
 asserts **both** halves: `depcheck` stays green, and `linkcheck` goes red.
 
-The zone table lives in `tests/zones.sh` and is sourced by both, because two checks that
+The zone table lives in `tests/zones.sh`, and every check that needs it sources that file
+rather than restating it -- `grep -l zones.sh tests/*.sh` is the current set. Two checks that
 disagreed about which file is engine would be worse than either alone.
 
 It asks **two** questions, with a baseline each, and **both are empty**.
@@ -542,10 +566,12 @@ What the hardware actually did, base against head, at every architecture tier in
 instructions, cycles, cache misses and references, branch misses and branches, plus IPC and the
 two miss rates derived from them. It reaches what neither other axis can.
 
-**It is the only performance tool that runs above AVX2.** callgrind implements no AVX-512 and
-dies on the first instruction it does not know, so `perfbudget.sh` refuses those tiers outright
--- and those are tiers players build. The default tier set spans plain `x86-64` up to an
-AVX-512 tier; `TIERS` at the top of the script is the current list.
+**It is the only counting axis that runs above AVX2.** callgrind implements no AVX-512 and dies
+on the first instruction it does not know, so `perfbudget.sh` and `perfdecomp.sh` refuse those
+tiers outright -- and those are tiers players build. `npsab.sh` builds whatever `--arch` it is
+given, but it times rather than counts and cannot resolve a small difference. The default tier
+set spans plain `x86-64` up to an AVX-512 tier; `TIERS` at the top of the script is the current
+list.
 
 **It answers a question the instruction axis cannot even ask.** A change that keeps
 instructions and loses IPC has moved a cache line; the budget scores that as free. This is the
@@ -566,6 +592,11 @@ machine is doing, and with where the scheduler puts the process. A ratio whose s
 1.000 has established no direction, and the report says so in those words rather than printing a
 median that looks decisive.
 
+**A counter's meaning belongs to the microarchitecture, not to the tool.** What
+`PERF_COUNT_HW_CACHE_MISSES` counts differs between CPUs and under a hypervisor may be
+approximated or unavailable. The ratio is between two binaries measured on one box in one run,
+and it is comparable to nothing else -- never quote one machine's miss rate beside another's.
+
 Exit 0 means measured, not clean -- whether a moved miss rate is acceptable is a judgement the
 table informs rather than makes. Exit 1 is reserved for the one thing the script can decide
 alone: the two sides searched a different number of nodes, so the comparison is VOID.
@@ -573,8 +604,8 @@ alone: the two sides searched a different number of nodes, so the comparison is 
 **Two rig faults it refuses rather than reports.** A counter the kernel multiplexed carries only
 part of the run, so the tool scales it and flags `scaled=1`, and the script drops the reading
 rather than quote it. And both binaries hashing identically means one side was measured twice --
-which yields a beautifully tight ratio of 1.0000 and means nothing -- so equal hashes at
-different revisions are a skip, not a result.
+which yields a ratio of 1.0000 that means nothing -- so equal hashes at different revisions are
+a skip, not a result.
 
 ## `tests/perfdecomp.sh`
 
@@ -713,11 +744,12 @@ It links `src/engine/` alone and registers no seam, exactly as `enginelink.sh` d
 `Search::go`. So any crash is in the engine with no host to blame -- and the seam defaults are
 under the fuzzer too.
 
-**It is the only gate that runs the engine under UBSan**, so it reaches a class of defect the
-others cannot: state that is valid only because a host assigned it. `SearchManager`'s members
-carry their own initial values for exactly that reason -- a search driven without
-`ThreadPool::start_thinking` reads them otherwise, and UBSan reports the load of a non-`bool`
-value into `ponder`.
+**It is the only gate that compiles the engine under ASan**, and the only one that reaches
+UBSan with no host registered -- `sanitizers.yml` runs UBSan too, but over the shipped binary
+with the shell driving it. That combination reaches a class of defect the others cannot: state
+that is valid only because a host assigned it. `SearchManager`'s members carry their own
+initial values for exactly that reason -- a search driven without `ThreadPool::start_thinking`
+reads them otherwise, and UBSan reports the load of a non-`bool` value into `ponder`.
 
 Three properties of the rig are load-bearing, and each fails by looking like success:
 
@@ -751,12 +783,11 @@ with a rig fault instead of a verdict, because each of the three otherwise reads
 over an input that never reached the decoder. `tests/negative_control.sh` carries a row for each
 detector and a `fuzz-rig` row for the inverse property.
 
-`tests/tbfetch.sh` fetches the ten-file, ~26 KiB 3-man set and verifies each file by its
-**magic** rather than by HTTP status, because a mirror that answers a missing file with a body
--- an error page, a redirect to a landing page -- otherwise stores it as a table, and it fails
-much later inside the decoder where it reads as a corrupt table rather than a bad download.
-Both mirrors tried do exactly that. Without a corpus the harness **skips visibly** rather than
-passing.
+`tests/tbfetch.sh` fetches the 3-man set from the mirror `TB_MIRROR` names, and verifies each
+file by its **magic** rather than by HTTP status. A mirror that answers a missing file with a
+body -- an error page, a redirect to a landing page -- otherwise gets that body stored as a
+table, and it fails much later inside the decoder, where it reads as a corrupt table rather
+than a bad download. Without a corpus the harness **skips visibly** rather than passing.
 
 **None of this is a merge gate**, and the nightly `fuzz.yml` gives each harness a job of its
 own with the whole budget rather than splitting one budget several ways -- they run at
@@ -776,7 +807,7 @@ remembers to:
 
 ### A corrupt table crashes the engine
 
-The `tb` harness found this, and it is **not fixed**:
+**Not fixed.** One byte of a valid table, and the engine dies:
 
 ```sh
 printf '\x00' | dd of=tests/syzygy-3man/KNvK.rtbw bs=1 seek=10 count=1 conv=notrunc
@@ -795,9 +826,9 @@ Invalid read of size 1
 Address 0x6378 is not stack'd, malloc'd or (recently) free'd
 ```
 
-Sweeping all 80 bytes of `KNvK.rtbw` at two values each finds exactly one aborting byte, and
-its behaviour is a clean threshold rather than noise -- **every** value below the shipped 128
-crashes, and every value at or above it is answered normally:
+Byte 10 is the only byte of the 80-byte `KNvK.rtbw` that aborts the engine, and it aborts on a
+clean threshold rather than at random -- **every** value below the shipped 128 crashes, and
+every value at or above it is answered normally:
 
 | byte 10 | 0 | 1 | 2 | 3 | 64 | 127 | 129 | 255 |
 |---|---|---|---|---|---|---|---|---|
@@ -806,9 +837,8 @@ crashes, and every value at or above it is answered normally:
 A header field the decoder trusts to bound how far it may walk fits that shape: understating it
 sends the decoder past the end of the mapping, overstating it changes nothing it reaches for
 this position. **Which named field it is has not been established** -- byte 11 tolerates every
-value tried, which rules out the adjacent `maxSymLen`/`minSymLen` pair, and no reading of the
-header layout offered so far survives contact with the sweep. The reproducer and the fault site
-are solid; the field identity is not, and is the next thing to nail down.
+value tried, which rules out the adjacent `maxSymLen`/`minSymLen` pair. The reproducer and the
+fault site are solid; the field identity is not, and is the next thing to nail down.
 
 Two consequences regardless of which field it is. **A corrupt table should be refused, not
 answered and not crashed on** -- one flipped byte in a downloaded file kills the engine
@@ -818,7 +848,7 @@ file has separately produced an uncaught `std::bad_alloc`, which `-fno-exception
 
 ### setoption during an unbounded search deadlocks the engine
 
-The `uci` harness found this, and it is **not fixed**:
+**Not fixed.** Four lines against a stock binary:
 
 ```sh
 printf 'uci\nisready\ngo infinite\nsetoption name Hash value 32\nquit\n' | ./src/stockfish
@@ -853,8 +883,7 @@ binary.
 
 The harness must guard against generating an unbounded `go` with no `stop` behind it, or it
 hangs on this engine behaviour rather than reporting it -- and a leading empty token makes a
-generated line read as `" go"`, which a guard matching on the first character misses. The
-reproducer above uses no fuzzing at all.
+generated line read as `" go"`, which a guard matching on the first character misses.
 
 ## Local hooks
 
@@ -899,7 +928,7 @@ comments rather than blocks.
 | `arm_compilation.yml`, `universal_compilation.yml`, `wasm_compilation.yml` | the remaining targets |
 | `iwyu.yml`, `clang-format.yml`, `codeql.yml` | include hygiene, formatting, static analysis |
 | `upload_binaries.yml` | release artifacts |
-| `perfbudget.yml` | the instruction budget, base against head, at two tiers |
+| `perfbudget.yml` | `perfbudget.sh` at two tiers, base against head, then `textequal.sh` as `continue-on-error` -- the codegen comparison informs, it does not block |
 | `golden.yml` | `golden.sh` -- the recorded command outputs |
 | `docs.yml` | `docslint.sh`, `lanecheck.sh`, then `buildcoverage.sh`, `depcheck.sh`, `linkcheck.sh`, `enginelink.sh` |
 | `fuzz.yml` | nightly: the `uci`, `net` and `shm` harnesses, and `fuzzsearch.sh` |
@@ -928,7 +957,7 @@ flowchart LR
     SF --> PB["perfbudget.yml"]
     SF --> D["docs.yml"]
     SF --> GO["golden.yml"]
-    SF --> OTH["iwyu, games, matetrack,<br/>arm, wasm, universal, upload"]
+    SF --> OTH["iwyu, games, matetrack, avx2_compilers,<br/>arm, wasm, universal, upload_binaries"]
     N(["nightly cron"]) --> FZ["fuzz.yml"]
     T --> G1["signature.sh<br/>perft.sh<br/>reprosearch.sh"]
     D --> G5["docslint.sh<br/>lanecheck.sh<br/>buildcoverage.sh<br/>depcheck.sh<br/>linkcheck.sh<br/>enginelink.sh"]
@@ -936,7 +965,7 @@ flowchart LR
     FZ --> G7["fuzz.py (uci, net, shm)<br/>fuzzsearch.sh"]
     SAN --> G3["instrumented.py"]
     PB --> G4["perfbudget.sh<br/>textequal.sh"]
-    L(["no trigger -- by hand only"]) --> G2["negative_control.sh<br/>fingerprint.sh<br/>npsab.sh<br/>perfcounters.sh<br/>perfdecomp.sh"]
+    L(["no trigger -- by hand only"]) --> G2["negative_control.sh<br/>fingerprint.sh<br/>npsab.sh<br/>match.sh<br/>perfcounters.sh<br/>perfdecomp.sh"]
     style G2 stroke-dasharray: 5 5
     style L stroke-dasharray: 5 5
 ```

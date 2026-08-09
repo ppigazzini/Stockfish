@@ -9,20 +9,21 @@
 # an engine file reference a symbol that only a shell object defines?
 #
 # The strong form -- link the engine alone and fail on any undefined symbol --
-# is tests/enginelink.sh, and it does not replace this one. The engine still
-# references platform symbols, so a link-or-fail verdict is a single bit; this
-# names each edge and holds it against a baseline, which is what makes closing
-# them one at a time possible.
+# is tests/enginelink.sh, and it does not replace this one. Its verdict is a
+# single bit and arrives only from the linker; this one names the offending
+# object and symbol for each edge and holds them against a baseline, so a new
+# edge is reported as itself rather than as a link that stopped working.
 #
 # Built with LTO OFF on purpose: under LTO the object holds IR and its symbol
 # table is not the one the final link resolves. So a clean run is a statement
 # about the non-LTO build only. Quote that limit with the result -- LTO can
 # resolve an edge this gate names, and can create one it cannot see.
 #
-# `EXTRACXXFLAGS=-fno-lto` CANNOT turn LTO off. src/Makefile:502 interpolates
-# EXTRACXXFLAGS into CXXFLAGS and line 964 APPENDS `-flto` after it, so the
-# Makefile's flag is last and wins and the objects hold IR. Build through
-# COMPCXX, a wrapper that drops every -flto argument and passes the rest through.
+# `EXTRACXXFLAGS=-fno-lto` CANNOT turn LTO off. src/Makefile interpolates
+# EXTRACXXFLAGS into its CXXFLAGS assignment, and the per-compiler block below
+# that APPENDS `-flto` after it, so the Makefile's flag is last and wins and the
+# objects hold IR. Build through COMPCXX, a wrapper that drops every -flto
+# argument and passes the rest through.
 #
 # Note the asymmetry, and keep the wrapper anyway. GCC writes a plugin-readable
 # symbol table into an LTO object and `nm` reads it, so this check would answer
@@ -151,10 +152,10 @@ fi
 
 # The engine-to-PLATFORM edge. The declared stack says the engine depends on
 # nothing outside itself, so this is a violation too -- and it is the one that
-# decides whether engine/ can be linked alone. It is reported separately because
-# its baseline is large and closing it is a different piece of work: the shell
-# edge needed a value snapshot, this one needs injection seams for the tablebase
-# prober and the NUMA topology.
+# decides whether engine/ can be linked alone. It carries its own baseline file,
+# empty like the shell one, so the two edges stay separately attributable: an
+# engine object reaching for a platform symbol and one reaching for a shell
+# symbol are closed by different work, and merging the counts would hide which.
 echo
 echo "== engine objects referencing a platform-defined symbol =="
 pfound="$BUILD/pfound"

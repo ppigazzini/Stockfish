@@ -9,9 +9,15 @@
 # INLINE call at all -- an inlined platform function leaves no symbol reference,
 # so both of that gate's baselines read zero while the engine calls it.
 #
-# The linker's question has neither blind spot. Either every symbol an engine
-# object needs is resolved by another engine object or by the language runtime,
-# or the link fails and names what is missing.
+# The linker closes the first of those: either every symbol an engine object
+# needs is resolved by another engine object or by the language runtime, or the
+# link fails and names what is missing, whether or not anything else defines it.
+#
+# It does NOT close the second. An inlined host function emits no symbol either,
+# so a link that succeeds says nothing about an inline call reaching the
+# platform. That edge belongs to tests/depcheck.sh, which reads includes, and to
+# keeping each reader pointed at its seam by hand -- see the clock seam, whose
+# header says so.
 #
 # WHAT COUNTS AS RESOLVED. libstdc++, libc and pthread are the language runtime,
 # not host services, so they are allowed to resolve. Everything else must come
@@ -33,10 +39,11 @@
 # a binary that resolved nothing. A gate reading that exit code reports a clean
 # standalone engine while the engine calls whatever it likes.
 #
-# `EXTRACXXFLAGS=-fno-lto` does not turn it off. src/Makefile:502 interpolates
-# EXTRACXXFLAGS into CXXFLAGS and then APPENDS `-flto` at line 964, so the
-# Makefile's flag is last and wins. tests/negative_control.sh's `enginelink` row
-# plants a platform call in an engine file and fails if this gate stays green.
+# `EXTRACXXFLAGS=-fno-lto` does not turn it off. src/Makefile interpolates
+# EXTRACXXFLAGS into its CXXFLAGS assignment, and the per-compiler block below
+# that APPENDS `-flto` after it, so the Makefile's flag is last and wins.
+# tests/negative_control.sh's `enginelink` row plants a platform call in an
+# engine file and fails if this gate stays green.
 #
 # So this builds through COMPCXX, a wrapper that drops every -flto argument and
 # passes the rest through untouched. Every other flag stays exactly what ships,
