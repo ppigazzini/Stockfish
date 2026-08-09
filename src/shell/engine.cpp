@@ -125,7 +125,6 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
     arenaInstaller(),
     binaryDirectory(path ? CommandLine::get_binary_directory(*path) : std::filesystem::path{}),
     numaContext(NumaConfig::from_system(DefaultNumaPolicy)),
-    threads(),
     networkFile{std::nullopt, ""},
     network(numaContext, get_default_network()) {
 
