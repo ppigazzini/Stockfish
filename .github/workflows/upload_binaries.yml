@@ -77,7 +77,7 @@ jobs:
 
       - name: Upload Draft Release Asset
         if: inputs.release_tag != ''
-        uses: softprops/action-gh-release@4634c16e79c963813287e889244c50009e7f0981
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ inputs.release_tag }}
           draft: true
