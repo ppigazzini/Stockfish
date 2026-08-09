@@ -133,26 +133,32 @@ symbols, and `tests/depcheck.baseline` and `tests/linkcheck.baseline` list what 
 directions -- an entry describing an edge that no longer happens fails too, so a fixed edge
 cannot quietly stay listed as debt.
 
-The direction is now declared and checked; it was neither until recently, and the baseline is
-the honest measure of how far the tree is from it. Concretely, at the time of writing:
+The direction is now declared and checked, and **both baselines are empty**: no engine object
+references a shell-defined or a platform-defined symbol. `./tests/enginelink.sh` states the same
+thing in the form that admits no argument -- it links `engine/` alone, against a stub `main` and
+nothing else, and every symbol resolves.
 
-- **`search.cpp` still depends on the UCI frontend**, for `UCIEngine::wdl` and
-  `UCIEngine::format_score` on the `info` line. That edge is string rendering and remains.
-  The four other core files that reached across no longer do: the win-rate model
-  (`win_rate_model`, `to_cp`) is evaluation-domain knowledge fitted to fishtest statistics
-  rather than protocol, so it lives in `score.h/.cpp`, and coordinate notation is
-  `square_name` in `position.h/.cpp`. `evaluate.cpp`, `position.cpp`, `score.cpp` and
-  `nnue/nnue_misc.cpp` include neither.
-- **`Search::Worker` no longer holds the option model.** It takes a `const SearchOptions&` --
-  a snapshot of the thirteen values the engine reads, filled by the composition root before each
-  search (`src/engine/searchoptions.h`). So the search can be driven without a UCI layer, and
-  `tests/linkcheck.baseline` is empty: no engine object references a shell-defined symbol.
-- **It still holds `ThreadPool&` and reaches the platform.** 27 symbol references, listed in
-  `tests/linkcheck-platform.baseline` -- the Syzygy prober from `position.o` and `search.o`, the
-  NUMA topology from `search.o`, and a handful of `misc.h` helpers. The declared stack says the
-  engine depends on nothing outside itself, so these are violations, and **they are why
-  `engine/` still cannot be linked alone.** Closing the shell edge was a value snapshot; closing
-  this one needs injection seams.
+How each edge was closed:
+
+- **The UCI frontend.** `search.cpp` reached it for `UCIEngine::wdl` and
+  `UCIEngine::format_score` on the `info` line. Two of those were never shell code -- the
+  win-rate model (`win_rate_model`, `to_cp`) is evaluation-domain knowledge fitted to fishtest
+  statistics rather than protocol, so it lives in `score.h/.cpp`, and coordinate notation is
+  `square_name` in `position.h/.cpp` -- and the renderers followed them.
+- **The option model.** `Search::Worker` takes a `const SearchOptions&`, a snapshot of the
+  thirteen values the engine reads, filled by the composition root before each search
+  (`src/engine/searchoptions.h`). The search can be driven without a UCI layer.
+- **The platform.** Seven injection seams: the arena (`engine/arena.h`), the output sink
+  (`engine/output_sink.h`), the parallel-for (`engine/parallel.h`), the worker set and NUMA
+  topology (`engine/worker_set.h`), the tablebase prober (`engine/tb_source.h`), the clock
+  (`engine/clock.h`), and the per-node network replica, which the host resolves and hands to
+  each worker. In each the engine declares a hook, every reader in the zone goes through it, and
+  the host registers before the first search.
+
+**What is proven and what is not.** The engine links alone, so every seam's default is
+*reachable*. A link resolves a symbol; it does not call it, so the defaults are not yet
+*exercised*. An in-process smoke test that searches with no host registered is the remaining
+step.
 - **`numa.h` no longer carries all of its implementation.** The cold half of `NumaConfig` --
   topology discovery, the string forms, thread binding, 452 lines that all run before the
   first search -- is in `numa.cpp`. What stays is template-bound and cannot move.
