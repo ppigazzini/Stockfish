@@ -19,9 +19,13 @@
 # this gate is really for: a seam's default is a claim until something links
 # without the host that would override it.
 #
-# WHAT IT STILL DOES NOT PROVE. That the defaults RUN. A link resolves the
-# symbol; it does not call it. An in-process smoke test that searches with no
-# host registered is the next step, and it is not this script.
+# IT ALSO RUNS. A link resolves a symbol without ever calling it, so linking
+# alone says every seam default is REACHABLE and nothing about whether it works.
+# tests/enginelink_main.cpp is the host: it links against engine/ only,
+# registers NOTHING, and runs three depth-limited searches through
+# Search::go -- so the arena's fallback actually allocates, the parallel-for
+# actually clears the transposition table inline, the clock is actually read,
+# and the tablebase source actually answers "none loaded".
 #
 # LTO MUST BE OFF, and turning it off is not what it looks like. Under LTO a GCC
 # object holds IR; the linker needs the plugin to read it, and WITHOUT the plugin
@@ -102,11 +106,20 @@ n=$(echo $objs | wc -w)
 echo
 echo "== linking $n engine object(s) with a stub main and nothing else =="
 
-printf 'int main() { return 0; }\n' > "$BUILD/w/src/enginelink_stub.cpp"
-if ! ( cd "$BUILD/w/src" && "$CXX" -c -o enginelink_stub.o enginelink_stub.cpp ) \
-     > "$BUILD/stub.log" 2>&1; then
-    echo "enginelink: SKIPPED -- the stub would not compile" >&2
-    tail -5 "$BUILD/stub.log" >&2
+# The host is compiled with the same architecture flags the engine objects were,
+# because it includes engine headers whose layout depends on them -- a host built
+# at a different ARCH links happily and then disagrees about where the members
+# are.
+ARCHFLAGS=$(cd "$BUILD/w/src" && make ARCH="$ARCH" config-sanity 2>/dev/null | grep -oE '\-D[A-Za-z0-9_]+|-m[a-z0-9.]+' | tr '\n' ' ')
+# Into a tests/ beside src/, because the host includes ../src/engine/... exactly
+# as it does in the repo -- compiling it from anywhere else silently changes what
+# those relative includes resolve to.
+mkdir -p "$BUILD/w/tests"
+cp tests/enginelink_main.cpp "$BUILD/w/tests/enginelink_main.cpp"
+if ! ( cd "$BUILD/w/tests" && "$CXX" -std=c++17 -O1 -fno-exceptions $ARCHFLAGS -c \
+       -o ../src/enginelink_stub.o enginelink_main.cpp ) > "$BUILD/stub.log" 2>&1; then
+    echo "enginelink: SKIPPED -- the host would not compile" >&2
+    tail -8 "$BUILD/stub.log" >&2
     exit 2
 fi
 
@@ -127,9 +140,24 @@ fi
 if [ "$rc" = 0 ]; then
     echo "  ok -- every symbol resolved by engine/ or the language runtime"
     echo
-    echo "enginelink: the engine links alone"
-    echo "enginelink: clean"
-    exit 0
+    echo "== running it, with no seam registered =="
+    if ! ls "$BUILD/w/src"/*.nnue >/dev/null 2>&1; then
+        echo "enginelink: SKIPPED -- linked, but no net to run it with" >&2
+        exit 2
+    fi
+    # The DIRECTORY: the engine resolves its own default net name inside it.
+    if ( cd "$BUILD/w/src" && ./engine-standalone . ) > "$BUILD/run.log" 2>&1; then
+        grep -E '^  ' "$BUILD/run.log"
+        echo
+        echo "enginelink: the engine links alone AND searches with no host"
+        echo "enginelink: clean"
+        exit 0
+    fi
+    echo "  the engine linked but did NOT run:"
+    tail -12 "$BUILD/run.log" | sed 's/^/    /'
+    echo
+    echo "enginelink: FINDINGS"
+    exit 1
 fi
 
 undef=$(grep -oE "undefined reference to \`[^']+'" "$BUILD/link.log" \
