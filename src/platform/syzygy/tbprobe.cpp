@@ -552,7 +552,12 @@ class TBTables {
     }
 
     void clear() {
-        memset(hashTable, 0, sizeof(hashTable));
+        // Value-initialise rather than memset: Entry::key is a MaterialKey, a
+        // class with a default member initialiser, and memset over it is both a
+        // -Wclass-memaccess error under -Werror and a bypass of the only thing
+        // that guarantees a cleared entry reads as key zero.
+        for (Entry& e : hashTable)
+            e = Entry{};
         wdlTable.clear();
         dtzTable.clear();
         foundDTZFiles = 0;
