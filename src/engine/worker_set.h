@@ -33,18 +33,16 @@ class Worker;
 // that knows what a good move is. The best-move vote is Search::best_worker,
 // on this side, reaching the set through count and at.
 //
-// SHAPE TAKEN FROM ../mcfish's worker_set.h, including the two decisions that
-// are easy to get wrong:
-//
 // A ctx POINTER rather than a file-scope global. A function pointer cannot
 // capture, so the alternative is a hidden global -- which the parallel-for seam
 // used, and which makes two engines in one process impossible.
 //
-// The stop flag is handed over as a POINTER, not read through a getter.
-// Search::search reads it seventeen times, several of them per node, and an
-// indirect call there would be a real cost on the hottest path in the program.
-// The engine fetches the pointer once and loads the atomic directly, so the
-// seam costs nothing where it would actually be measured.
+// THE STOP FLAG IS NOT HERE. It is read per node, so it reaches the search as a
+// std::atomic<bool>& in SharedState, fixed at construction. Routing it through
+// this struct instead -- even handing over the address once per search rather
+// than calling per node -- cost clang 2.4 instructions per node, because a
+// pointer member must be reloaded after any call that might alias the worker
+// while a reference member need not be. Measured, not assumed.
 struct WorkerSet {
     void* ctx;
 
@@ -54,10 +52,6 @@ struct WorkerSet {
     u64 (*tb_hits)(void* ctx);
     usize (*count)(void* ctx);
     Search::Worker* (*at)(void* ctx, usize index);
-
-    // Read per node. Handed over once; never called on the hot path.
-    std::atomic<bool>* (*stop_flag)(void* ctx);
-    std::atomic<bool>* (*increase_depth_flag)(void* ctx);
 };
 
 const WorkerSet& worker_set();
