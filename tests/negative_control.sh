@@ -502,6 +502,10 @@ if selected b5-mismatch; then
     # the whole bundle for the caller to index would let one key's row be read
     # through another key's field -- which compiles, returns a real counter of
     # the wrong kind, and no gate but the bench signature can see it.
+    # -Iengine as well as -I.: these probes include the engine headers by bare
+    # name, and src/ is zone directories, so -I. alone fails to find them -- which
+    # makes the mismatch AND the correct form fail, scoring the rejection half as
+    # a pass. The correct-form probe below is what catches that.
     echo "negative-control: b5 [type]   -- a key/field mismatch must not compile"
     cat > /tmp/nc_b5_mismatch.cpp <<'CPP'
 #include "history.h"
@@ -511,7 +515,7 @@ int probe(SharedHistories& h, const Position& pos, Color us) {
     return h.pawn_correction(pos, us).minor;
 }
 CPP
-    if ( cd src && g++ -std=c++20 -I. -fsyntax-only /tmp/nc_b5_mismatch.cpp ) >/dev/null 2>&1; then
+    if ( cd src && g++ -std=c++20 -I. -Iengine -fsyntax-only /tmp/nc_b5_mismatch.cpp ) >/dev/null 2>&1; then
         echo "  NOT DETECTED -- the mismatch still compiles"; FAIL=$((FAIL+1))
     else
         echo "  ok, rejected by the compiler"; PASS=$((PASS+1))
@@ -526,7 +530,7 @@ int probe(SharedHistories& h, const Position& pos, Color us) {
     return h.pawn_correction(pos, us);
 }
 CPP
-    if ! ( cd src && g++ -std=c++20 -I. -fsyntax-only /tmp/nc_b5_ok.cpp ) >/dev/null 2>&1; then
+    if ! ( cd src && g++ -std=c++20 -I. -Iengine -fsyntax-only /tmp/nc_b5_ok.cpp ) >/dev/null 2>&1; then
         echo "  RIG FAULT -- the correct form does not compile either"; FAIL=$((FAIL+1))
     fi
     rm -f /tmp/nc_b5_mismatch.cpp /tmp/nc_b5_ok.cpp
@@ -546,13 +550,13 @@ if selected b5-keyspace; then
         'bool f(const Position& p) { return p.pawn_key() == p.minor_piece_key(); }'
     do
         mk "$probe"
-        if ( cd src && g++ -std=c++20 -I. -fsyntax-only /tmp/nc_b5_key.cpp ) >/dev/null 2>&1; then
+        if ( cd src && g++ -std=c++20 -I. -Iengine -fsyntax-only /tmp/nc_b5_key.cpp ) >/dev/null 2>&1; then
             echo "  NOT DETECTED -- accepted: $probe"; ok=0
         fi
     done
     # and the legal form must still build, so a broken header cannot pass this row
     mk 'usize f(const Position& p, usize m) { return p.pawn_key() & m; }'
-    if ! ( cd src && g++ -std=c++20 -I. -fsyntax-only /tmp/nc_b5_key.cpp ) >/dev/null 2>&1; then
+    if ! ( cd src && g++ -std=c++20 -I. -Iengine -fsyntax-only /tmp/nc_b5_key.cpp ) >/dev/null 2>&1; then
         echo "  RIG FAULT -- the legal form does not compile either"; ok=0
     fi
     if [ "$ok" = 1 ]; then echo "  ok, rejected by the compiler"; PASS=$((PASS+1));
@@ -832,6 +836,28 @@ fi
 
 rm -rf "$NCSTUB"
 
+row fuzzsearch
+if selected fuzzsearch; then
+    # The in-process fuzzer's own failure has never been observed, and its
+    # failure mode is the expensive one to trust: it exits 0 both when nothing is
+    # wrong and when the rig never reached the engine. Plant a defect the first
+    # input must reach -- a null read on the root position, before any move is
+    # walked -- and require the gate to go red.
+    echo "negative-control: fuzzsearch  -- a defect on the first search"
+    mutate src/engine/search_go.cpp \
+        '    w.limits          = LimitsType();' \
+        '    if (depth > 0)
+        *(volatile int*) nullptr = 0;
+    w.limits          = LimitsType();'
+    if ./tests/fuzzsearch.sh --seconds 20 >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the fuzzer reported clean over a null dereference"
+        FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- coverage
 #
 # The gap this closes: a gate with no row here is simply ABSENT, and absence is
@@ -849,12 +875,22 @@ COVERAGE_EXCUSED_NAMES=(
   negative_control.sh
   testing.py
   zones.sh
+  perfcounters.sh
+  perfcounters_report.py
+  perfdecomp.sh
+  perfdecomp.py
+  match.sh
 )
 COVERAGE_EXCUSED_WHY=(
   "a wall-clock measurement rather than a pass/fail gate; it carries its own A/A control, which is the same check from the inside"
   "this script -- it cannot be its own negative control"
   "a harness imported by instrumented.py rather than a gate; instrumented.py's row covers it"
   "the zone table, sourced by the four zone-aware gates; it asserts nothing itself"
+  "a report rather than a pass/fail gate: it exits 0 for any ratio and 1 only when the node counts differ, so the only thing to control is the VOID refusal, which perfbudget's row already covers"
+  "the aggregation half of perfcounters.sh, invoked by it rather than run"
+  "a report rather than a pass/fail gate, and its VOID refusal is the same one perfbudget's row covers"
+  "the decomposition half of perfdecomp.sh, invoked by it rather than run"
+  "plays games under a time control; a planted defect would be scored by the same clock the box perturbs, so a control here measures the runner"
 )
 
 echo
