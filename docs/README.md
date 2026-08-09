@@ -19,17 +19,17 @@ The index. Each page owns one part of `src/` and is the claim this set makes abo
 | [13-glossary.md](13-glossary.md) | the vocabulary, in tiers | all contributors | cold |
 
 Numbered by reading order. A contributor works down from the architecture into a zone.
-
-The wiki covers building, usage, UCI commands and terminology for users. Nothing here
-duplicates it.
+Building, usage, UCI commands and user-facing terminology are the
+[wiki](https://github.com/official-stockfish/Stockfish/wiki)'s.
 
 ```sh
 ./tests/docslint.sh
 ```
 
 checks a dead link, a named path that does not exist, a pinned bench signature, a gate no
-page names, and a tracked file pointing into the untracked working area. It cannot tell you a
-sentence has become false.
+page names, and a tracked file pointing into the untracked working area. **It cannot tell you
+a sentence has become false**, which is the half that decides whether this set is worth
+reading -- [12-writing.md](12-writing.md) is how that half is bought.
 
 **The zone boundary is checked, not described.** `src/` is `engine/`, `platform/` and `shell/`,
 the engine depends on neither of the others, and four gates hold that: `tests/depcheck.sh` at

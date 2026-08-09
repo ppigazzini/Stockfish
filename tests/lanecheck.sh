@@ -37,6 +37,7 @@ EXCUSED_NAMES=(
   perfcounters_report.py
   perfdecomp.sh
   perfdecomp.py
+  match.sh
 )
 EXCUSED_WHY=(
   "wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
@@ -44,13 +45,14 @@ EXCUSED_WHY=(
   "a harness imported by instrumented.py rather than a gate"
   "invoked by the Makefile, not by a workflow"
   "invoked by the Makefile's net target"
-  "fetches the corpus for the tb fuzz harness, which is out of the matrix until E1 and E2 are fixed; run by hand"
-  "roughly 10x the cost of the budget gate; run by hand before a decomposition"
+  "downloads the tablebase corpus a fuzz harness needs; a lane would re-fetch it every run, so it is run by hand"
+  "callgrind over the whole call graph, far costlier than the budget gate; run by hand before a decomposition"
   "the zone table, sourced by depcheck.sh and linkcheck.sh rather than run"
   "reads the CPU's hardware counters; a virtualised hosted runner exposes no PMU, so a lane would skip every run"
   "the aggregation half of perfcounters.sh, invoked by it rather than run"
   "callgrind with the cache and branch simulators, roughly 50x; run by hand when a component moves"
   "the decomposition half of perfdecomp.sh, invoked by it rather than run"
+  "plays games under a time control; a hosted runner is not idle, so it forfeits on time and scores the box"
 )
 
 FAIL=0
@@ -86,9 +88,8 @@ excuse_for() {
 # and `net.sh` cannot be satisfied by `subnet.shx`.
 # A here-string, not a pipe. With `set -o pipefail`, `grep -q` exits on the
 # first match and the producer dies of SIGPIPE, whose status pipefail then
-# propagates -- so an EARLY match reads as no match while a late one does not.
-# That produced a matcher which reported the right answer only for scripts named
-# near the end of the corpus.
+# propagates -- so an EARLY match reads as no match while a late one does not,
+# and the answer depends on where in the corpus the name happens to appear.
 dispatched() {
     local pat
     pat=$(printf '%s' "$1" | sed 's/\./\\./g')
@@ -100,9 +101,9 @@ dispatched() {
 # workflow that is only `workflow_call` and that nobody calls can never run, so
 # every script it names is dispatched by nothing.
 #
-# This is the same failure this check exists to catch, one level up, and it was
-# live: the budget lane was `workflow_call` only and no umbrella job invoked it,
-# so `perfbudget.sh` reported as dispatched by a workflow that could not start.
+# This is the same failure the check exists to catch, one level up: without the
+# reachability pass a gate named only by an unstartable lane reports as
+# dispatched, and the hole is laundered into a pass.
 echo "== workflows and their reachability =="
 UNREACHABLE=""
 for w in .github/workflows/*.yml; do
@@ -110,8 +111,8 @@ for w in .github/workflows/*.yml; do
     b=$(basename "$w")
     # `workflow_dispatch` is deliberately NOT an automatic trigger. A workflow
     # only a human can click does not gate a change, so a gate it names is not
-    # in a lane. Counting it as reachable is what let the budget lane report as
-    # wired while nothing on a push or a pull request could start it.
+    # in a lane. Counting it as reachable lets a lane report as wired while
+    # nothing on a push or a pull request can start it.
     auto=$(sed 's/[[:space:]]*#.*$//' "$w" \
            | grep -cE '^[[:space:]]*(push|pull_request|pull_request_target|schedule|release):')
     manual=$(sed 's/[[:space:]]*#.*$//' "$w" | grep -cE '^[[:space:]]*workflow_dispatch:')
@@ -157,8 +158,9 @@ echo
 echo "== excuses that name nothing =="
 stale=0
 for e in "${EXCUSED_NAMES[@]}"; do
-    # `ls a b` fails when EITHER is missing, so it reported every excused name
-    # as absent. A script lives in one directory or the other, never both.
+    # Two separate tests, because a script lives in one directory or the other,
+    # never both: `ls tests/$e scripts/$e` fails when EITHER is missing and
+    # would report every excused name as absent.
     if [ ! -e "tests/$e" ] && [ ! -e "scripts/$e" ]; then
         echo "  $e is excused but does not exist"; stale=1
     fi

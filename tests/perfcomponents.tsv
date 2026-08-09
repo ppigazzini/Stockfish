@@ -5,10 +5,11 @@
 # match wins, so a narrow row must precede the wider one it would otherwise be
 # swallowed by -- `NNUE accumulator apply` before `NNUE feature transform`.
 #
-# MATCH THE NAME, NOT THE SIGNATURE. A regex without `::` matches parameter types
-# too: `AccumulatorStack` claimed `Network::evaluate(..., AccumulatorStack&,
-# AccumulatorCaches&)` and left the network-evaluate row matching nothing, which
-# the tool reports rather than printing as zero.
+# MATCH THE NAME, NOT THE SIGNATURE. The regex is applied to the whole demangled
+# symbol, parameters included, so a pattern without `::` claims every function
+# that merely takes the type: `AccumulatorStack` also matches
+# `Network::evaluate(..., AccumulatorStack&, AccumulatorCaches&)`, and whichever
+# row comes first takes it away from the other. Anchor on `Name::`.
 #
 # WHAT A ROW MEANS. "This much of the work happens here." It is a claim about
 # cost, not about the algorithm; tests/fingerprint.sh owns the call-count claim,
@@ -21,14 +22,16 @@
 # its caller.
 #
 # The startup rows are kept SEPARATE rather than filtered. Net load and table
-# construction are ~40% of a depth-8 bench, and a decomposition that silently
-# folded them into the engine would describe the loader as much as the search.
+# construction are a large share of a short bench, so a decomposition that
+# folded them into the engine rows would describe the loader as much as the
+# search -- and would move whenever the net does.
 
 # -- startup: the net parse and the tables built before the first search --
 net parse (leb128)	read_leb_128
-# hash_bytes belongs HERE, not in a row of its own: upstream keeps it a call and
-# this branch inlines it into the shared-memory constructor, so separating them
-# reports a 7.9x regression that is one symbol moving inside one component.
+# hash_bytes belongs HERE, not in a row of its own: it survives as a call on one
+# side and inlines into the shared-memory constructor on the other, so a row of
+# its own matches on one side only and reports one symbol's move as a
+# component-sized regression.
 net load / shm	Network::load|SystemWideSharedConstant|EvalFile|load_internal|load_external|hash_bytes
 zeroing (memset)	__memset_
 copying (memcpy)	__memcpy_|__memmove_

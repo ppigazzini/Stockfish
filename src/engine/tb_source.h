@@ -39,9 +39,9 @@ struct SearchOptions;
 namespace Tablebases {
 
 // The probe RESULT TYPES live here, in the engine, and the platform prober
-// re-exports them. They are search-facing values -- what the search does with a
-// WDL verdict is chess, not I/O -- and both sibling ports put them on this side
-// for that reason.
+// re-exports them: what the search does with a WDL verdict is chess, not I/O.
+// Adding a member to WDLScore or ProbeState changes a value the search branches
+// on, so it is an engine change with a platform consequence, never the reverse.
 
 struct Config {
     int   cardinality = 0;
@@ -71,16 +71,14 @@ enum ProbeState {
 //
 // GENUINELY SAFE UNREGISTERED, which is a different guarantee from the other
 // seams. "No tablebases are loaded" is exactly true with no prober attached, and
-// a search that does not probe is the correct search, not a degraded one. The
-// worker set's default is correct only because the composition root always
-// registers a real one; this one needs no registration for correctness.
+// a search that does not probe is the correct search, not a degraded one.
 //
-// THE COST TO WATCH IS CADENCE, NOT COUNT. probe_wdl is Step 6, called per node
-// whenever tables are loaded, so this is the only seam in the tree on the hot
-// path. It is invisible on the default bench, where SyzygyPath is empty and the
-// cardinality guard short-circuits before the call -- so measuring this seam on
-// bench measures the guard, not the call. Measuring it needs SyzygyPath pointed
-// at a corpus and positions chosen to probe.
+// THE COST TO WATCH IS CADENCE, NOT COUNT. probe_wdl sits in Step 6 of search(),
+// reached per node whenever tables are loaded, which puts this seam on the hot
+// path. The default bench cannot see it: with SyzygyPath empty the
+// tbConfig.cardinality guard short-circuits before the call, so a bench
+// measurement of this seam measures the guard. Measuring the call needs
+// SyzygyPath pointed at a corpus and positions chosen to probe.
 struct TbSource {
     void* ctx;
     int (*max_cardinality)(void* ctx);

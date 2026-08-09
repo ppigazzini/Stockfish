@@ -52,11 +52,11 @@ convention.
 
 ## `numa.h`, `numa.cpp` -- topology, binding and replication
 
-Still the largest single header in the tree, but no longer all of it: the cold half of
-`NumaConfig` is in `numa.cpp`. The split is by temperature, not by subject -- everything that
-runs before the first search is in the `.cpp`, and what stays in the header is template-bound
-and could not move, including the namespace-scope `STARTUP_PROCESSOR_AFFINITY` initializer,
-whose initialisation order is a property of living there.
+The largest single header in the tree, and it carries only half of `NumaConfig`: the cold half
+is in `numa.cpp`. The split is by temperature, not by subject -- everything that runs before the
+first search is in the `.cpp`, and what stays in the header is template-bound and cannot move,
+including the namespace-scope `STARTUP_PROCESSOR_AFFINITY` initializer, whose initialisation
+order is a property of living there.
 
 ### Discovering the topology
 

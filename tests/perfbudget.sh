@@ -12,10 +12,10 @@
 #     count is a property of the toolchain, the libc and the box as much as of
 #     the code, so it cannot be reproduced by a reviewer and it drifts upward.
 #
-#   * Startup is subtracted BY MEASUREMENT. The net load and the magic-table
-#     build are a large share of a short bench -- measured at ~42% of the
-#     whole-process count at depth 8 -- so a whole-process ratio describes the
-#     loader as much as the engine.
+#   * Startup is subtracted BY MEASUREMENT, per binary. The net load and the
+#     magic-table build are a large share of a short bench, so a whole-process
+#     ratio describes the loader as much as the engine -- and the share grows
+#     as the depth falls, which is the direction a cheap run moves.
 #
 #   * The node count must MATCH. A count taken over a different tree is not
 #     comparable, and this reports that as a void comparison rather than as cost.
@@ -190,14 +190,13 @@ callgrind_ir() {
 # without searching. It is measured per BINARY, so a startup difference between
 # the two sides is attributed correctly rather than cancelled out.
 # A node count and an instruction count are properties of the NET as much as of
-# the search, so the two sides must have loaded the same one. This is not
-# hypothetical here: c8b91a2b9 is a net update, and comparing across it puts two
-# different networks on the two sides of the ratio.
+# the search, so the two sides must have loaded the same one. Any revision pair
+# spanning a net update -- `c8b91a2b9` is one -- puts two different networks on
+# the two sides of the ratio and makes the comparison meaningless.
 #
-# The net is read from the binary's own announcement rather than from the
-# presence of a file. Note that this build EMBEDS the net (a ~96 MB binary
-# carrying a ~95 MB network via incbin), so a run can never lack one and the
-# check earns its place on the mismatch case alone.
+# Read the net from the binary's own announcement, not from the presence of a
+# file: this build EMBEDS the default net through incbin, so a run can never
+# lack one and only the MISMATCH case is reachable.
 net_of() {
     grep -ao 'NNUE evaluation using [^ ]*' "$1" | head -1 | awk '{print $4}'
 }

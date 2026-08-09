@@ -308,15 +308,6 @@ std::string compiler_info() {
 }
 
 
-// Debug functions used mainly to collect run-time statistics
-
-
-
-// Used to serialize access to std::cout
-// to avoid multiple threads writing at the same time.
-
-// Hash function based on public domain MurmurHash64A, by Austin Appleby.
-
 // Trampoline helper to avoid moving Logger to misc.h
 void start_logger(const fs::path& fname) { Logger::start(fname); }
 
