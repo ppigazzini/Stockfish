@@ -219,6 +219,14 @@ Engine::perft(const std::string& fen, Depth depth, bool isChess960) {
 
 void Engine::go(Search::LimitsType& limits) {
     assert(limits.perft == 0);
+
+    // Wait before touching searchOptions. Every Worker holds it as a
+    // const SearchOptions& and reads multiPV, skillLevel and nodestime while it
+    // searches, so assigning it under a live search is a data race on a type
+    // holding a std::string. The UCI specification says `go` arrives only when
+    // the engine is idle; uci.cpp accepts one whenever it is sent.
+    wait_for_search_finished();
+
     verify_network();
 
     searchOptions = search_options();
