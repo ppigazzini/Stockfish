@@ -56,7 +56,6 @@ Thread::Thread(Search::SharedState&                    sharedState,
     idx(n),
     idxInNuma(numaN),
     totalNuma(totalNumaCount),
-    nthreads(sharedState.options.threads),
     stdThread(&Thread::idle_loop, this) {
 
     wait_for_search_finished();
