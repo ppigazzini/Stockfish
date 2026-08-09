@@ -19,17 +19,15 @@
 # table is not the one the final link resolves. That makes this a statement
 # about the non-LTO build, which is the honest limit and is stated in the docs.
 #
-# Turning LTO off is not what it looks like. This script passed
-# `EXTRACXXFLAGS=-fno-lto` for a long time and it did NOTHING: src/Makefile:502
-# interpolates EXTRACXXFLAGS into CXXFLAGS and then APPENDS `-flto` at line 964,
-# so the Makefile's flag is last and wins. The objects held IR throughout.
+# `EXTRACXXFLAGS=-fno-lto` CANNOT turn LTO off. src/Makefile:502 interpolates
+# EXTRACXXFLAGS into CXXFLAGS and line 964 APPENDS `-flto` after it, so the
+# Makefile's flag is last and wins and the objects hold IR. Build through
+# COMPCXX, a wrapper that drops every -flto argument and passes the rest through.
 #
-# This check survived that because GCC writes a plugin-readable symbol table into
-# an LTO object and `nm` reads it, so the answers were right for the wrong
-# reason. tests/enginelink.sh did not survive it -- `ld` without the plugin
-# cannot resolve those objects, prints a warning, and STILL EXITS 0 -- which is
-# how the mistake was found. Both now build through COMPCXX, a wrapper that drops
-# every -flto argument and passes the rest through untouched.
+# This check would answer correctly even on LTO objects, because GCC writes a
+# plugin-readable symbol table into one and `nm` reads it. tests/enginelink.sh
+# would not: `ld` without the plugin cannot resolve them, warns, and still exits
+# 0. Keep the two consistent -- they share the wrapper for that reason.
 #
 # Exit codes:  0 clean   1 findings   2 skipped
 
