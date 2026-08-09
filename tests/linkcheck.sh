@@ -15,9 +15,21 @@
 # symbol. The reachable version is the pairwise one -- engine objects against
 # shell-defined symbols -- with a baseline for what exists today.
 #
-# Built with -fno-lto on purpose: under LTO the object holds IR and the symbol
+# Built with LTO OFF on purpose: under LTO the object holds IR and the symbol
 # table is not the one the final link resolves. That makes this a statement
 # about the non-LTO build, which is the honest limit and is stated in the docs.
+#
+# Turning LTO off is not what it looks like. This script passed
+# `EXTRACXXFLAGS=-fno-lto` for a long time and it did NOTHING: src/Makefile:502
+# interpolates EXTRACXXFLAGS into CXXFLAGS and then APPENDS `-flto` at line 964,
+# so the Makefile's flag is last and wins. The objects held IR throughout.
+#
+# This check survived that because GCC writes a plugin-readable symbol table into
+# an LTO object and `nm` reads it, so the answers were right for the wrong
+# reason. tests/enginelink.sh did not survive it -- `ld` without the plugin
+# cannot resolve those objects, prints a warning, and STILL EXITS 0 -- which is
+# how the mistake was found. Both now build through COMPCXX, a wrapper that drops
+# every -flto argument and passes the rest through untouched.
 #
 # Exit codes:  0 clean   1 findings   2 skipped
 
@@ -40,13 +52,27 @@ BUILD=$(mktemp -d) || exit 2
 trap 'rm -rf "$BUILD"' EXIT
 
 echo "linkcheck: building objects at $ARCH with LTO off ..."
+# See the header: this wrapper, not EXTRACXXFLAGS, is what actually disables LTO.
+CXXBIN=${CXX:-g++}
+cat > "$BUILD/nolto" <<WRAP
+#!/bin/bash
+args=()
+for a in "\$@"; do
+    case "\$a" in
+        -flto|-flto=*|-flto-*|-fwhole-program-vtables) ;;
+        *) args+=("\$a") ;;
+    esac
+done
+exec $CXXBIN "\${args[@]}"
+WRAP
+chmod +x "$BUILD/nolto"
 # src AND scripts: the Makefile's net target shells out to ../scripts/net.sh,
 # and the nets are copied in so the build never reaches the network.
 git ls-files -z src scripts | tar --null -T - -cf - | ( mkdir -p "$BUILD/w" && tar -xf - -C "$BUILD/w" )
 cp src/*.nnue "$BUILD/w/src/" 2>/dev/null
-if ! ( cd "$BUILD/w/src" && make -j"$JOBS" build ARCH="$ARCH" EXTRACXXFLAGS=-fno-lto EXTRALDFLAGS=-fno-lto ) \
+if ! ( cd "$BUILD/w/src" && make -j"$JOBS" build ARCH="$ARCH" COMPCXX="$BUILD/nolto" ) \
      > "$BUILD/build.log" 2>&1; then
-    echo "linkcheck: SKIPPED -- the -fno-lto build failed" >&2
+    echo "linkcheck: SKIPPED -- the non-LTO build failed" >&2
     tail -5 "$BUILD/build.log" >&2
     exit 2
 fi

@@ -416,21 +416,63 @@ asserts **both** halves: `depcheck` stays green, and `linkcheck` goes red.
 The zone table lives in `tests/zones.sh` and is sourced by both, because two checks that
 disagreed about which file is engine would be worse than either alone.
 
-It asks **two** questions, with a baseline each. `tests/linkcheck.baseline` is the
-engine-to-shell edge and is **empty**: B7's seams closed it.
-`tests/linkcheck-platform.baseline` is the engine-to-platform edge and holds 27 references --
-the Syzygy prober, the NUMA topology, and some `misc.h` helpers. Both expire in both directions
-like the other baselines.
+It asks **two** questions, with a baseline each, and **both are now empty**.
+`tests/linkcheck.baseline` is the engine-to-shell edge and
+`tests/linkcheck-platform.baseline` is the engine-to-platform edge; every host service the
+engine needs -- the arena, the output sink, the parallel-for, the worker set and NUMA topology,
+the tablebase prober, the NUMA network replica, the clock -- arrives through an injection seam
+instead. Both expire in both directions like the other baselines, and both are meant to stay
+empty: the next host dependency added to `engine/` fails the gate rather than joining a list.
 
-The second is reported separately because closing it is different work: the shell edge needed a
-value snapshot, this one needs injection seams. **It is also the answer to whether `engine/`
-links alone, which is no.** It is finer-grained than the include baseline on purpose: the two files that
-reach the shell already have their includes listed, so only a symbol-level record makes a *new*
-call visible when the include that would have announced it is there already.
+The two are reported separately because closing them was different work: the shell edge needed a
+value snapshot, the platform edge needed the seams. The symbol-level record is finer-grained
+than the include baseline on purpose -- a file that already includes a header has nothing new to
+announce when it adds a *call*, so only symbols make that visible.
 
-**It describes the non-LTO build.** Under `-flto` an object holds IR and its symbol table is
-not the one the real link resolves, so the check builds with `-fno-lto` and its answer is about
-that build. That is the same limit `textequal.sh` carries, for the same reason.
+**It describes the non-LTO build**, and turning LTO off is not what it looks like. Under `-flto`
+an object holds IR and its symbol table is not the one the real link resolves. This script
+passed `EXTRACXXFLAGS=-fno-lto` for a long time and it did nothing: `src/Makefile` interpolates
+`EXTRACXXFLAGS` into `CXXFLAGS` and then appends `-flto` after it, so the Makefile's flag wins.
+Both zone checks now build through `COMPCXX`, a wrapper that drops every `-flto` argument and
+passes the rest through untouched.
+
+`linkcheck.sh` survived that mistake -- GCC writes a plugin-readable symbol table into an LTO
+object and `nm` reads it, so its answers were right for the wrong reason. `enginelink.sh` did
+not, which is how it was found. That limit is the same one `textequal.sh` carries, for the same
+reason.
+
+## `tests/enginelink.sh`
+
+The strong form of the same rule: **link `engine/` alone.**
+
+```sh
+./tests/enginelink.sh
+```
+
+It compiles the tree with LTO off, takes only the engine objects, and links them with a stub
+`main` and nothing else. Either every symbol resolves from another engine object or from the
+language runtime, or the link fails and names what is missing. Today: 22 objects, zero
+unresolved.
+
+**It subsumes `linkcheck.sh`, which is why both exist rather than one.** The older check
+intersects symbol sets, so it can only see a reference to a symbol that some platform or shell
+object *defines*, and it cannot see an inline call at all -- the platform clock was reached by
+three inline `now()` calls while both baselines read zero. The linker has neither blind spot.
+
+`libstdc++`, libc and pthread are the language runtime, not host services, so they are allowed
+to resolve. Everything else must come from `engine/` or from a seam's **default** -- and that is
+what this gate is really for. A default is a claim until something links without the host that
+would override it.
+
+**What it still does not prove is that the defaults RUN.** A link resolves a symbol; it does not
+call it. An in-process smoke test that searches with no host registered is the next step and is
+not this script.
+
+`tests/negative_control.sh enginelink` plants an engine object calling a platform symbol through
+a forward declaration and asserts the gate goes red. That row exists because the gate was
+**wrong when first written** and reported clean on exactly this mutation: the objects still held
+LTO IR, and `ld` handed an LTO object without the plugin warns and *exits 0*, linking a binary
+that resolved nothing. Both gates now refuse outright if they see that warning.
 
 ## `tests/docslint.sh`
 
