@@ -21,7 +21,8 @@ Audience: all developers.
 
 - [Chess Programming Wiki][cpw] -- the domain reference.
   - [Bitboards][cpw-bb] | [Magic bitboards][cpw-magic] | [Hyperbola quintessence][cpw-hq] --
-    the three slider implementations in [01-engine-board.md](01-engine-board.md).
+    the background for the four slider paths [01-engine-board.md](01-engine-board.md) selects
+    between: two hyperbola-quintessence variants, PEXT, and magic bitboards.
   - [Perft results][cpw-perft] -- the counts `tests/perft.sh` asserts.
   - [Alpha-beta][cpw-ab] | [Quiescence search][cpw-qs] | [Iterative deepening][cpw-id]
   - [Late move reductions][cpw-lmr] | [Null-move pruning][cpw-null] |

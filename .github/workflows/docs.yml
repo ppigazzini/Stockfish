@@ -6,8 +6,10 @@ on:
 
 # Keep one gate per step, so a red run names which property broke rather than
 # just the job. docslint, lanecheck, buildcoverage and depcheck read the tree and
-# nothing else; linkcheck and enginelink build it in a worktree, which is what
-# the net fetch below is for.
+# nothing else; linkcheck and enginelink build a scratch copy of it, which is
+# what the net fetch below is for. That copy is `git ls-files src scripts | tar`
+# into a mktemp directory, NOT a git worktree: it carries uncommitted edits to
+# tracked files and drops untracked ones, so `git worktree list` never shows it.
 jobs:
   Docs:
     name: Documentation and lane coverage
@@ -27,8 +29,8 @@ jobs:
         run: ./tests/lanecheck.sh
 
       # Put a net in src/ before the two building gates run: linkcheck.sh and
-      # enginelink.sh copy src/*.nnue into their own worktree so the build there
-      # never reaches the network. Without this step each worktree build runs the
+      # enginelink.sh copy src/*.nnue into their scratch copy so the build there
+      # never reaches the network. Without this step each scratch build runs the
       # Makefile's own net target, and a mirror outage then surfaces as a zone
       # gate exiting 2 instead of as a named download failure.
       - name: Fetch the net
