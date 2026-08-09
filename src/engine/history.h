@@ -99,7 +99,11 @@ struct DynStats {
         size = s * SizeMultiplier;
         data = make_arena_unique<T[]>(size);
     }
-    // Sets all values in the range to 0
+    // Fill this thread's slice of the array with `value` -- not with zero; the
+    // histories start at a tuned non-zero level. The slice is cut from threadIdx
+    // and numaTotal alone, so the whole array is cleared only when every index
+    // in [0, numaTotal) calls exactly once with the same numaTotal; a missing
+    // index leaves that range holding the previous game's statistics.
     void clear_range(int value, usize threadIdx, usize numaTotal) {
         usize start = u64(threadIdx) * size / numaTotal;
         assert(start < size);
@@ -203,8 +207,10 @@ struct ContinuationHistoryBlock {
 
 // Set of histories shared between groups of threads. To avoid excessive
 // cross-node data transfer, histories are shared only between threads
-// on a given NUMA node. The passed size must be a power of two to make
-// the indexing more efficient.
+// on a given NUMA node. The passed thread count must be a power of two: both
+// tables are sized as a multiple of it and indexed by masking a key with
+// `size - 1`, which selects a row inside the array only while size is a power
+// of two.
 struct SharedHistories {
     SharedHistories(usize threadCount) :
         correctionHistory(threadCount),

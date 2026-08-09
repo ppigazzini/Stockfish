@@ -321,8 +321,10 @@ class SearchManager: public ISearchManager {
     // which a byte that is neither 0 nor 1 is undefined behaviour rather than a
     // wrong answer.
     //
-    // iterValue is the exception and needs none: iterative_deepening() fills it
-    // before the first read.
+    // Two members carry none. iterValue needs none because
+    // iterative_deepening() fills it before the first read, and `tm` needs none
+    // here because TimeManagement carries its own initialisers and
+    // TimeManagement::init writes startTime at the top of every search.
     Stockfish::TimeManagement tm;
     double                    originalTimeAdjust = -1;
     int                       callsCnt           = 0;
@@ -442,7 +444,9 @@ class Worker {
     const SearchOptions&                                     options;
     TranspositionTable&                                      tt;
 
-    // The two flags every worker shares, read at every node.
+    // The two flags every worker shares. stopFlag is read at every node, twice
+    // in search() alone; increaseDepthFlag is read once per iteration, in
+    // iterative_deepening().
     //
     // Keep these REFERENCES. A reference member's binding is fixed at
     // construction, so the compiler may hoist the load of the referent's address

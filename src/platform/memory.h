@@ -52,6 +52,12 @@
 
     #include <psapi.h>
 
+// Spell advapi32's privilege calls as pointer types, because
+// windows_try_with_large_page_priviliges below reaches them through
+// GetProcAddress rather than through an import: a lookup that fails there is
+// answered by giving up on large pages, while a load-time import that resolves
+// to nothing stops the process before main and takes ordinary allocation with
+// it.
 extern "C" {
 using OpenProcessToken_t      = bool (*)(HANDLE, DWORD, PHANDLE);
 using LookupPrivilegeValueA_t = bool (*)(LPCSTR, LPCSTR, PLUID);
