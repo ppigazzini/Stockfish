@@ -12,64 +12,25 @@ trap 'error ${LINENO}' ERR
 
 echo "perft testing started"
 
-# A Python driver rather than expect: python3 is already required by
-# tests/instrumented.py, expect is not always installed, and a gate that cannot
-# run reports nothing rather than failing. The driver takes its five arguments
-# positionally and exits 0 match, 1 wrong or timed out, 2 engine gone.
-#
-# Resolve the interpreter and invoke it by name rather than relying on the
-# shebang. MSYS2 ships the interpreter as `python`, has no `python3`, and
-# `#!/usr/bin/env python3` there fails with 127 -- which the runner reports as
-# every position failing rather than as a missing tool.
-PYTHON=$(command -v python3 || command -v python || true)
-if [ -z "$PYTHON" ]; then
-    echo "perft: no python3 or python on PATH" >&2
-    exit 2
-fi
 EXPECT_SCRIPT=$(mktemp)
 
 cat << 'EOF' > $EXPECT_SCRIPT
-#!/usr/bin/env python3
-import subprocess, sys, threading, queue, time
-pos, depth, result, chess960, logfile = sys.argv[1:6]
-p = subprocess.Popen(["./stockfish"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                     stderr=subprocess.STDOUT, text=True, bufsize=1)
-q = queue.Queue()
-def rd():
-    for line in p.stdout:
-        q.put(line.rstrip("\n"))
-    q.put(None)
-threading.Thread(target=rd, daemon=True).start()
-if chess960 == "true":
-    p.stdin.write("setoption name UCI_Chess960 value true\n")
-p.stdin.write(f"position {pos}\ngo perft {depth}\n")
-p.stdin.flush()
-want, log, end = f"Nodes searched: {result}", [], time.time() + 120
-rc = 1
-while time.time() < end:
-    try:
-        line = q.get(timeout=0.5)
-    except queue.Empty:
-        continue
-    if line is None:
-        print("EOF: Stockfish crashed"); rc = 2; break
-    log.append(line)
-    if want in line:
-        rc = 0; break
-    # The engine answered with a different count, so the case is already decided.
-    # Break instead of waiting: the count arrives once, so waiting out the
-    # timeout charges every failing row the full timeout for nothing.
-    if line.startswith("Nodes searched:"):
-        print(f"WRONG: {line.strip()}, expected {result}")
-        break
-else:
-    print(f"TIMEOUT: Expected {result} nodes")
-open(logfile, "w").write("\n".join(log) + "\n")
-try:
-    p.stdin.write("quit\n"); p.stdin.flush(); p.wait(timeout=10)
-except Exception:
-    p.kill()
-sys.exit(rc)
+#!/usr/bin/expect -f
+set timeout 120
+lassign [lrange $argv 0 4] pos depth result chess960 logfile
+log_file -noappend $logfile
+spawn ./stockfish
+if {$chess960 == "true"} {
+  send "setoption name UCI_Chess960 value true\n"
+}
+send "position $pos\ngo perft $depth\n"
+expect {
+  "Nodes searched: $result" {}
+  timeout {puts "TIMEOUT: Expected $result nodes"; exit 1}
+  eof {puts "EOF: Stockfish crashed"; exit 2}
+}
+send "quit\n"
+expect eof
 EOF
 
 chmod +x $EXPECT_SCRIPT
@@ -83,7 +44,7 @@ run_test() {
 
   echo -n "Testing depth $depth: ${pos:0:40}... "
 
-  if "$PYTHON" "$EXPECT_SCRIPT" "$pos" "$depth" "$expected" "$chess960" "$tmp_file" > /dev/null 2>&1; then
+  if $EXPECT_SCRIPT "$pos" "$depth" "$expected" "$chess960" "$tmp_file" > /dev/null 2>&1; then
     echo "OK"
     rm -f "$tmp_file"
   else
