@@ -107,10 +107,22 @@ HEAD_SHA=$(git rev-parse --short "$HEAD_REV") || exit 2
 ROUNDS=$(( (GAMES + 1) / 2 ))
 
 WORK=$(mktemp -d) || exit 2
+# Set before exiting non-zero. The findings path tells the reader the log is the
+# evidence, and this is what stops the trap from deleting it one line later:
+# the two worktrees are gigabytes of build output and always go, the two logs
+# are kilobytes and are the only reason anyone re-reads a failed match.
+KEEP_LOGS=0
 cleanup() {
     for d in "$WORK"/wt-*; do
         [ -d "$d" ] && git worktree remove --force "$d" >/dev/null 2>&1
     done
+    if [ "$KEEP_LOGS" = 1 ]; then
+        local evid
+        evid=$(mktemp -d -t match-evidence-XXXXXX) && {
+            cp "$WORK/match.log" "$WORK/match.out" "$evid/" 2>/dev/null
+            echo "match: the log and the transcript are in $evid" >&2
+        }
+    fi
     rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -229,6 +241,7 @@ echo "match: base=$BASE_SHA head=$HEAD_SHA, $((ROUNDS * 2)) games at $TC"
 if [ "$fail" != 0 ]; then
     echo "match: FINDINGS -- at least one game did not play cleanly"
     echo "match: the log is the evidence; re-run on an idle box before blaming the engine"
+    KEEP_LOGS=1
     exit 1
 fi
 echo "match: every game played -- no crash, no disconnect, no illegal move, no timeout"
