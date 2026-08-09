@@ -120,8 +120,8 @@ cp tests/fuzz_search.cpp "$BUILD/w/tests/"
 # disagrees about where the members are -- a fuzzer that reports garbage.
 #
 # Taken verbatim from the line make actually ran, with the compiler, the -c/-o
-# pair and LTO removed. Scraping likely-looking flags out of the log was tried
-# first and passed -mpopcnt somewhere clang would not take it.
+# pair and LTO removed. Reconstructing a plausible subset instead risks both a
+# flag clang rejects in that position and, worse, a silently different layout.
 cxxline=$(grep -m1 -E ' -c -o search\.o engine/search\.cpp$' "$BUILD/build.log")
 if [ -z "$cxxline" ]; then
     echo "fuzzsearch: SKIPPED -- could not recover the engine's compile flags" >&2
