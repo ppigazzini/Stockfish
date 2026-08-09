@@ -145,7 +145,6 @@ class Engine {
     // Search::SharedState and every Worker hold it by const reference for the
     // life of the thread pool, so a local would dangle on return.
     SearchOptions                                     searchOptions;
-    ThreadPool                                        threads;
     TranspositionTable                                tt;
     Eval::NNUE::EvalFile                              networkFile;
     LazyNumaReplicatedSystemWide<Eval::NNUE::Network> network;
@@ -153,6 +152,15 @@ class Engine {
     Search::SearchManager::UpdateContext  updateContext;
     std::function<void(std::string_view)> onVerifyNetwork;
     std::map<NumaIndex, SharedHistories>  sharedHists;
+
+    // Keep this DECLARED LAST, for the mirror of the reason the arena installer
+    // is declared first. Members are destroyed in reverse declaration order, and
+    // every Thread this owns holds a Search::Worker whose members are references
+    // into the five declarations above -- searchOptions, tt, network,
+    // updateContext and sharedHists -- plus the two atomics inside itself.
+    // Declaring the pool earlier destroys those referents while the Workers
+    // still exist, and nothing diagnoses it.
+    ThreadPool threads;
 };
 
 }  // namespace Stockfish
