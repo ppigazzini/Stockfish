@@ -1,6 +1,7 @@
 # Stockfish developer documentation
 
-The index. Each page owns one part of `src/` and is the claim this set makes about it.
+The index. Each page owns one subject -- a part of `src/`, the gates, or a discipline -- and
+is the claim this set makes about it.
 
 | Page | Owns | Audience | Temperature |
 |---|---|---|---|

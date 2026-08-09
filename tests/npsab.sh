@@ -91,9 +91,9 @@ BASE_REV=$1
 HEAD_REV=${2:-HEAD}
 
 
-# A numeric option that is not a number is a silently wrong verdict, and a
-# tolerance nobody bounds is the "raise it until the change fits" failure this
-# gate exists to prevent.
+# Refuse a non-numeric option rather than pass it on: `--rounds abc` would reach
+# `seq 1 abc` and produce a loop that never runs, which prints an empty table
+# and then divides by nothing -- a verdict shaped like a measurement.
 num() {
     case "$2" in
         ''|*[!0-9.]*|*.*.*) die "$1 must be a number, got '$2'" ;;

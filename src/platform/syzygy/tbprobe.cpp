@@ -553,10 +553,12 @@ class TBTables {
     }
 
     void clear() {
-        // Value-initialise rather than memset: Entry::key is a MaterialKey, a
-        // class with a default member initialiser, and memset over it is both a
-        // -Wclass-memaccess error under -Werror and a bypass of the only thing
-        // that guarantees a cleared entry reads as key zero.
+        // Clear every slot to a value-initialised Entry, null table pointers
+        // included: get() walks buckets forward with no bound and stops only on
+        // a slot whose Type pointer is null, so a slot left holding anything
+        // else either false-hits a stale key or runs the walk off the array.
+        // Entry::key is a MaterialKey, a class type, so memset is not the
+        // alternative -- it is a -Wclass-memaccess error under -Werror.
         for (Entry& e : hashTable)
             e = Entry{};
         wdlTable.clear();

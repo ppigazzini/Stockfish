@@ -51,10 +51,10 @@ Audience: all developers.
 
 ## C++
 
-The engine compiles at `-std=c++17`. The universal binary's two objects do not:
-`nnue_embed.cpp` and `universal/entry_*.cpp` are built at `-std=c++20`, and the embed
-object adds `-Wno-c++26-extensions` because `#embed` is a C++26 feature used as an
-extension. Read the standard that matches the translation unit.
+The engine compiles at `-std=c++17`. The universal binary's own objects do not: the sources
+under `src/universal/` are built at `-std=c++20`, and the embed object adds
+`-Wno-c++26-extensions` because `#embed` is a C++26 feature used as an extension. Read the
+standard that matches the translation unit.
 
 - [cppreference][cppref] -- the day-to-day lookup, with per-revision notes.
 - [C++17 working draft, N4659][n4659] -- the standard the engine compiles at.
@@ -137,30 +137,30 @@ perf gates.
   microarchitecture, and why a cache-miss counter is not portable between them.
 - [Valgrind manual][valgrind] | [Memcheck][memcheck] | [Helgrind][helgrind] -- the
   sanitizer lanes' instruments.
-- [ThreadSanitizer][tsan] | [UndefinedBehaviorSanitizer][ubsan] -- what each lane in
-  `sanitizers.yml` actually detects.
+- [ThreadSanitizer][tsan] | [UndefinedBehaviorSanitizer][ubsan] -- what the TSan and UBSan
+  lanes of `sanitizers.yml` actually detect. `tests/fuzzsearch.sh` is the only other place
+  the engine runs under UBSan, and the only one that reaches it with no host registered.
 - [Transparent hugepages][thp] -- what `MADV_HUGEPAGE` requires, used by the transposition
   table allocation.
 
 ## Gates, lanes and testing
 
-- [libFuzzer](https://llvm.org/docs/LibFuzzer.html) -- the in-process, coverage-guided engine
-  behind `tests/fuzzsearch.sh`. The flag reference is where `-print_funcs`, `-max_total_time`
-  and the corpus arguments are defined.
-- [OSS-Fuzz / CIFuzz](https://google.github.io/oss-fuzz/getting-started/continuous-integration/)
-  -- the reference model for fuzzing in CI: minutes per change, hours on a schedule, and a
-  corpus carried between runs.
-- [AddressSanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) and
-  [UndefinedBehaviorSanitizer](https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html) --
-  what the fuzz lane compiles in, and the only place the engine runs under either.
-
 Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 
+- [libFuzzer][libfuzzer] -- the in-process, coverage-guided engine behind
+  `tests/fuzzsearch.sh`. The flag reference is where `-print_funcs`, `-max_total_time` and the
+  corpus arguments are defined.
+- [OSS-Fuzz / CIFuzz][cifuzz] -- the reference model for fuzzing in CI: minutes per change,
+  hours on a schedule, and a corpus carried between runs.
+- [AddressSanitizer][asan] -- what `tests/fuzzsearch.sh` compiles in, and the only place the
+  engine runs under it. `sanitizers.yml` runs no ASan lane.
 - [GitHub Actions workflow syntax][gha-syntax] -- triggers, `workflow_call`, and job
   dependencies. A workflow that declares only `workflow_call` and that nothing calls cannot
   run, which is what `tests/lanecheck.sh` checks.
 - [GitHub Actions: reusing workflows][gha-reuse] -- the `uses:` mechanism the umbrella
   workflow invokes each lane through.
+- [fastchess][fastchess] -- the match runner `games.yml` and `tests/match.sh` both drive, at
+  the same pinned revision. Its output is where the Elo and the error bar beside it come from.
 - [Sequential probability ratio test][sprt] -- the statistical test fishtest runs. An SPRT
   result is what a functional change ships with.
 - [Mutation testing][mutation-testing] -- the discipline `tests/negative_control.sh`
@@ -179,8 +179,10 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 - [ODbL][odbl] -- the licence on the network training data.
 
 [agner]:            https://www.agner.org/optimize/
+[asan]:             https://clang.llvm.org/docs/AddressSanitizer.html
 [bash-pitfalls]:    https://mywiki.wooledge.org/BashPitfalls
 [callgrind]:        https://valgrind.org/docs/manual/cl-manual.html
+[cifuzz]:           https://google.github.io/oss-fuzz/getting-started/continuous-integration/
 [perfevent]: https://man7.org/linux/man-pages/man2/perf_event_open.2.html
 [perfwiki]: https://perfwiki.github.io/main/
 [clang-attr]:       https://clang.llvm.org/docs/AttributeReference.html
@@ -211,6 +213,7 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 [cpw-zobrist]:      https://www.chessprogramming.org/Zobrist_Hashing
 [cuckoo]:           https://web.archive.org/web/20201107002606/https://marcelk.net/2013-04-06/paper/upcoming-rep-v2.pdf
 [drepper]:          https://www.akkadia.org/drepper/cpumemory.pdf
+[fastchess]:        https://github.com/Disservin/fastchess
 [fishtest]:         https://tests.stockfishchess.org/tests
 [gcc-attr]:         https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html
 [gcc-cxx]:          https://gcc.gnu.org/projects/cxx-status.html
@@ -226,6 +229,7 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 [intel-intrinsics]: https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html
 [kennedy]:          https://doi.org/10.1007/978-3-642-17685-2_8
 [lc0-data]:         https://storage.lczero.org/files/training_data
+[libfuzzer]:        https://llvm.org/docs/LibFuzzer.html
 [llvm-lto]:         https://llvm.org/docs/LinkTimeOptimization.html
 [llvm-vec]:         https://llvm.org/docs/Vectorizers.html
 [memcheck]:         https://valgrind.org/docs/manual/mc-manual.html
