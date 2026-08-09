@@ -430,16 +430,18 @@ than the include baseline on purpose -- a file that already includes a header ha
 announce when it adds a *call*, so only symbols make that visible.
 
 **It describes the non-LTO build**, and turning LTO off is not what it looks like. Under `-flto`
-an object holds IR and its symbol table is not the one the real link resolves. This script
-passed `EXTRACXXFLAGS=-fno-lto` for a long time and it did nothing: `src/Makefile` interpolates
-`EXTRACXXFLAGS` into `CXXFLAGS` and then appends `-flto` after it, so the Makefile's flag wins.
-Both zone checks now build through `COMPCXX`, a wrapper that drops every `-flto` argument and
+an object holds IR and its symbol table is not the one the real link resolves.
+
+**`EXTRACXXFLAGS=-fno-lto` cannot turn it off.** `src/Makefile` interpolates `EXTRACXXFLAGS`
+into `CXXFLAGS` and appends `-flto` *after* it, so the Makefile's flag is last and wins. Both
+zone checks build through `COMPCXX` instead, a wrapper that drops every `-flto` argument and
 passes the rest through untouched.
 
-`linkcheck.sh` survived that mistake -- GCC writes a plugin-readable symbol table into an LTO
-object and `nm` reads it, so its answers were right for the wrong reason. `enginelink.sh` did
-not, which is how it was found. That limit is the same one `textequal.sh` carries, for the same
-reason.
+The two checks fail differently on LTO objects, which is worth knowing before trusting either.
+`nm` reads the plugin-readable symbol table GCC writes into an LTO object, so `linkcheck.sh`
+still answers correctly -- for the wrong reason. `ld` without the plugin cannot resolve those
+objects at all: it warns and **exits 0**, so `enginelink.sh` would report a clean standalone
+engine over a link that resolved nothing. That limit is the same one `textequal.sh` carries.
 
 ## `tests/enginelink.sh`
 
@@ -477,11 +479,12 @@ nodes are non-zero, the root is scored, and a repeat gives the same move. An exa
 be a second bench signature to maintain, and this gate is about whether the defaults run, not
 about what they compute.
 
-Two things it had to be taught, both by failing first: the host is compiled from a `tests/`
-directory beside `src/`, because it includes `../src/engine/...` exactly as it does in the repo;
-and it is given the net's **directory**, not a path to a net, because `src/` is gitignored and
-accumulates nets from older builds -- naming one from outside picks a stale net that will not
-parse against the feature set the objects were compiled for.
+Two constraints on the host, both of which fail quietly if broken. It is compiled from a
+`tests/` directory beside `src/`, because it includes `../src/engine/...` exactly as it does in
+the repo -- compiled from anywhere else those relative includes resolve somewhere else. And it
+is given the net's **directory**, not a path to a net: `src/` is gitignored and accumulates nets
+from older builds, so naming one from outside picks a net that will not parse against the
+feature set the objects were compiled for. The engine knows its own default name.
 
 `tests/negative_control.sh enginelink` plants an engine object calling a platform symbol through
 a forward declaration and asserts the gate goes red. That row exists because the gate was
@@ -589,25 +592,26 @@ It links `src/engine/` alone and registers no seam, exactly as `enginelink.sh` d
 `Search::go`. So any crash is in the engine with no host to blame -- and the seam defaults are
 under the fuzzer too.
 
-**Its first run found real UB.** `SearchManager` had six members with no initialisers, valid
-only because the host assigned them -- `ThreadPool::clear` set four and `start_thinking` two,
-which was the platform initialising engine state from outside. A search with no pool read
-`ponder` before anything wrote it, and UBSan caught the load of `190` as a `bool`. They now
-carry their own initial values.
+**It is the only gate that runs the engine under UBSan**, so it reaches a class of defect the
+others cannot: state that is valid only because a host assigned it. `SearchManager`'s members
+carry their own initial values for exactly that reason -- a search driven without
+`ThreadPool::start_thinking` reads them otherwise, and UBSan reports the load of a non-`bool`
+value into `ponder`.
 
-Two things about the rig are worth knowing, because both made it look like it was working when
-it was not:
+Two properties of the rig are load-bearing, and both fail by looking like success:
 
 - **`-print_funcs=0` is the difference between fuzzing and not.** By default libFuzzer
   symbolizes and prints the new functions each corpus unit reaches, and on a statically linked
   sanitized engine that `llvm-symbolizer` pass costs about **ninety seconds**, charged to the
-  fuzz budget. Measured here: 3 executions in 90s with it, 3721 in 20s without. The script's
-  "too few executions" guard is what caught that, rather than reporting a clean run over three
-  inputs -- the same rule as a gate that SKIPPED never being reported green.
+  fuzz budget: 3 executions in 90s with it against 3721 in 20s without. Without the flag the run
+  still exits 0, so the guard below is what separates the two.
+- **A run that executed almost nothing is a broken rig, not a pass.** The script refuses under a
+  thousand executions and reports its rate, on the same rule that says a SKIPPED gate is never
+  green.
 - **The corpus is the fuzzer's memory.** Without `--corpus` every run starts empty and spends
   its budget rediscovering the same shallow coverage, so a nightly job never gets deeper than
-  its first night. The CI lane caches it and uses `restore-keys` so a key miss still starts from
-  the most recent corpus.
+  its first night. The CI lane caches it and uses `restore-keys`, so a key miss still starts
+  from the most recent corpus rather than from nothing.
 
 It needs clang, and skips loudly without it. It is not part of the shipped Makefile and adds
 nothing to the binary a player runs.
@@ -763,7 +767,13 @@ touched. It skips loudly instead, which weakens nothing -- CI's own `clang-forma
 | `iwyu.yml`, `clang-format.yml`, `codeql.yml` | include hygiene, formatting, static analysis |
 | `upload_binaries.yml` | release artifacts |
 | `perfbudget.yml` | the instruction budget, base against head, at two tiers |
-| `docs.yml` | `docslint.sh` and `lanecheck.sh` -- no build, seconds |
+| `golden.yml` | `golden.sh` -- the recorded command outputs |
+| `docs.yml` | `docslint.sh`, `lanecheck.sh`, then `buildcoverage.sh`, `depcheck.sh`, `linkcheck.sh`, `enginelink.sh` |
+| `fuzz.yml` | nightly: the `uci`, `net` and `shm` harnesses, and `fuzzsearch.sh` |
+
+`docs.yml` builds, despite the name: `linkcheck.sh` and `enginelink.sh` both compile the tree.
+The zone checks live there rather than in a lane of their own so a reader looking for one finds
+the others beside it.
 
 `tests/perft.sh` and `tests/reprosearch.sh` run at exactly one step of `tests.yml`, gated on
 the 64-bit configurations, after an avx2 build.
@@ -783,16 +793,27 @@ flowchart LR
     SF --> T["tests.yml"]
     SF --> SAN["sanitizers.yml"]
     SF --> PB["perfbudget.yml"]
+    SF --> D["docs.yml"]
+    SF --> GO["golden.yml"]
     SF --> OTH["iwyu, games, matetrack,<br/>arm, wasm, universal, upload"]
+    N(["nightly cron"]) --> FZ["fuzz.yml"]
     T --> G1["signature.sh<br/>perft.sh<br/>reprosearch.sh"]
-    T --> G2["docslint.sh<br/>lanecheck.sh<br/>negative_control.sh<br/>fingerprint.sh<br/>npsab.sh"]
+    D --> G5["docslint.sh<br/>lanecheck.sh<br/>buildcoverage.sh<br/>depcheck.sh<br/>linkcheck.sh<br/>enginelink.sh"]
+    GO --> G6["golden.sh"]
+    FZ --> G7["fuzz.py (uci, net, shm)<br/>fuzzsearch.sh"]
     SAN --> G3["instrumented.py"]
     PB --> G4["perfbudget.sh<br/>textequal.sh"]
+    T --> G2["negative_control.sh<br/>fingerprint.sh<br/>npsab.sh"]
     style G2 stroke-dasharray: 5 5
 ```
 
-The dashed box is the point: those five gates are reached by no workflow. They run locally or
-not at all, and `tests/lanecheck.sh` holds each of them to carrying an excuse that says so.
+The dashed box is the point: those gates are reached by no workflow. They run locally or not at
+all, and `tests/lanecheck.sh` holds each of them to carrying an excuse that says so.
+
+`fuzz.yml` hangs off the cron rather than the umbrella, and that is deliberate: it is **not a
+merge gate**. A clean nightly means "nothing failed inside that budget", never "there is nothing
+to find", and blocking a merge on a time-boxed random search would make the budget a correctness
+threshold it cannot be.
 A workflow with only a `workflow_call` trigger and no caller is in the same position -- it
 cannot start, so nothing it names is in a lane, which is what `lanecheck` checks before it
 looks at any script.
