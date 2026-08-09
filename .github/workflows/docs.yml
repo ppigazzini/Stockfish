@@ -38,3 +38,10 @@ jobs:
       # a reader looking for one should find the other beside it.
       - name: Dependency direction, by symbol
         run: ./tests/linkcheck.sh
+
+      # The strong form: link engine/ alone against a stub main and nothing
+      # else. It subsumes the check above -- it sees a reference to a symbol
+      # nothing defines, and it sees an inline call -- and it is what makes each
+      # seam's default a tested path rather than a claim.
+      - name: The engine links alone
+        run: ./tests/enginelink.sh
