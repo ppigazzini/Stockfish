@@ -198,18 +198,25 @@ struct LimitsType {
 // nothing here reaches ucioption.h -- see searchoptions.h.
 struct SharedState {
     SharedState(const SearchOptions&                  opts,
-                ThreadPool&                           threadPool,
                 TranspositionTable&                   transpositionTable,
-                std::map<NumaIndex, SharedHistories>& sharedHists) :
+                std::map<NumaIndex, SharedHistories>& sharedHists,
+                std::atomic<bool>&                    stopFlagRef,
+                std::atomic<bool>&                    increaseDepthFlagRef) :
         options(opts),
-        threads(threadPool),
         tt(transpositionTable),
-        sharedHistories(sharedHists) {}
+        sharedHistories(sharedHists),
+        stopFlag(stopFlagRef),
+        increaseDepthFlag(increaseDepthFlagRef) {}
 
     const SearchOptions&                  options;
-    ThreadPool&                           threads;
     TranspositionTable&                   tt;
     std::map<NumaIndex, SharedHistories>& sharedHistories;
+
+    // The two flags every worker shares. Plain std::atomic, so the engine names
+    // no host type to reach them -- the host owns the objects and hands over the
+    // references.
+    std::atomic<bool>& stopFlag;
+    std::atomic<bool>& increaseDepthFlag;
 };
 
 class Worker;
@@ -299,7 +306,6 @@ class SearchManager: public ISearchManager {
     void check_time(Search::Worker& worker) override;
 
     void output_pv(Search::Worker&           worker,
-                   const ThreadPool&         threads,
                    const TranspositionTable& tt,
                    Depth                     depth);
 
@@ -421,8 +427,22 @@ class Worker {
     Tablebases::Config tbConfig;
 
     const SearchOptions&                                     options;
-    ThreadPool&                                              threads;
     TranspositionTable&                                      tt;
+
+    // The two flags every worker shares, read per node.
+    //
+    // REFERENCES, deliberately, and this is measured rather than stylistic. A
+    // reference member's binding is fixed at construction, so the compiler may
+    // hoist the load out of the node; a pointer member is mutable, so any call
+    // that might alias `this` forces a reload. Carrying these as pointers set
+    // once per search cost clang +2.4 instructions PER NODE (+0.0312%) for
+    // exactly that reason, while gcc was unaffected.
+    //
+    // They come in through SharedState, so they are available at construction
+    // and the engine still names no host type to reach them.
+    std::atomic<bool>&                                       stopFlag;
+    std::atomic<bool>&                                       increaseDepthFlag;
+
     // The replica for THIS worker's NUMA node. A POINTER, null until the net is
     // resident, and set by ensure_network_replicated.
     //

@@ -195,8 +195,9 @@ Search::Worker::Worker(SharedState&                    sharedState,
     numaAccessToken(token),
     manager(std::move(sm)),
     options(sharedState.options),
-    threads(sharedState.threads),
     tt(sharedState.tt),
+    stopFlag(sharedState.stopFlag),
+    increaseDepthFlag(sharedState.increaseDepthFlag),
       refreshTable() {
     clear();
 }
@@ -304,12 +305,12 @@ void Search::Worker::start_searching() {
     // the UCI protocol states that we shouldn't print the best move before the
     // GUI sends a "stop" or "ponderhit" command. We therefore simply wait here
     // until the GUI sends one of those commands.
-    while (!threads.stop && (main_manager()->ponder || limits.infinite))
+    while (!stopFlag.load() && (main_manager()->ponder || limits.infinite))
     {}  // Busy wait for a stop or a ponder reset
 
     // Stop the threads if not already stopped (also raise the stop if
     // "ponderhit" just reset threads.ponder)
-    threads.stop = true;
+    stopFlag.store(true);
 
     // Wait until all threads have finished
     worker_set().wait_for_search_finished(worker_set().ctx);
@@ -327,9 +328,10 @@ void Search::Worker::start_searching() {
     if (!limits.depth && !skill.enabled())
         {
             std::vector<Worker*> all;
-            all.reserve(threads.worker_count());
-            for (usize i = 0; i < threads.worker_count(); ++i)
-                all.push_back(threads.worker_at(i));
+            const usize n = worker_set().count(worker_set().ctx);
+            all.reserve(n);
+            for (usize i = 0; i < n; ++i)
+                all.push_back(worker_set().at(worker_set().ctx, i));
             bestThread = best_worker(all);
         }
 
@@ -342,7 +344,7 @@ void Search::Worker::start_searching() {
 
     // Send PV info if it has changed since last output in iterative_deepening().
     if (!uciPvSent || bestThread != this)
-        main_manager()->output_pv(*bestThread, threads, tt, bestThread->rootDepth);
+        main_manager()->output_pv(*bestThread, tt, bestThread->rootDepth);
 
     // In rare cases, output_pv() may change the ponder move through syzygy_extend_pv().
     std::string ponder;
@@ -419,7 +421,7 @@ bool Search::Worker::iterative_deepening() {
             mainHistory[c][i] = mainHistory[c][i] * 729 / 1024;
 
     // Iterative deepening loop until requested to stop or the target depth is reached
-    while (rootDepth + 1 < MAX_PLY && !threads.stop
+    while (rootDepth + 1 < MAX_PLY && !stopFlag.load()
            && !(limits.depth && mainThread && rootDepth >= limits.depth))
     {
         rootDepth++;
@@ -442,7 +444,7 @@ bool Search::Worker::iterative_deepening() {
 
         usize pvFirst = pvLast = 0;
 
-        if (!threads.increaseDepth)
+        if (!increaseDepthFlag.load())
             searchAgainCounter++;
 
         // MultiPV loop. We perform a full root search for each PV line
@@ -495,7 +497,7 @@ bool Search::Worker::iterative_deepening() {
                 // If search has been stopped, we break immediately. Sorting is
                 // safe because RootMoves is still valid, although it refers to
                 // the previous iteration.
-                if (threads.stop)
+                if (stopFlag.load())
                     break;
 
                 // When failing high/low give some update before a re-search. To avoid
@@ -503,7 +505,7 @@ bool Search::Worker::iterative_deepening() {
                 // at nodes > 10M (rather than depth N, which can be reached quickly)
                 if (mainThread && multiPV == 1 && (bestValue <= alpha || bestValue >= beta)
                     && nodes > NODES_LIMIT_OUTPUT)
-                    main_manager()->output_pv(*this, threads, tt, rootDepth);
+                    main_manager()->output_pv(*this, tt, rootDepth);
 
                 // In case of failing low/high increase aspiration window and re-search,
                 // otherwise exit the loop.
@@ -530,7 +532,7 @@ bool Search::Worker::iterative_deepening() {
                 assert(alpha >= -VALUE_INFINITE && beta <= VALUE_INFINITE);
             }
 
-            if (threads.stop && pvIdx)
+            if (stopFlag.load() && pvIdx)
             {
                 // In multiPV analysis we do not let aborted searches spoil mated-in/
                 // TB loss scores from a completed search in an earlier PV line.
@@ -581,13 +583,14 @@ bool Search::Worker::iterative_deepening() {
             // Sort the PV lines searched so far and update the GUI
             std::stable_sort(rootMoves.begin() + pvFirst, rootMoves.begin() + pvIdx + 1);
 
-            if (mainThread && !threads.stop && (pvIdx + 1 == multiPV || nodes > NODES_LIMIT_OUTPUT))
+            if (mainThread && !stopFlag.load()
+                && (pvIdx + 1 == multiPV || nodes > NODES_LIMIT_OUTPUT))
             {
-                main_manager()->output_pv(*this, threads, tt, rootDepth);
+                main_manager()->output_pv(*this, tt, rootDepth);
                 uciPvSent = (pvIdx + 1 == multiPV);
             }
 
-            if (threads.stop)
+            if (stopFlag.load())
                 break;
         }
 
@@ -596,7 +599,7 @@ bool Search::Worker::iterative_deepening() {
                                 && (std::abs(rootMoves[0].score) < std::abs(lastBestMoveScore)
                                     || rootMoves[0].score_is_bound());
 
-        if (!threads.stop)
+        if (!stopFlag.load())
         {
             if (lastBestMovePV.empty() || lastBestMovePV[0] != rootMoves[0].pv[0])
                 lastBestMoveDepth = rootDepth;
@@ -609,7 +612,8 @@ bool Search::Worker::iterative_deepening() {
             }
         }
 
-        const bool abortedLossSearch = threads.stop && !pvIdx && rootMoves[0].score_is_exact_loss();
+        const bool abortedLossSearch =
+          stopFlag.load() && !pvIdx && rootMoves[0].score_is_exact_loss();
 
         // An exact mated-in/TB-loss score from an aborted search cannot be trusted: the
         // loss could be delayed or refuted upon exploring the remaining root-moves.
@@ -636,9 +640,9 @@ bool Search::Worker::iterative_deepening() {
         }
 
         // Have we found a "mate in x" after a completed iteration?
-        if (limits.mate && !threads.stop && is_mate_or_mated(rootMoves[0].score)
+        if (limits.mate && !stopFlag.load() && is_mate_or_mated(rootMoves[0].score)
             && VALUE_MATE - std::abs(rootMoves[0].score) <= 2 * limits.mate)
-            threads.stop = true;
+            stopFlag.store(true);
 
         if (!mainThread)
             continue;
@@ -648,14 +652,17 @@ bool Search::Worker::iterative_deepening() {
             skill.pick_best(rootMoves, multiPV);
 
         // Use part of the gained time from a previous stable move for the current move
-        for (auto&& th : threads)
+        const WorkerSet& ws      = worker_set();
+        const usize      workers = ws.count(ws.ctx);
+        for (usize i = 0; i < workers; ++i)
         {
-            totBestMoveChanges += th->worker->bestMoveChanges;
-            th->worker->bestMoveChanges = 0;
+            Worker* w = ws.at(ws.ctx, i);
+            totBestMoveChanges += w->bestMoveChanges;
+            w->bestMoveChanges = 0;
         }
 
         // Do we have time for the next iteration? Can we stop searching now?
-        if (limits.use_time_management() && !threads.stop && !mainThread->stopOnPonderhit)
+        if (limits.use_time_management() && !stopFlag.load() && !mainThread->stopOnPonderhit)
         {
             u64 nodesEffort = rootMoves[0].effort * 100000 / std::max(u64(1), u64(nodes));
 
@@ -672,7 +679,7 @@ bool Search::Worker::iterative_deepening() {
             double reduction =
               (1.468 + mainThread->previousTimeReduction) / (2.284 * timeReduction);
 
-            double bestMoveInstability = 1.077 + 2.229 * totBestMoveChanges / threads.size();
+            double bestMoveInstability = 1.077 + 2.229 * totBestMoveChanges / workers;
 
             double highBestMoveEffort = std::clamp(
               interpolate(i64(nodesEffort), i64(75800), i64(104510), 0.969, 0.714), 0.693, 0.838);
@@ -696,10 +703,11 @@ bool Search::Worker::iterative_deepening() {
                 if (mainThread->ponder)
                     mainThread->stopOnPonderhit = true;
                 else
-                    threads.stop = true;
+                    stopFlag.store(true);
             }
             else
-                threads.increaseDepth = mainThread->ponder || elapsedTime <= totalTime * 0.50;
+                increaseDepthFlag.store(mainThread->ponder
+                                         || elapsedTime <= totalTime * 0.50);
         }
 
         mainThread->iterValue[iterIdx] = bestValue;
@@ -878,7 +886,7 @@ Value Search::Worker::search(
     if (!rootNode)
     {
         // Step 2. Check for aborted search and immediate draw
-        if (threads.stop.load(std::memory_order_relaxed) || pos.is_draw(ss->ply)
+        if (stopFlag.load(std::memory_order_relaxed) || pos.is_draw(ss->ply)
             || ss->ply >= MAX_PLY)
             return (ss->ply >= MAX_PLY && !ss->inCheck) ? evaluate(pos) : value_draw(nodes);
 
@@ -1520,7 +1528,7 @@ moves_loop:  // When in check, search starts here
         // Finished searching the move. If a stop occurred, the return value of
         // the search cannot be trusted, and we return immediately without updating
         // best move, principal variation nor transposition table.
-        if (threads.stop.load(std::memory_order_relaxed))
+        if (stopFlag.load(std::memory_order_relaxed))
             return VALUE_ZERO;
 
         if (rootNode)
@@ -2206,7 +2214,7 @@ void SearchManager::check_time(Search::Worker& worker) {
     if ((worker.limits.use_time_management() && (elapsed > tm.maximum() || stopOnPonderhit))
         || (worker.limits.movetime && elapsed >= worker.limits.movetime)
         || (worker.limits.nodes && worker_set().nodes_searched(worker_set().ctx) >= worker.limits.nodes))
-        worker.threads.stop = true;
+        worker.stopFlag.store(true);
 }
 
 // Used to correct and extend PVs for moves that have a TB (but not a mate) score.
@@ -2347,7 +2355,6 @@ void syzygy_extend_pv(const SearchOptions&      options,
 }
 
 void SearchManager::output_pv(Search::Worker&           worker,
-                              const ThreadPool&         threads,
                               const TranspositionTable& tt,
                               Depth                     depth) {
 
