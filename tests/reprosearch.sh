@@ -15,8 +15,9 @@ echo "reprosearch testing started"
 # the same node count for each iteration.
 # A Python driver rather than expect, for the reason given in tests/perft.sh:
 # python3 is already required by the suite and expect is not always installed.
-# The session is unchanged -- two short games, a ucinewgame, then the same two
-# again -- so every `nodes N` line must appear an even number of times.
+# The session plays the same two short games twice, separated by ucinewgame, so
+# every `nodes N` line must appear an EVEN number of times; an odd count is the
+# reset failing to reset. Keep the two halves identical or the check is vacuous.
 cat << 'EOF' > repeat.py
 import subprocess, sys, threading, queue, time
 nodes = sys.argv[1]

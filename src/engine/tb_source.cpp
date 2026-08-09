@@ -22,8 +22,10 @@ namespace Stockfish::Tablebases {
 
 namespace {
 
-// "No tablebases are loaded" is exactly true with no prober attached, so these
-// need no registration for correctness -- see the header.
+// Answer "no tablebases are loaded", which is exactly true with no prober
+// attached -- see the header. Report FAIL rather than a WDL verdict: WDLDraw is
+// a legitimate probe result, and a caller that read it without checking the
+// ProbeState would take a drawn score for a position never looked up.
 int      no_tables(void*) { return 0; }
 WDLScore no_probe(void*, Position&, ProbeState* result) {
     if (result)

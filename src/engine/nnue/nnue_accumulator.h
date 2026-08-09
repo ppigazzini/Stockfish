@@ -56,15 +56,16 @@ struct alignas(CacheLineSize) Accumulator {
 // This idea, was first described by Luecx (author of Koivisto) and
 // is commonly referred to as "Finny Tables".
 struct AccumulatorCaches {
-    // Default-constructible on purpose: a Worker is built before a net is
-    // necessarily resident -- Engine sizes the pool while networkFile is still
-    // empty -- so the cache is the one part that cannot be filled yet.
-    // Worker::ensure_network_replicated seeds it once the net exists: a worker
-    // built before then is complete EXCEPT for that cache.
+    // Default-construct only where no network is available yet: a Worker is
+    // built before a net is necessarily resident, because Engine sizes the pool
+    // while networkFile is still empty.
     //
-    // The entries are POD arrays and clear() overwrites all of them, so an
-    // unseeded cache is uninitialised rather than wrong; nothing reads it before
-    // the seed, because nothing can evaluate without a network.
+    // Such a cache is UNSEEDED. `entries` is a plain array of POD Entry, so
+    // every accumulation holds indeterminate bytes until clear() writes the
+    // net's feature-transformer biases over all of them; reading one first
+    // yields a refresh entry whose accumulation is garbage rather than a bias
+    // vector. Worker::ensure_network_replicated is what seeds it, and must run
+    // before the worker evaluates anything.
     AccumulatorCaches() = default;
 
     template<typename Network>

@@ -192,14 +192,11 @@ Search::Worker::Worker(SharedState&                    sharedState,
 
 // Pick the worker whose line the engine will play.
 //
-// THIS IS CHESS POLICY, NOT DISPATCH. It reads root moves, scores, principal
-// variations and mate distances, and votes; the only thing it wants from the
-// host is the set of workers to read. It lived in the thread pool because that
-// is where the workers are stored, which is a reason about plumbing rather than
-// about meaning -- the same misplacement misc.h and memory_deleter had.
-//
-// Keeping it here is what lets the worker-set seam carry only lifecycle and
-// dispatch: count and at, nothing that knows what a good move is.
+// THIS IS CHESS POLICY, NOT DISPATCH: it reads root moves, scores, principal
+// variations and mate distances and votes on them, and the only thing it wants
+// from the host is the set of workers to read. Keep it here rather than beside
+// the workers in the thread pool, so the worker-set seam carries lifecycle and
+// dispatch alone -- count and at, nothing that knows what a good move is.
 Search::Worker* Search::best_worker(const std::vector<Search::Worker*>& workers) {
 
     Worker* bestWorker = workers.front();
@@ -254,8 +251,8 @@ Search::Worker* Search::best_worker(const std::vector<Search::Worker*>& workers)
 }
 
 void Search::Worker::ensure_network_replicated(const Eval::NNUE::Network& net) {
-    // Runs after the net is resident. The worker is legal before this, but
-    // cannot evaluate until it has run -- see the member's declaration.
+    // Call once the net is resident. A worker is legal before this but cannot
+    // evaluate until it has run -- see the `network` member's declaration.
     network = &net;
     refreshTable.clear(net);
 }
@@ -796,11 +793,11 @@ void Search::Worker::clear() {
     for (usize i = 1; i < reductions.size(); ++i)
         reductions[i] = int(2872 / 128.0 * std::log(i));
 
-    // Null only between construction and ensure_network_replicated. The refresh
-    // cache is seeded from the network's feature-transformer biases, so it
-    // cannot be filled before a net is resident, and clear() is reached from the
-    // constructor -- Engine sizes the pool while no net has been loaded yet.
-    // ensure_network_replicated seeds it, so skipping here loses nothing.
+    // Skip the refresh cache while no net is resident. clear() is reached from
+    // the constructor, and Engine sizes the pool before any net is loaded; the
+    // cache is seeded from the network's feature-transformer biases, so there is
+    // nothing to seed it from yet. ensure_network_replicated seeds it after the
+    // load, so skipping here loses nothing.
     if (network != nullptr)
         refreshTable.clear(*network);
 }

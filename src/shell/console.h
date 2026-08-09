@@ -23,13 +23,13 @@
 
 #include "../engine/basetypes.h"
 
-// Process output and the debug counters that print through it.
+// Print process output and the debug counters that go through it.
 //
-// Shell rather than platform: this is the standard output stream of a process
-// and a diagnostic dump printed onto it, neither of which the engine needs to
-// search. Living in misc.h -- a platform file -- meant an engine file calling
-// sync_cout produced an engine-to-PLATFORM link edge, which the zone check for
-// engine-to-shell could not see. The misplacement was hiding the violation.
+// Keep this in the shell, and keep it out of every engine translation unit: a
+// process's standard output stream and a diagnostic dump printed onto it are
+// not things the engine needs in order to search. Nothing under src/engine/
+// includes this header, and tests/linkcheck.sh fails the engine-to-shell edge
+// that including it would create.
 namespace Stockfish {
 
 void dbg_hit_on(bool cond, int slot = 0);

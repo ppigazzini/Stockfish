@@ -1006,10 +1006,11 @@ void Position::do_move(Move                      m,
         // first bundle in the row rather than a side: the line is what is
         // wanted, not the counter.
         //
-        // Written out here rather than wrapped in a helper on SharedHistories:
-        // a function whose only effect is prefetching reads as having no effect
-        // at all, and gcc deleted the call outright -- four prefetches silently
-        // absent from do_move, which callgrind scores as an IMPROVEMENT.
+        // Keep them written out here rather than wrapped in a helper on
+        // SharedHistories. A function whose only effect is a prefetch has no
+        // observable effect, so a compiler is free to delete the call outright;
+        // four prefetches silently missing from do_move is a locality loss that
+        // the instruction-count gate scores as an IMPROVEMENT.
         prefetch(&history->pawn_correction(*this, WHITE));
         prefetch(&history->minor_piece_correction(*this, WHITE));
         prefetch(&history->nonpawn_correction<WHITE>(*this, WHITE));

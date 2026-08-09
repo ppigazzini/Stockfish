@@ -171,8 +171,9 @@ def main():
         r_bc = ratio(h["Bcm"], b["Bcm"])
 
         # The verdict is on instructions, which are deterministic here. A tie
-        # band is required: callgrind resolves ~0.01%, but a 0.05% difference in
-        # a component is layout, not work.
+        # band is still required: a component difference inside it is code
+        # layout rather than work, and calling that a winner invites a refactor
+        # to be argued from the rounding.
         if r_ir is None:
             winner = "-"
         elif r_ir < 0.9995:
@@ -208,8 +209,8 @@ def main():
             print(f"    {name}")
 
     # The biggest ungrouped symbols are the next rows worth adding -- on BOTH
-    # sides. A component that matches on one side only produces a ratio like
-    # 7.9 that reads as a catastrophic regression and is a broken regex.
+    # sides. A component matching on one side only divides a real cost by a
+    # near-zero one, so a broken regex reads as a catastrophic regression.
     for label, prof, claimed in (("upstream", base, claimed_b), ("refish", head, claimed_h)):
         rest = [(c.get("Ir", 0), s) for s, c in prof.items() if s not in claimed and c.get("Ir", 0)]
         rest.sort(reverse=True)

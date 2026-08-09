@@ -40,8 +40,10 @@ using RootMoves = std::vector<RootMove>;
 
 namespace Stockfish::Tablebases {
 
-// Config, WDLScore and ProbeState are search-facing values and live in
-// engine/tb_source.h; this header re-exports them by including it.
+// Find Config, WDLScore and ProbeState in engine/tb_source.h. They are the
+// values the search reads back, so the engine names them without including
+// anything under platform/; the include above is what lets the prototypes below
+// spell them here.
 extern int MaxCardinality;
 
 
