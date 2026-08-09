@@ -555,8 +555,9 @@ class TBTables {
     void clear() {
         // Clear every slot to a value-initialised Entry, null table pointers
         // included: get() walks buckets forward with no bound and stops only on
-        // a slot whose Type pointer is null, so a slot left holding anything
-        // else either false-hits a stale key or runs the walk off the array.
+        // a key match or a null Type pointer, so a slot left holding a stale
+        // entry either hands back a pointer into the deques cleared just below
+        // or lets the walk run off the array.
         // Entry::key is a MaterialKey, a class type, so memset is not the
         // alternative -- it is a -Wclass-memaccess error under -Werror.
         for (Entry& e : hashTable)

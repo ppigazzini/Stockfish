@@ -103,10 +103,12 @@ power of two because the index is a mask of the pawn key rather than a modulus.
 **The split between per-worker and shared decides the entry type.** `mainHistory`,
 `lowPlyHistory`, `captureHistory`, `continuationCorrectionHistory` and `ttMoveHistory` are
 `Worker` members, touched by one thread. The rest arrive through `SharedHistories&`, shared
-between the threads on one NUMA node -- and those are the ones built from `AtomicStats`, which
-is `StatsEntry` with `Shared = true`, so the entry is a `RelaxedAtomic<T>` and the race is
-defined rather than undefined ([04-multithreading.md](04-multithreading.md)). Moving a table
-across that line means changing its alias, not just its owner.
+between the threads on one NUMA node -- and those are the ones whose entries carry
+`StatsEntry`'s `Shared = true`, reached as `AtomicStats` for the continuation and pawn planes
+and spelled out inside `CorrectionBundle` for the four correction counters. That makes the
+entry a `RelaxedAtomic<T>`, so the race is defined rather than undefined
+([04-multithreading.md](04-multithreading.md)). Moving a table across that line means changing
+its type, not just its owner.
 
 ## `movepick.cpp` -- the staged picker
 
@@ -138,9 +140,10 @@ A transposition move that is not pseudo-legal in this position -- which a 16-bit
 collision can produce -- skips the stage rather than being played.
 
 Selection is one element per call, not a sort. A full sort would order moves the search never
-reaches. `skip_quiets` is read at every call rather than fixed at construction, because the
-search decides mid-node that it has seen enough quiet moves and the picker has to honour that
-from the next call on.
+reaches. The `skipQuiets` flag is a member `next_move` re-reads on every call rather than an
+argument fixed at construction, because the search sets it mid-node through
+`MovePicker::skip_quiet_moves`, called from Step 14, and the picker has to honour that from the
+next call on.
 
 ## What a worker is given
 
@@ -157,13 +160,14 @@ feature-transformer biases, so it is the one part that cannot be filled early;
 before then.
 
 **`SearchManager` is valid the moment it exists.** Its constructor binds only `updates`, so
-every other member carries an initial value in the declaration: `ponder`, `stopOnPonderhit`,
+every scalar member carries an initial value in the declaration: `ponder`, `stopOnPonderhit`,
 `callsCnt`, `originalTimeAdjust`, `previousTimeReduction`, `bestPreviousScore`,
-`bestPreviousAverageScore`. `iterValue` is the exception, and needs none, because
-`iterative_deepening` fills it before the first read. Leave the rest to the caller and a
-manager searched without `ThreadPool::start_thinking` reads indeterminate storage -- and
-`ponder` is a `bool`, for which a byte that is neither 0 nor 1 is undefined behaviour rather
-than a wrong answer.
+`bestPreviousAverageScore`. Two members need none and are exceptions of different kinds:
+`iterValue`, which `iterative_deepening` fills before the first read, and `tm`, whose own
+`startTime`/`optimumTime`/`maximumTime` are written by `TimeManagement::init` on the way into
+every search. Leave the scalars to the caller and a manager searched without
+`ThreadPool::start_thinking` reads indeterminate storage -- and `ponder` is a boolean, for
+which a byte that is neither 0 nor 1 is undefined behaviour rather than a wrong answer.
 
 ## `Search::go` -- searching without a host
 
@@ -324,9 +328,12 @@ are multiplied into node counts and the search is measured against nodes searche
 a GUI is told stays real milliseconds -- it asked how long the engine thought, not how the
 engine chose to count.
 
-The clock is read inside the search only through `check_time`, throttled by a node counter.
-Reading a clock is a syscall on some platforms, and at millions of nodes per second the
-granularity is well under a millisecond either way.
+**No clock read is on the per-node path.** All of them go through
+`TimeManagement::elapsed_time`, and the hottest caller is `check_time`, which returns on every
+call but one in at most 512; the others are `Worker::elapsed` once per depth iteration and
+`output_pv` once per info line. Reading a clock is a syscall on some platforms, and at millions
+of nodes per second the granularity is well under a millisecond either way. A new reader in the
+node body would turn the `clock.h` seam into a per-node indirect call.
 
 ## `score.cpp` -- what a reported score means
 
