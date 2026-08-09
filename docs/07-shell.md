@@ -126,8 +126,8 @@ Its counts are **facts about chess**, not a golden. A mismatch is always a moveg
 
 Prints the evaluation with its breakdown. Rendering centipawns needs `to_cp`, which is the
 win-rate model fitted to fishtest statistics -- evaluation-domain knowledge rather than
-protocol -- so it lives in `score.h/.cpp` and `evaluate.cpp` no longer reaches into this zone
-to get it. `tests/depcheck.sh` is what keeps that from coming back.
+protocol -- so it lives in `score.h/.cpp` and not here. `tests/depcheck.sh` is what keeps an
+engine file from reaching into this zone for it.
 
 ## `tune.cpp` -- SPSA tuning
 
@@ -138,6 +138,5 @@ the option list.
 `types.h` includes `tune.h` after its own include guard so those macros are visible anywhere
 without an extra include. **No committed file uses `TUNE(...)`** -- the machinery exists for
 the local, temporary edit a tuning run needs, and the constants are hard-coded again once the
-result lands.
-
-The injection has no consumer in the committed tree and is required by the workflow above.
+result lands. So the include has no consumer a grep can find, and removing it on that evidence
+taxes every future tuning run with an include to add first.

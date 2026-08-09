@@ -14,8 +14,8 @@ echo "perft testing started"
 
 # A Python driver rather than expect: python3 is already required by
 # tests/instrumented.py, expect is not always installed, and a gate that cannot
-# run reports nothing rather than failing. Same contract as before -- the
-# arguments and the exit codes are unchanged.
+# run reports nothing rather than failing. The driver takes its five arguments
+# positionally and exits 0 match, 1 wrong or timed out, 2 engine gone.
 EXPECT_SCRIPT=$(mktemp)
 
 cat << 'EOF' > $EXPECT_SCRIPT
@@ -46,8 +46,9 @@ while time.time() < end:
     log.append(line)
     if want in line:
         rc = 0; break
-    # The engine answered with a different count. Waiting out the timeout would
-    # turn one wrong case into two minutes, and a whole suite into half an hour.
+    # The engine answered with a different count, so the case is already decided.
+    # Break instead of waiting: the count arrives once, so waiting out the
+    # timeout charges every failing row the full timeout for nothing.
     if line.startswith("Nodes searched:"):
         print(f"WRONG: {line.strip()}, expected {result}")
         break

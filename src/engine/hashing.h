@@ -24,12 +24,14 @@
 
 #include "basetypes.h"
 
-// Byte hashing. Engine rather than platform: it touches no OS, no process and no
-// I/O -- it is arithmetic over bytes, and it sat in misc.h only because misc.h
-// is where things sit. Being in a platform file made every engine use of it an
-// engine-to-platform link edge that no rule intended.
+// Byte hashing. Engine rather than platform: it touches no OS, no process and
+// no I/O -- it is arithmetic over bytes. Both zones call it, the NNUE net's
+// content hash from engine/ and the shared-memory name hash from platform/, so
+// keeping it here is what lets the engine side hash without including a
+// platform header.
 namespace Stockfish {
 
+// Hash function based on public domain MurmurHash64A, by Austin Appleby.
 inline u64 hash_bytes(const char* data, usize size) {
     const u64 m = 0xc6a4a7935bd1e995ull;
     const int r = 47;

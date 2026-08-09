@@ -4,8 +4,8 @@ Every sentence written about this engine -- in a page here, in a code comment, i
 message -- is a **claim with a shelf life**. It was true when written, it is checkable, and
 the code will move under it.
 
-That is the whole discipline. What follows is how to write a claim that survives, and how to
-write one that fails loudly when it stops being true.
+That is the whole discipline: write the claim that survives, and write it so it fails loudly
+when it stops being true.
 
 Audience: anyone writing prose about this code.
 
@@ -15,8 +15,8 @@ Three sentences about the same line:
 
 ```
 1.  The penalty decrements the stored depth.
-2.  The penalty decrements depth8, clamped at zero (tt.cpp:146).
-3.  The penalty decrements depth8, clamped at zero (tt.cpp:146). depth8 is a u8
+2.  TTWriter::penalize decrements depth8, clamped at zero.
+3.  TTWriter::penalize decrements depth8, clamped at zero. depth8 is a u8
     holding d - DEPTH_NONE, and bool(depth8) IS the occupancy test, so letting
     it reach zero retires a live entry and letting it wrap makes a penalised
     shallow entry the deepest in the table.
@@ -80,8 +80,13 @@ Two classes, and both go stale:
 Where the figure earns its place, write the command that produces it:
 
 ```sh
-awk 'NR>=708 && /^}/{print NR-708; exit}' src/engine/search.cpp
+awk '/^Value Search::Worker::search\(/{s=NR} s && NR>s && /^}/{print NR-s+1; exit}' \
+  src/engine/search.cpp
 ```
+
+Note that the command anchors on the symbol, not on a line number. A command that pins the
+line it starts counting from goes stale on the first commit above it, and reports a number
+rather than an error when it does.
 
 Where it does not, write the claim that stays true: *the largest file under `src/engine/nnue/`*
 rather than *over a thousand lines*.
@@ -259,5 +264,5 @@ A path `.gitignore` names is exempt from the path check, because prose legitimat
 the tool that writes an ignored artifact.
 
 **It cannot tell you a sentence is false.** Prose can parse, link, name only real paths, and
-still describe code that moved a month ago. The gate buys the mechanical half so review can
-spend its attention on the half that needs a reader -- which is every rule above this one.
+still describe code that has moved. The gate buys the mechanical half; the half that needs a
+reader is bought only by opening the file.
