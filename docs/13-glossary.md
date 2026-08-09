@@ -73,6 +73,12 @@ None of this is chess-programming vocabulary.
 | **rig fault** | a negative-control run that proved nothing rather than detecting something -- a rotted anchor, a mutation that did not compile, a timeout. Never credited as a detection |
 | **the build stamp** | `GIT_SHA`, `GIT_DATE` and `GIT_DIFFINDEX`, compiled into `misc.o`. Two revisions embed different strings, which shifts rodata and therefore every rip-relative displacement |
 | **tier** | an enumerated `ARCH=` value. A performance number without its tier is not a number |
+| **the counters** | `tests/perfcounters.sh`: the CPU's own PMU events -- instructions, cycles, cache and branch misses -- read through `perf_event_open`. The only axis that runs above AVX2, because callgrind implements no AVX-512 |
+| **the decomposition** | `tests/perfdecomp.sh`: per-component instructions, D1 read misses and mispredicts, grouped by `tests/perfcomponents.tsv`. Answers *where*, where the counters answer *whether* |
+| **self cost** | a symbol's own instructions, excluding its callees. The cost line after callgrind's `calls=` is the callee's *inclusive* cost and is skipped; summing it counts the NNUE evaluation inside `search` and again inside itself |
+| **paired ratio** | head over base within ONE round, then the median across rounds -- not the ratio of the medians. A round is the only comparison in which both sides saw the same machine state |
+| **the spread** | the min and max of those per-round ratios. A ratio whose spread straddles 1.000 has established no direction, whatever its median reads |
+| **multiplexing** | the kernel time-slicing more events than the PMU has slots, so a counter covers only part of the run. The read format carries enabled/running to scale it; an unscaled reading under-reports silently |
 | **hot / cold** | of a page: whether it describes code that moves. [12-writing.md](12-writing.md) |
 | **zone** | one of `src/engine/`, `src/platform/`, `src/shell/`. A file's zone is its directory, so a new file joins one by where it is put. `tests/zones.sh` is the single mapping both zone checks read |
 | **seam** | a struct of function pointers the engine declares, reads through a getter, and the host fills once before the first search. The engine names no host type; the host names the engine's. Catalogued in [00-architecture.md](00-architecture.md) |
