@@ -33,6 +33,8 @@ EXCUSED_NAMES=(
   tbfetch.sh
   fingerprint.sh
   zones.sh
+  perfcounters.sh
+  perfcounters_report.py
 )
 EXCUSED_WHY=(
   "wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
@@ -43,6 +45,8 @@ EXCUSED_WHY=(
   "fetches the corpus for the tb fuzz harness, which is out of the matrix until E1 and E2 are fixed; run by hand"
   "roughly 10x the cost of the budget gate; run by hand before a decomposition"
   "the zone table, sourced by depcheck.sh and linkcheck.sh rather than run"
+  "reads the CPU's hardware counters; a virtualised hosted runner exposes no PMU, so a lane would skip every run"
+  "the aggregation half of perfcounters.sh, invoked by it rather than run"
 )
 
 FAIL=0
