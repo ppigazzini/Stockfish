@@ -29,9 +29,9 @@ namespace Stockfish {
 
 class Position;
 
-// The win-rate model fitted to fishtest LTC statistics. It is evaluation-domain
-// knowledge rather than protocol: the UCI layer renders what these return, and
-// the engine core reads them without depending on the frontend.
+// The win-rate model fitted to fishtest LTC statistics, whose parameters depend
+// on the material left on the board -- so every function below needs the
+// position, not just the Value.
 // See github.com/official-stockfish/WDL_model
 
 // Return the win rate in per mille units.
@@ -41,7 +41,7 @@ int win_rate_model(Value v, const Position& pos);
 // similar special scores.
 int to_cp(Value v, const Position& pos);
 
-// The win/draw/loss triple in per-mille, as the UCI info line spells it.
+// Format the win/draw/loss triple in per mille, as the UCI info line spells it.
 std::string wdl_to_string(Value v, const Position& pos);
 
 class Score {

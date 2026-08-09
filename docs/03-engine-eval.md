@@ -138,7 +138,8 @@ v -= v * pos.rule50_count() / 199;
 v  = std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
 ```
 
-Each line is doing something specific:
+Every constant in that block is tuned and moves with the next SPSA patch. What survives is the
+shape, and each line is doing something specific:
 
 - **Complexity** is the disagreement between the two heads. Where they disagree the position
   is sharp, so optimism is amplified and the raw evaluation is damped -- the network is less

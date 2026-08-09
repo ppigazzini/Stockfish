@@ -30,10 +30,11 @@ namespace Stockfish {
 // The second is not a line the engine can write -- the counters live in the
 // shell -- so it is a separate hook rather than a formatted string.
 //
-// THE DEFAULT PRINTS. It writes to stdout unsynchronised, which is correct for a
-// single-threaded caller and wrong only in the way a fallback is allowed to be.
-// A null sink would be silence, and silence reads to a gate as a hung engine
-// rather than as a wiring fault -- the failure that is expensive to diagnose.
+// THE DEFAULT PRINTS. It writes to stdout with no lock, so two threads emitting
+// at once can interleave one line into another; a host that searches on more
+// than one thread registers a synchronised sink. A null sink would be silence
+// instead, and silence reads to a gate as a hung engine rather than as a wiring
+// fault -- the failure that is expensive to diagnose.
 struct OutputSink {
     void (*line)(std::string_view);
     void (*debug_dump)();

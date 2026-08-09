@@ -1,0 +1,158 @@
+{
+    "resign": {
+        "move_count": 1,
+        "score": 0,
+        "twosided": false,
+        "enabled": false
+    },
+    "draw": {
+        "move_number": 0,
+        "move_count": 1,
+        "score": 0,
+        "enabled": false
+    },
+    "maxmoves": {
+        "move_count": 1,
+        "enabled": false
+    },
+    "opening": {
+        "file": "/tmp/refish-fastchess/app/tests/data/openings.epd",
+        "format": 0,
+        "order": 0,
+        "plies": -1,
+        "start": 1
+    },
+    "pgn": {
+        "event_name": "Fastchess Tournament",
+        "site": "?",
+        "file": "",
+        "notation": 0,
+        "track_nodes": false,
+        "track_seldepth": false,
+        "track_nps": false,
+        "track_hashfull": false,
+        "track_tbhits": false,
+        "track_timeleft": false,
+        "track_latency": false,
+        "min": false
+    },
+    "epd": {
+        "file": ""
+    },
+    "sprt": {
+        "alpha": 0.0,
+        "beta": 0.0,
+        "elo0": 0.0,
+        "elo1": 0.0,
+        "model": "normalized",
+        "enabled": false
+    },
+    "config_name": "",
+    "output": 0,
+    "seed": 807534742,
+    "variant": 0,
+    "ratinginterval": 2147483647,
+    "scoreinterval": 1,
+    "wait": 0,
+    "autosaveinterval": 20,
+    "games": 2,
+    "rounds": 50,
+    "concurrency": 4,
+    "force_concurrency": false,
+    "recover": false,
+    "noswap": false,
+    "reverse": false,
+    "report_penta": true,
+    "affinity": false,
+    "show_latency": false,
+    "log": {
+        "file": "/tmp/tmp.13ygopxp0d/match.log",
+        "level": 2,
+        "compress": false,
+        "realtime": true
+    },
+    "engines": [
+        {
+            "name": "refish",
+            "dir": "",
+            "cmd": "/tmp/tmp.13ygopxp0d/wt-head/src/stockfish",
+            "args": "",
+            "restart": false,
+            "options": [
+                [
+                    "Threads",
+                    "1"
+                ],
+                [
+                    "Hash",
+                    "16"
+                ]
+            ],
+            "limit": {
+                "tc": {
+                    "increment": 40,
+                    "fixed_time": 0,
+                    "time": 4000,
+                    "moves": 0,
+                    "timemargin": 0
+                },
+                "nodes": 0,
+                "plies": 0
+            },
+            "variant": 0
+        },
+        {
+            "name": "upstream",
+            "dir": "",
+            "cmd": "/tmp/tmp.13ygopxp0d/wt-base/src/stockfish",
+            "args": "",
+            "restart": false,
+            "options": [
+                [
+                    "Threads",
+                    "1"
+                ],
+                [
+                    "Hash",
+                    "16"
+                ]
+            ],
+            "limit": {
+                "tc": {
+                    "increment": 40,
+                    "fixed_time": 0,
+                    "time": 4000,
+                    "moves": 0,
+                    "timemargin": 0
+                },
+                "nodes": 0,
+                "plies": 0
+            },
+            "variant": 0
+        }
+    ],
+    "stats": {
+        "upstream vs refish": {
+            "wins": 22,
+            "losses": 23,
+            "draws": 33,
+            "penta_WW": 1,
+            "penta_WD": 4,
+            "penta_WL": 16,
+            "penta_DD": 11,
+            "penta_LD": 7,
+            "penta_LL": 0
+        },
+        "refish vs upstream": {
+            "wins": 8,
+            "losses": 3,
+            "draws": 11,
+            "penta_WW": 1,
+            "penta_WD": 3,
+            "penta_WL": 3,
+            "penta_DD": 4,
+            "penta_LD": 0,
+            "penta_LL": 0
+        }
+    }
+}

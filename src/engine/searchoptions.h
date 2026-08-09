@@ -33,10 +33,11 @@ namespace Stockfish {
 // to run a search -- an in-process harness, a parameter sweep -- fills it
 // directly.
 //
-// EVERY FIELD DEFAULTS TO A WORKING VALUE, matching the UCI defaults. A seam
-// that defaults to a stub reads to a gate as a broken engine rather than as an
-// unwired one, and the whole point of a default is that `engine/` runs without
-// the shell having said anything.
+// EVERY FIELD DEFAULTS TO A WORKING VALUE, matching the option the shell
+// registers for it in Engine::Engine. Keep the two in step: a default that
+// drifts makes an unhosted search run with different parameters from the UCI
+// engine, and both still produce a plausible number. A seam that defaults to a
+// stub instead reads to a gate as a broken engine rather than as an unwired one.
 //
 // The values are read at go-setup and info-line cadence, never per node, which
 // is why a snapshot costs nothing and needs no indirection.

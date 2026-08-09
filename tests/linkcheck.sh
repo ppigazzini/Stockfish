@@ -8,26 +8,27 @@
 # This one asks the linker's question instead -- does any object compiled from
 # an engine file reference a symbol that only a shell object defines?
 #
-# The sibling C port does this by linking its engine alone against an empty
-# baseline and failing on any undefined symbol. That is stronger and is not
-# available here: src/ is one flat directory with one link step, and the engine
-# genuinely calls into the platform, so "any undefined symbol" would be every
-# symbol. The reachable version is the pairwise one -- engine objects against
-# shell-defined symbols -- with a baseline for what exists today.
+# The strong form -- link the engine alone and fail on any undefined symbol --
+# is tests/enginelink.sh, and it does not replace this one. The engine still
+# references platform symbols, so a link-or-fail verdict is a single bit; this
+# names each edge and holds it against a baseline, which is what makes closing
+# them one at a time possible.
 #
-# Built with LTO OFF on purpose: under LTO the object holds IR and the symbol
-# table is not the one the final link resolves. That makes this a statement
-# about the non-LTO build, which is the honest limit and is stated in the docs.
+# Built with LTO OFF on purpose: under LTO the object holds IR and its symbol
+# table is not the one the final link resolves. So a clean run is a statement
+# about the non-LTO build only. Quote that limit with the result -- LTO can
+# resolve an edge this gate names, and can create one it cannot see.
 #
 # `EXTRACXXFLAGS=-fno-lto` CANNOT turn LTO off. src/Makefile:502 interpolates
 # EXTRACXXFLAGS into CXXFLAGS and line 964 APPENDS `-flto` after it, so the
 # Makefile's flag is last and wins and the objects hold IR. Build through
 # COMPCXX, a wrapper that drops every -flto argument and passes the rest through.
 #
-# This check would answer correctly even on LTO objects, because GCC writes a
-# plugin-readable symbol table into one and `nm` reads it. tests/enginelink.sh
-# would not: `ld` without the plugin cannot resolve them, warns, and still exits
-# 0. Keep the two consistent -- they share the wrapper for that reason.
+# Note the asymmetry, and keep the wrapper anyway. GCC writes a plugin-readable
+# symbol table into an LTO object and `nm` reads it, so this check would answer
+# even there; tests/enginelink.sh would not, because `ld` without the plugin
+# cannot resolve such objects, warns, and still exits 0. The two share the
+# wrapper so they are never describing two different builds.
 #
 # Exit codes:  0 clean   1 findings   2 skipped
 

@@ -38,8 +38,10 @@
 
 namespace Stockfish {
 
-// Defined in numa_shared.h. Held only by reference in the signature below; a
-// forward declaration keeps the shared-memory machinery out of this header.
+// Forward-declare rather than including numa_shared.h, which defines this
+// template: ensure_network_replicated below is the only user and takes it by
+// const reference, so the shared-memory machinery stays off every includer of
+// this header. Naming it by value anywhere here makes that include mandatory.
 template<typename T>
 class LazyNumaReplicatedSystemWide;
 
@@ -149,8 +151,9 @@ class ThreadPool {
               const Search::SearchManager::UpdateContext&);
 
     Search::SearchManager* main_manager();
-    // The engine's view of the set: count and at, and nothing that knows what a
-    // good move is. Search::best_worker does the vote on the engine side.
+    // Expose a count and an accessor, and nothing that ranks a move: the vote
+    // over the workers is Search::best_worker, on the engine side. A
+    // best-thread helper here would put search policy in the platform zone.
     usize           worker_count() const { return threads.size(); }
     Search::Worker* worker_at(usize i) const { return threads[i]->worker.get(); }
 

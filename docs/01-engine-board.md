@@ -71,8 +71,8 @@ both -- `slider_blockers`, `see_ge` -- get them without touching two structures.
 startup and is cache-line aligned where it is read.
 
 **Which implementation is compiled changes the code but not the answer.** Every tier must
-produce the same attack sets, and the compile matrix benching one signature across roughly
-twenty architecture builds is what holds that.
+produce the same attack sets, and what holds that is the compile matrix benching one signature
+after every architecture build it does ([10-tooling-ci.md](10-tooling-ci.md)).
 
 ## `position.cpp` -- the board
 

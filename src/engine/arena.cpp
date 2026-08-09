@@ -24,10 +24,10 @@ namespace Stockfish {
 
 namespace {
 
-// The default: plain aligned allocation. Correct, and slower than large pages,
+// Allocate page-aligned with plain malloc. Correct, and slower than large pages,
 // which is the right trade for something that runs when nothing was registered.
-// It is deliberately NOT a stub -- engine/ has to be able to allocate on its own
-// or the standalone link proves nothing.
+// Keep it a working allocator rather than a stub: engine/ must be able to
+// allocate on its own, or tests/enginelink.sh links an engine it cannot run.
 void* default_alloc(usize bytes) {
     constexpr usize Alignment = 4096;
     const usize     rounded   = ((bytes + Alignment - 1) / Alignment) * Alignment;

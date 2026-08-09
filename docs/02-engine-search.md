@@ -68,20 +68,27 @@ ceiling, and that ordering is most of what the table is for.
 `D` is a template parameter, one per table, so a bonus and the clamp it belongs to cannot be
 transposed at a call site.
 
-| Table | Indexed by | Clamp |
-|---|---|---|
-| `ButterflyHistory` | colour, from-to | 7183 |
-| `LowPlyHistory` | ply (first 5), from-to | 7183 |
-| `CapturePieceToHistory` | moving piece, destination, captured type | 10692 |
-| `PieceToHistory` (a continuation plane) | moving piece, destination | 30000 |
-| `PawnHistory` | pawn-key row, piece, destination | 8192 |
-| `CorrectionHistory` | a key row | 1024 |
+| Table | Indexed by |
+|---|---|
+| `ButterflyHistory` | colour, from-to |
+| `LowPlyHistory` | ply, up to `LOW_PLY_HISTORY_SIZE`, and from-to |
+| `CapturePieceToHistory` | moving piece, destination, captured type |
+| `PieceToHistory` (a continuation plane) | moving piece, destination |
+| `PawnHistory` | pawn-key row, piece, destination |
+| `CorrectionHistory` | a key row |
+| `TTMoveHistory` | a single entry |
+
+Each table's `D` is a tuned constant and moves with tuning patches, so read it from the
+declaration rather than from here:
+
+```sh
+grep -nE 'using [A-Za-z]+History' src/engine/history.h
+```
 
 The four correction counters share one `CorrectionBundle` per row, and `SharedHistories`
 hands out the **counter** rather than the row -- `pawn_correction(pos, us)` and its three
 siblings -- so the key that selects the row and the field read from it are chosen in one
-place. `do_move` still prefetches the rows themselves, written out at the call site.
-| `TTMoveHistory` | a single entry | 8192 |
+place. `do_move` prefetches the rows themselves, written out at the call site.
 
 `ContinuationHistory` is a `MultiArray<PieceToHistory, PIECE_NB, SQUARE_NB>`: a plane per
 (piece, destination) of the *previous* move, each plane itself a history over the current
@@ -218,11 +225,12 @@ do not cope with the volume.
 the largest in the tree:
 
 ```sh
-awk 'NR>=708 && /^}/{print NR-708; exit}' src/engine/search.cpp
+awk '/^Value Search::Worker::search\(/{s=NR} s && NR>s && /^}/{print NR-s+1; exit}' \
+  src/engine/search.cpp
 ```
- `NodeType` is a template parameter -- `NonPV`, `PV`, `Root` -- so the PV-only
-bookkeeping is compiled out of the zero-window instantiation, which is the overwhelming
-majority of nodes.
+
+`NodeType` is a template parameter -- `NonPV`, `PV`, `Root` -- so the PV-only bookkeeping is
+compiled out of the zero-window instantiation, which is the overwhelming majority of nodes.
 
 The Steps, in the order the node applies them:
 

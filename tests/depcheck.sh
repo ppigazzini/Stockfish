@@ -10,9 +10,9 @@
 # a library that reaches into the process driving it cannot be linked without
 # that process, and cannot be reasoned about without reading it.
 #
-# src/ is flat, so a zone is a NAME LIST rather than a directory. That is the
-# weakness of this gate and the reason for the unassigned-file check below: a
-# new file joins no zone by default and would otherwise be silently exempt.
+# A zone is a DIRECTORY under src/ (tests/zones.sh). A file added outside all
+# three joins no zone, so the unassigned-file check below has to fail on it: a
+# file in no zone matches no rule here and would otherwise be silently exempt.
 #
 # The baseline expires in both directions. A violation not in it fails, and an
 # entry in it that no longer happens fails too -- a fixed edge that stays listed

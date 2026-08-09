@@ -23,17 +23,20 @@
 
 #include "../engine/basetypes.h"
 
-// TimePoint and now() live in the engine, which is what speaks them; this
-// header re-exports both so the platform and shell readers are undisturbed.
+// Reach TimePoint and now() through here: both are declared in engine/clock.h,
+// because comparing and storing a time is the engine's job, and this include is
+// what makes them visible to a file that includes platform.h.
 #include "../engine/clock.h"
 
 #if !defined(NO_PREFETCH) && (defined(_MSC_VER) || defined(__INTEL_COMPILER))
     #include <immintrin.h>
 #endif
 
-// The compiler's no-aliasing qualifier, spelled per compiler. A macro rather
-// than a keyword, so include-what-you-use cannot see who needs it: a file using
-// RESTRICT must include this header itself rather than inherit it.
+// Spell the compiler's no-aliasing qualifier. RESTRICT is a macro, not a
+// keyword, so include-what-you-use cannot attribute it to this header: a file
+// that writes RESTRICT must include platform.h itself. Inheriting it through
+// another header compiles until that header stops including this one, and then
+// fails with RESTRICT read as an identifier.
 #ifdef __GNUC__
     #define RESTRICT __restrict__
 #elif defined(_MSC_VER)

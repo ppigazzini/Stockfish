@@ -35,16 +35,16 @@ BACKUP=$(mktemp -d)
 MUTATED=()
 
 # A LIST, not one path. A row that mutates two files -- linkcheck needs a caller
-# in one zone and a callee in another -- would otherwise leave the first behind:
-# the second mutate() overwrote the variable and restore() put back only the
-# last. The tree then stays broken past the row that broke it, and every later
-# row measures a mutant it did not create.
+# in one zone and a callee in another -- leaves the first behind if a single
+# variable holds the path: the second mutate() overwrites it and restore() puts
+# back only the last. The tree then stays broken past the row that broke it, and
+# every later row measures a mutant it did not create.
 #
-# The backup is keyed by ORDINAL, not by basename. Keying by basename has the
-# same failure one level down: a row that mutates the SAME file twice backs the
-# file up on the first call and then overwrites that backup with the
-# already-mutated content on the second, so restore() puts back a half-mutant
-# and reports success.
+# Key the backup by ORDINAL, not by basename. Keying by basename has the same
+# failure one level down: a row that mutates the SAME file twice backs it up on
+# the first call and then overwrites that backup with the already-mutated
+# content on the second, so restore() puts back a half-mutant and reports
+# success.
 restore() {
     local i
     for ((i=${#MUTATED[@]}-1; i>=0; i--)); do
@@ -180,7 +180,7 @@ if selected docslint; then
     restore
 fi
 
-# --------------------------------------------------------------- fingerprint
+# --------------------------------------------------------------- golden
 
 row golden
 if selected golden; then
@@ -369,7 +369,7 @@ fi
 row instrumented
 if selected instrumented; then
     # instrumented.py is a merge gate -- sanitizers.yml and matetrack.yml both
-    # run it -- and nothing had watched it fail. The mutation targets the
+    # run it -- so it needs a row that watches it fail. The mutation targets the
     # contract its assertions actually rest on: _expect_critical requires a
     # non-zero exit AND the literal "CRITICAL ERROR" in the output, so renaming
     # the banner leaves the exit code alone and breaks only the string. Removing
@@ -430,8 +430,8 @@ fi
 row reprosearch
 if selected reprosearch; then
     # reprosearch is a merge gate -- tests.yml runs it and AGENTS.md lists it --
-    # and until this row nothing had ever watched it go red. What it asserts is
-    # that ucinewgame resets the search completely: the same two short games,
+    # so it needs a row that watches it go red. What it asserts is that
+    # ucinewgame resets the search completely: the same two short games,
     # replayed after it, must return the same node counts. Leaving the
     # transposition table warm across the reset is the smallest change that
     # breaks exactly that and nothing else.
@@ -493,11 +493,11 @@ fi
 row b5-mismatch
 if selected b5-mismatch; then
     # The INVERSE of every other row: this one passes when the compiler REFUSES.
-    # B5.2 welded the discriminator into the accessor so a correction counter
-    # cannot be read through a field the row's key did not select. Before, the
-    # accessor returned the bundle and the caller picked a field, so pairing one
-    # key's row with another key's field compiled and returned a real counter of
-    # the wrong kind.
+    # Each accessor in SharedHistories selects the row with one key AND returns
+    # that key's field, so the pairing cannot be split. An accessor returning
+    # the whole bundle for the caller to index would let one key's row be read
+    # through another key's field -- which compiles, returns a real counter of
+    # the wrong kind, and no gate but the bench signature can see it.
     echo "negative-control: b5 [type]   -- a key/field mismatch must not compile"
     cat > /tmp/nc_b5_mismatch.cpp <<'CPP'
 #include "history.h"
@@ -558,10 +558,11 @@ fi
 
 row b5-swap
 if selected b5-swap; then
-    # What the type does NOT buy, recorded as a test so the page cannot imply
-    # otherwise. The accessors share a signature, so substituting one for another
-    # still compiles; only the bench signature catches it. This is the residual
-    # the sibling port measured after making the same change.
+    # What the type does NOT buy, recorded as a test so no page can imply
+    # otherwise. The accessors share a signature, so substituting one for
+    # another still compiles and no type check can refuse it; the bench
+    # signature is the only thing that catches it. Do not describe the typing
+    # above as closing this case.
     REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
     if [ -z "$REF" ]; then
         echo "negative-control: b5 [swap]  SKIPPED -- no Bench: in the commit record"
@@ -606,8 +607,10 @@ if selected buildcoverage; then
     else
         echo "  ok, red (1)"; PASS=$((PASS+1))
     fi
-    # And the inverse: linkcheck stays GREEN, which is why this gate is its
-    # prerequisite rather than a duplicate of it.
+    # And the inverse: depcheck stays GREEN, because it reads includes in FILES
+    # and the file is there. The gate an uncompiled source blinds is linkcheck,
+    # which reasons about OBJECTS and gets none -- which is why buildcoverage is
+    # linkcheck's prerequisite rather than a duplicate of either.
     if ./tests/depcheck.sh >/dev/null 2>&1; then
         echo "  depcheck green, as expected -- it reasons about files, not builds"
     fi
@@ -658,14 +661,15 @@ fi
 row enginelink
 if selected enginelink; then
     # The row that justifies enginelink existing beside linkcheck, and the row
-    # that caught the gate being wrong.
+    # that keeps its LTO handling honest on every run.
     #
-    # An engine file calling a PLATFORM symbol. Written the obvious way, with
-    # `EXTRACXXFLAGS=-fno-lto`, enginelink reported CLEAN on exactly this: the
-    # Makefile appends -flto after EXTRACXXFLAGS so the objects still held IR,
-    # and `ld` without the plugin warns and exits 0. Both gates now build
-    # through a COMPCXX wrapper that strips the flag, and this row is what says
-    # so on every run rather than once.
+    # An engine file calling a PLATFORM symbol. This must fail the link, and it
+    # only does so while the objects hold machine code: `EXTRACXXFLAGS=-fno-lto`
+    # cannot turn LTO off (src/Makefile:502 interpolates EXTRACXXFLAGS into
+    # CXXFLAGS, line 964 appends -flto after it), and `ld` without the plugin
+    # warns on an IR object and STILL EXITS 0. A gate built that way reports
+    # CLEAN on exactly this mutation, so this row is what proves the COMPCXX
+    # wrapper is still stripping the flag.
     echo "negative-control: enginelink  -- an engine object calling a platform symbol"
     mutate src/engine/search.cpp \
         'void Search::Worker::start_searching() {' \
@@ -742,9 +746,9 @@ if selected fuzz-rig; then
         SKIP=$((SKIP+1))
     else
         # The inverse of every other row: the harness must NOT claim a finding.
-        # A run where no table loaded tests nothing, and reporting it as a defect
-        # is how a harness earns credit for an experiment it never ran -- which
-        # this one did on its first run, against an illegal fixture.
+        # A run where no table loaded tests nothing, and reporting it as a
+        # defect is how a harness earns credit for an experiment it never ran.
+        # The required answer is RIG FAULT, not FINDING and not clean.
         echo "negative-control: fuzz [rig]  -- a rig with no tables must not read as a finding"
         stub norig '#!/bin/bash
 echo "info string Found 0 WDL and 0 DTZ tablebase files (up to 3-man)."
@@ -826,10 +830,11 @@ rm -rf "$NCSTUB"
 
 # --------------------------------------------------------------- coverage
 #
-# The gap this closes: a gate with no row here was simply ABSENT, and absence is
+# The gap this closes: a gate with no row here is simply ABSENT, and absence is
 # quiet. lanecheck.sh asks whether a gate is dispatched and docslint.sh asks
-# whether it is documented; neither asks whether it can fail, so a gate could be
-# fully wired, fully described and inert. reprosearch.sh was exactly that.
+# whether it is documented; neither asks whether it CAN FAIL, so a gate can be
+# fully wired, fully described and inert while every listing counts it as
+# coverage. Every gate therefore needs a row or a written excuse.
 #
 # The excuse list expires in both directions, as lanecheck's does: an excused
 # script that HAS a row is a stale excuse, and an excuse naming a script the
