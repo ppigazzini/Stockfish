@@ -35,11 +35,6 @@ gates = [
 [tool.ruff]
 target-version = "py310"
 src = ["tests"]
-# Upstream's own test runners. Reformatting a file this branch did not write
-# buys nothing and costs a merge conflict on every rebase, so they are excluded
-# rather than churned: a lint sweep is not a licence to rewrite someone else's
-# file. Gates written HERE are still checked.
-extend-exclude = ["tests/instrumented.py", "tests/testing.py"]
 # House style wraps prose-heavy tool comments at ~100, not ruff's default 88.
 line-length = 100
 
