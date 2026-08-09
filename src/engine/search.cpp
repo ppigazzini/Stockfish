@@ -2000,7 +2000,8 @@ int Search::Worker::reduction(bool i, Depth d, int mn, int delta) const {
 // instead. This function is called to check whether the search should be
 // stopped based on predefined thresholds like time limits or nodes searched.
 TimePoint Search::Worker::elapsed() const {
-    return main_manager()->tm.elapsed([this]() { return worker_set().nodes_searched(worker_set().ctx); });
+    return main_manager()->tm.elapsed(
+      []() { return worker_set().nodes_searched(worker_set().ctx); });
 }
 
 
@@ -2218,7 +2219,7 @@ void SearchManager::check_time(Search::Worker& worker) {
 
     static TimePoint lastInfoTime = now();
 
-    TimePoint elapsed = tm.elapsed([&worker]() { return worker_set().nodes_searched(worker_set().ctx); });
+    TimePoint elapsed = tm.elapsed([]() { return worker_set().nodes_searched(worker_set().ctx); });
     TimePoint tick    = worker.limits.startTime + elapsed;
 
     if (tick - lastInfoTime >= 1000)
