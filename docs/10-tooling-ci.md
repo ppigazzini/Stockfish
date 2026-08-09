@@ -66,7 +66,7 @@ passes.
 
 These answer "does it still cost the same?", which no value gate above can.
 
-**There are three of them because there are three questions.** Picking the wrong one produces
+**There are four of them because there are four questions.** Picking the wrong one produces
 a confident wrong verdict, so pick by what the change CLAIMS:
 
 | the change claims | gate | why |
@@ -74,6 +74,7 @@ a confident wrong verdict, so pick by what the change CLAIMS:
 | "this is pure code motion" | `tests/textequal.sh` | a codegen-equivalence proof has no noise floor; one run settles it |
 | "this costs nothing" (a refactor) | `tests/perfbudget.sh` | deterministic; an instruction increase in a behaviour-preserving change is a real red flag |
 | "this is faster" (an optimisation) | `tests/npsab.sh`, and probably fishtest | the instruction axis can report the wrong sign -- see below |
+| "this moved no cache line" | `tests/perfcounters.sh` | the only axis that sees a miss, a mispredict or a stall, and the only one that runs above AVX2 |
 
 ### `tests/perfbudget.sh`
 
@@ -491,6 +492,54 @@ a forward declaration and asserts the gate goes red. That row exists because the
 **wrong when first written** and reported clean on exactly this mutation: the objects still held
 LTO IR, and `ld` handed an LTO object without the plugin warns and *exits 0*, linking a binary
 that resolved nothing. Both gates now refuse outright if they see that warning.
+
+## `tests/perfcounters.sh`
+
+What the hardware actually did, base against head, at four architecture tiers.
+
+```sh
+./tests/perfcounters.sh                      # merge-base with master, against HEAD
+./tests/perfcounters.sh --rounds 7 --comp clang
+./tests/perfcounters.sh --tiers "x86-64-avx2" --pgo
+```
+
+`perfbudget.sh` simulates and `npsab.sh` times. This one reads the CPU's counters:
+instructions, cycles, cache misses and references, branch misses and branches, plus IPC and the
+two miss rates derived from them. It reaches what neither other axis can.
+
+**It is the only performance tool that runs above AVX2.** callgrind implements no AVX-512 and
+dies on the first instruction it does not know, so `perfbudget.sh` refuses those tiers outright
+-- and those are tiers players build. The default set is `x86-64`, `x86-64-sse41-popcnt`,
+`x86-64-avx2` and `x86-64-vnni512`.
+
+**It answers a question the instruction axis cannot even ask.** A change that keeps
+instructions and loses IPC has moved a cache line; the budget scores that as free. This is the
+same asymmetry that makes `perfbudget.sh` report a locality win with the wrong sign.
+
+It uses `perf_event_open` directly through `tests/perf_counters.cpp`, not the `perf` CLI, which
+is a separate package and absent on plenty of machines that can still count. That needs
+`perf_event_paranoid` at 2 or lower -- the usual default -- and a container needs `CAP_PERFMON`;
+without it the script skips rather than reporting zeroes.
+
+`tests/perfcounters_report.py` does the aggregation. It reports the median of the **paired**
+ratios, not the ratio of the medians: a pair is one round, and a round is the only comparison in
+which both sides saw the same machine state.
+
+**Read the spread, not the median.** Instructions and branches are near-deterministic; cycles,
+IPC and both miss counts are not, and they move with frequency scaling, with what else the
+machine is doing, and with where the scheduler puts the process. A ratio whose spread straddles
+1.000 has established no direction, and the report says so in those words rather than printing a
+median that looks decisive.
+
+Exit 0 means measured, not clean -- whether a moved miss rate is acceptable is a judgement the
+table informs rather than makes. Exit 1 is reserved for the one thing the script can decide
+alone: the two sides searched a different number of nodes, so the comparison is VOID.
+
+**Two rig faults it refuses rather than reports.** A counter the kernel multiplexed carries only
+part of the run, so the tool scales it and flags `scaled=1`, and the script drops the reading
+rather than quote it. And both binaries hashing identically means one side was measured twice --
+which yields a beautifully tight ratio of 1.0000 and means nothing -- so equal hashes at
+different revisions are a skip, not a result.
 
 ## `tests/docslint.sh`
 
