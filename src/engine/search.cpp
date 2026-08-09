@@ -2224,6 +2224,10 @@ void syzygy_extend_pv(const SearchOptions&      options,
                       RootMove&                 rootMove,
                       Value&                    v) {
 
+    // Read the steady clock directly rather than clock.h's now(): this budget is
+    // compared against `Move Overhead`, whose minimum is 0, and TimePoint counts
+    // whole milliseconds, so the seam's resolution would let the abort run a
+    // millisecond past the deadline. See the note in clock.h.
     auto t_start      = std::chrono::steady_clock::now();
     int  moveOverhead = options.moveOverhead;
     bool rule50       = options.syzygy50MoveRule;
