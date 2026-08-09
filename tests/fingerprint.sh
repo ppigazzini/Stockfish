@@ -18,9 +18,13 @@
 # ONLY-IN-ONE-SIDE list as a list of inlining differences, and the CHANGED list
 # as the one that carries the signal.
 #
-# A group whose pattern matches nothing on BOTH sides is a MISS and fails,
-# never a zero: a symbol the compiler inlined away would otherwise read as
-# agreement at zero-versus-zero forever.
+# A side that yields no symbol at all is VOID and fails, never equal: two empty
+# profiles compare identical, so a rig that profiled nothing would otherwise
+# report the strongest result this gate can give.
+#
+# Only symbols carrying `Stockfish` are in the verdict. The allocator and the
+# thread runtime move with the environment rather than with the code, and are
+# printed apart from it.
 #
 # callgrind simulates rather than samples, so the counts are deterministic.
 #

@@ -4,10 +4,10 @@ on:
   workflow_call:
   workflow_dispatch:
 
-# One job, both sides. The point of the design is that base and head are built
-# and measured on the SAME runner in the SAME run, so nothing is stored and
-# nothing has to be reproduced across machines or toolchains. A stored absolute
-# instruction count is a property of the box as much as of the code.
+# Build and measure both sides in one job, on the SAME runner in the SAME run,
+# so nothing is stored and nothing has to be reproduced across machines or
+# toolchains. An absolute instruction count is a property of the box as much as
+# of the code, so a baseline kept from an earlier run compares two boxes.
 jobs:
   Budget:
     name: Instruction budget (base vs head)
@@ -42,15 +42,14 @@ jobs:
             echo "head=HEAD"   >> "$GITHUB_OUTPUT"
           fi
 
-      # Two tiers. A change can improve one and regress the other, and callgrind
-      # implements no AVX-512 so the instruction axis stops at avx2.
-      # `cmd | tee log` reports TEE's status, so a step ending on the pipeline --
-      # or worse, on a trailing `echo` -- passes while the gate is red. The first
-      # version of this lane did exactly that and could never have failed. It is
-      # the trap this repository's own docs name, committed into the lane that
-      # documents it. pipefail plus an explicit exit is the fix, and a SKIP is
-      # failed deliberately: a gate that could not run has proven nothing and
-      # must not read as green.
+      # Measure two tiers: a change can improve one and regress the other, and
+      # callgrind implements no AVX-512 so the instruction axis stops at avx2.
+      #
+      # Keep `set -o pipefail` and the explicit `exit "$rc"`. `cmd | tee log`
+      # reports TEE's status, so a step whose last command is the pipeline -- or
+      # worse, a trailing `echo` -- passes while perfbudget.sh returned 1, and
+      # the lane can then never fail. Exit 2 is failed on purpose: a gate that
+      # could not run has proven nothing and must not read as green.
       - name: Instruction budget, x86-64-avx2
         run: |
           set -o pipefail
@@ -76,10 +75,10 @@ jobs:
           fi
           exit "$rc"
 
-      # textequal is deterministic and CI-safe, so it gets a lane. npsab does
-      # NOT: a hosted runner is not an idle box, and a wall-clock ratio measured
-      # on one is noise wearing a number. It stays local by design, which is
-      # recorded rather than left as an omission.
+      # textequal is deterministic, so it gets a lane. Do not add npsab beside
+      # it: a hosted runner is not an idle box, and a wall-clock ratio measured
+      # on one is noise wearing a number. npsab stays local, and the gap is real
+      # -- no lane here can establish that a change is faster.
       - name: Codegen equivalence (informational)
         if: always()
         continue-on-error: true

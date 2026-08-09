@@ -94,7 +94,7 @@ else
 fi
 
 echo
-[ "$unassigned" = 0 ] || { echo "depcheck: $unassigned file(s) in no zone -- add them to a zone list"; rc=1; }
+[ "$unassigned" = 0 ] || { echo "depcheck: $unassigned file(s) in no zone -- move them into a zone directory"; rc=1; }
 echo "depcheck: $n_known baselined edge(s)"
 [ "$rc" = 0 ] && echo "depcheck: clean" || echo "depcheck: FINDINGS"
 exit "$rc"

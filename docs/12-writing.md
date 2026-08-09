@@ -1,10 +1,8 @@
 # Technical writing
 
-Every sentence written about this engine -- in a page here, in a code comment, in a commit
-message -- is a **claim with a shelf life**. It was true when written, it is checkable, and
-the code will move under it.
-
-That is the whole discipline: write the claim that survives, and write it so it fails loudly
+Every sentence written about this engine -- in a page, in a code comment, in a commit
+message -- is a **claim with a shelf life**: true when written, checkable, and standing over
+code that will move under it. Write the claim that survives, and write it so it fails loudly
 when it stops being true.
 
 Audience: anyone writing prose about this code.
@@ -84,9 +82,10 @@ awk '/^Value Search::Worker::search\(/{s=NR} s && NR>s && /^}/{print NR-s+1; exi
   src/engine/search.cpp
 ```
 
-Note that the command anchors on the symbol, not on a line number. A command that pins the
-line it starts counting from goes stale on the first commit above it, and reports a number
-rather than an error when it does.
+Anchor the command on the symbol, never on a line number. A command that pins the line it
+starts counting from goes stale on the first commit above it, and when it does it reports a
+number rather than an error -- which is worse than pinning the figure, because it looks
+current.
 
 Where it does not, write the claim that stays true: *the largest file under `src/engine/nnue/`*
 rather than *over a thousand lines*.
@@ -139,7 +138,8 @@ call X, use Y, which holds the lock" does not.
 
 ## The three surfaces
 
-The rules above are the same on all three. What differs is the shelf life.
+A page, a code comment and a commit message answer to the same rules. They differ in shelf
+life.
 
 ### Pages
 
@@ -147,9 +147,9 @@ Numbered by reading order; a contributor works down from the architecture into a
 owns one part of `src/`, names it in the opening lines, and names its audience.
 
 A page is **hot** when it describes code that moves and **cold** when what it describes barely
-does. The index table carries the temperature. Every false claim found in a set like this is
-found in a hot row, and lands the same way: a commit changed the code and left the page
-describing the code it replaced.
+does. The index table carries the temperature, and the temperature is a prediction of where to
+look for a false claim: a page goes false when a commit changes the code and leaves the prose
+describing what it replaced, so the rate is the rate the code moves.
 
 **Change hot code, re-read its page in the same commit.** A doc is wrong from the moment the
 code lands, and nobody knows which claim broke better than the person who broke it.
@@ -248,8 +248,13 @@ Between the subject and the results, say what the change does and why it is expe
 Credit an idea taken from elsewhere. This is the part a reader six months later actually needs,
 and it is the part most often omitted.
 
-The `closes` line is what links the commit to its review, and nearly every commit in the
-history carries one.
+The `closes` line is what links the commit to its review. It is not universal across the whole
+history -- the convention post-dates most of it -- so read the ratio over the recent past
+rather than over `master` entire:
+
+```sh
+git log -n 200 --format='%b' master | grep -c '^closes https://github.com/'
+```
 
 ## What the gate checks, and what it cannot
 

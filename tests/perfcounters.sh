@@ -1,12 +1,13 @@
 #!/bin/bash
-# Compare two revisions on the CPU's own counters, at four architecture tiers.
+# Compare two revisions on the CPU's own counters, across architecture tiers.
 #
 # tests/perfbudget.sh owns the instruction axis and is deterministic, but it
 # simulates: callgrind cannot see a cache miss, a mispredicted branch or a
 # stalled cycle, and it refuses AVX-512 outright. tests/npsab.sh owns wall clock
-# but resolves only a few percent. This is the third axis -- what the hardware
-# actually did -- and it is the only one that runs at every tier the engine
-# ships.
+# but resolves only a few percent. This axis reports what the hardware actually
+# did: it is the only one that reads a miss or a mispredict off the machine
+# rather than off a model, and the only one that reports either at the AVX-512
+# tiers callgrind refuses to run.
 #
 # It answers a different question from either: not "did the work change" but
 # "did the machine execute it differently". A refactor that keeps instructions
@@ -35,10 +36,10 @@ set -o pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT" || exit 2
 
-# Four tiers spanning what players build: the portable baseline, the SSE4 tier,
-# the AVX2 tier the gates use, and an AVX-512 tier callgrind cannot measure at
-# all. Named, never `native` -- a number filed under a label that means a
-# different binary on the next host is not a number.
+# Span what players build, from the portable baseline up to a tier callgrind
+# cannot measure at all. Name every ARCH: `native` picks the vector width from
+# whatever host is compiling, so a number filed under that label describes a
+# different binary on the next machine and is reproducible nowhere.
 TIERS=${TIERS:-"x86-64 x86-64-sse41-popcnt x86-64-avx2 x86-64-vnni512"}
 ROUNDS=${ROUNDS:-5}
 DEPTH=${DEPTH:-13}
@@ -56,8 +57,9 @@ usage: tests/perfcounters.sh [<base-rev>] [<head-rev>] [options]
 
   --rounds N    interleaved paired rounds per tier (default 5)
   --depth N     bench depth (default 13)
-  --tiers "..." space-separated ARCH list (default four tiers)
+  --tiers "..." space-separated ARCH list (default: the TIERS list in this file)
   --comp C      gcc or clang (default gcc)
+  --jobs N      parallel build jobs (default: nproc)
   --pgo         build both sides with profile-build, which is what ships
 
 The default base needs no pin file. `master` tracks upstream/master, so
@@ -98,7 +100,7 @@ HEAD_SHA=$(git rev-parse --short "$HEAD_REV" 2>/dev/null) || {
     echo "perfcounters: SKIPPED -- unknown revision $HEAD_REV" >&2; exit 2; }
 
 # A container or a hardened host refuses the counters entirely. Find that out
-# now, against a trivial child, rather than after building eight binaries.
+# now, against a trivial child, rather than after building every tier twice.
 PARANOID=$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo 9)
 
 WORK=$(mktemp -d) || exit 2
@@ -143,10 +145,10 @@ for side in base head; do
 done
 
 build() {  # side arch -> binary path, or empty
-    # One `local` per variable, deliberately. `local a=$1 b="...$a..."` expands
-    # the whole line before it assigns, so the second reference reads whatever
-    # `a` held in the CALLER, not the argument -- which silently builds and
-    # measures one side twice.
+    # Declare one variable per `local`. `local a=$1 b="...$a..."` expands the
+    # whole line before it assigns, so the second reference reads whatever `a`
+    # held in the CALLER, not the argument -- which silently builds and measures
+    # one side twice.
     local side=$1
     local arch=$2
     local dir="$WORK/wt-$side/src"
@@ -171,8 +173,8 @@ for arch in $TIERS; do
     # PIN WHAT IS ABOUT TO BE MEASURED, BY CONTENT. Two different revisions
     # cannot produce the same binary: the build stamp alone embeds a different
     # GIT_SHA. Equal hashes therefore mean one side was measured twice, which
-    # yields a beautifully tight ratio of 1.0000 and means nothing. This is a
-    # rig fault, not a result.
+    # yields a ratio of 1.0000 that is tight, clean and empty. Refuse it as a
+    # rig fault rather than reporting it as a result.
     hb=$(sha256sum "$binbase" | cut -c1-12)
     hh=$(sha256sum "$binhead" | cut -c1-12)
     echo "  base $hb  head $hh"
@@ -225,10 +227,6 @@ done
 
 echo "perfcounters: base=$BASE_SHA head=$HEAD_SHA"
 if [ "$rc" = 0 ]; then
-    # NOT "clean". This is a report, not a verdict: a cache-miss ratio moving is
-    # a fact about the hardware, and whether it is acceptable is a judgement the
-    # table informs rather than makes. Exit 1 is reserved for a comparison that
-    # is VOID, which is the one thing this can decide by itself.
     echo "perfcounters: measured -- read the table; a spread straddling 1.000 decided nothing"
 elif [ "$rc" = 2 ]; then
     echo "perfcounters: SKIPPED -- at least one tier could not be measured" >&2
