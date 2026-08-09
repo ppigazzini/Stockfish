@@ -1031,7 +1031,11 @@ Value Search::Worker::search(
             && (piecesCount < tbConfig.cardinality || depth >= tbConfig.probeDepth)
             && pos.rule50_count() == 0 && !pos.can_castle(ANY_CASTLING))
         {
-            TB::ProbeState err;
+            // Seeded, because the prober is now a host-supplied function rather
+            // than a call into this tree: upstream's probe_wdl always writes
+            // this, an injected one is only asked to. FAIL is the safe seed --
+            // it declines the cutoff rather than inventing one.
+            TB::ProbeState err = TB::ProbeState::FAIL;
             TB::WDLScore   wdl = TB::tb_source().probe_wdl(TB::tb_source().ctx, pos, &err);
 
             // Force check of time on the next occasion
