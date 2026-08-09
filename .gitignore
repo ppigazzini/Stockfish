@@ -30,4 +30,9 @@ tests/syzygy-3man
 .venv/
 .ruff_cache/
 
+# fastchess writes its resume config into its working directory on exit, and
+# tests/match.sh runs it from the repo root. The gate now redirects it into the
+# scratch directory, so this catches a fastchess run started by hand.
+config.json
+
 __DEV/
