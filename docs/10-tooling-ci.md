@@ -835,7 +835,9 @@ reads as a rig fault and never as a finding.
 file by its **magic** rather than by HTTP status. A mirror that answers a missing file with a
 body -- an error page, a redirect to a landing page -- otherwise gets that body stored as a
 table, and it fails much later inside the decoder, where it reads as a corrupt table rather
-than a bad download. Without a corpus the harness **skips visibly** rather than passing.
+than a bad download. Without a corpus the harness **skips visibly** rather than passing. It is
+dispatched by `sanitizers.yml`, whose `malformed.sh` job has one fixture built from a real
+table, under `continue-on-error` so a mirror outage costs that fixture and not the job.
 
 **None of this is a merge gate**, and the nightly `fuzz.yml` gives each harness a job of its
 own with the whole budget rather than splitting one budget several ways -- they run at
@@ -843,26 +845,59 @@ throughputs orders of magnitude apart, so a shared budget is really a budget for
 them. A clean run means "nothing failed inside that budget", never "there is nothing to find".
 
 **`tb` is not in the nightly matrix, and that is a hole rather than a decision.** It finds the
-two defects recorded below within seconds of every run, and a job that reports the same two
-known defects every night is read by nobody. The harness, `tbfetch.sh`, the verdict comparison
-and the `fuzz-tb`, `fuzz-rig` and `fuzz-verdict` negative-control rows all remain and run by
-hand -- so until those two defects are fixed, the decoder is fuzzed only when someone
-remembers to:
+defect recorded below within a budget a nightly run has, and a job that reports the same known
+defect every night is read by nobody. The harness, `tbfetch.sh`, the verdict comparison and the
+`fuzz-tb`, `fuzz-rig` and `fuzz-verdict` negative-control rows all remain and run by hand -- so
+until that defect is fixed, the decoder is fuzzed only when someone remembers to:
 
 ```sh
 ./tests/tbfetch.sh && ./tests/fuzz.py --seconds 600 --harness tb
 ```
 
-### A corrupt table crashes the engine
+**The blocking condition is now one defect and it has a rate.** The load-time bounds described
+under `malformed.sh` closed the header half: the crash below no longer reproduces, the
+`std::bad_alloc` that shared the page with it is gone, and 1728 mutation rounds -- the whole of
+a 1500-second run -- produced no other. Round 1728 produced a SIGSEGV, and it is not a header
+defect at all. What is left is stated exactly so the commit that closes it can restore the lane
+by paste rather than by rediscovery.
 
-**Not fixed.** One byte of a valid table, and the engine dies:
+### A corrupt table crashes the engine, in the block walk
+
+**Not fixed, and no longer reachable from the header.** The reproducer this section used to
+carry -- byte 10 of `KNvK.rtbw`, the flags byte, cleared -- is now answered with `Corrupted
+table in file KNvK.rtbw` and the search's own move, and it is the sixth fixture in
+`malformed.sh`. What remains is the walk that turns a `sparseIndex[]` entry into a block:
+
+```
+while (offset < 0)                      offset += d->blockLength[--block] + 1;
+while (offset > d->blockLength[block])  offset -= d->blockLength[block++] + 1;
+```
+
+`block` comes out of the file and neither loop has a bound, so a mutation deep in the data of a
+real table still reaches unmapped memory:
+
+```
+AddressSanitizer: unknown-crash
+    #0 decompress_pairs           src/platform/syzygy/tbprobe.cpp   (the backward walk)
+    #1 do_probe_table<TBTable<DTZ>>
+    #2 Tablebases::probe_dtz  <-  root_probe  <-  rank_root_moves  <-  ThreadPool::start_thinking
+```
+
+`blockLength` and `sparseIndex` are both proven to lie inside the mapping at open, so this is
+an index defect rather than a pointer one, and it is the one site in this reader where the
+bound cannot be moved to load time: validating `sparseIndex[]` is O(file size) and would force
+a 6-man table resident, and no container can be sized at a `u32`'s domain. **It therefore needs
+a measurement on a probing workload, which no gate in this tree can take yet** -- the bench
+never probes, so every perf gate here is blind to the decode path.
+
+The historical form, kept because it fixes the shape in a reader's mind:
 
 ```sh
 printf '\x00' | dd of=tests/syzygy-3man/KNvK.rtbw bs=1 seek=10 count=1 conv=notrunc
 ```
 
-The engine loads the table, answers `readyok`, and dies with SIGSEGV on the first probe. Under
-valgrind the fault is a read of unmapped memory inside `decompress_pairs`
+The engine loaded the table, answered `readyok`, and died with SIGSEGV on the first probe.
+Under valgrind the fault was a read of unmapped memory inside `decompress_pairs`
 (`src/platform/syzygy/tbprobe.cpp`), reached from `probe_dtz` by way of `rank_root_moves` and
 `Engine::go`:
 
@@ -882,17 +917,62 @@ every value at or above it is answered normally:
 |---|---|---|---|---|---|---|---|---|
 | | SEGV | SEGV | SEGV | SEGV | SEGV | SEGV | ok | ok |
 
-A header field the decoder trusts to bound how far it may walk fits that shape: understating it
-sends the decoder past the end of the mapping, overstating it changes nothing it reaches for
-this position. **Which named field it is has not been established** -- byte 11 tolerates every
-value tried, which rules out the adjacent `maxSymLen`/`minSymLen` pair. The reproducer and the
-fault site are solid; the field identity is not, and is the next thing to nail down.
+**The field is `flags`, and the threshold is one bit.** `TBFlag::SingleValue` is 128: the
+shipped `KNvK.rtbw` stores one value for the whole table and stops the parse after two bytes,
+and clearing that bit sends an 80-byte file down the full decode path, where every span it then
+describes lies past the mapping. That is why every value below 128 crashed and every value
+above it did not -- the table above was reading one bit through eight, which is also why byte
+11 tolerated everything: on the `SingleValue` path nothing after byte 11 is read at all.
 
-Two consequences regardless of which field it is. **A corrupt table should be refused, not
-answered and not crashed on** -- one flipped byte in a downloaded file kills the engine
-mid-game, and Syzygy files come off public mirrors. And a random 8-byte mutation of the same
-file has separately produced an uncaught `std::bad_alloc`, which `-fno-exceptions` turns into
-`std::terminate`; whether that shares this cause is unknown.
+**A corrupt table should be refused, not answered and not crashed on** -- one flipped byte in a
+downloaded file kills the engine mid-game, and Syzygy files come off public mirrors. It now is
+refused, by the load-time bounds; the `std::bad_alloc` a random 8-byte mutation of the same
+file produced was the same root and is gone with it, and both are `malformed.sh` fixtures.
+
+## `tests/malformed.sh`
+
+Assert that a **known-bad** input is still refused.
+
+```sh
+./tests/malformed.sh                    # builds its own sanitized engine
+./tests/malformed.sh --exe path/to/sf   # test a binary you built
+```
+
+Nothing else in this tree asks that question. `signature.sh` is the anchor and it is green with
+every parser defect this gate covers live, because the bench reads no file the engine did not
+ship with. `fuzz.py` looks for input that is bad in a way nobody has described yet, on a
+nightly budget, and is explicitly not a merge gate. Between them sits the case that matters
+most for a fix: **a file refused yesterday must be refused today.**
+
+Six fixtures, five of them eight lines of Python and one a single byte of a real table. They
+are generators rather than committed blobs because the interesting thing about a fixture here
+is *which field is wrong*, and a blob hides that:
+
+| fixture | the field | what it reached |
+|---|---|---|
+| `symbol-oob` | `btree[0].Right` = 2048 with one symbol declared | an out-of-bounds heap **write** through `symlen[]` |
+| `negative-resize` | `minSymLen` 255, `maxSymLen` 0 | `base64.resize()` of about 1.8e19 |
+| `block-shift` | the block-size byte = 200 | `1ULL << 200` |
+| `base64-shift` | `minSymLen` 0 | a right-pad shift of exactly 64 |
+| `btree-past-end` | 65535 symbols declared by an 80-byte file | a `btree[]` span outside the mapping |
+| `corpus-flags` | `KNvK.rtbw` byte 10 cleared | the section above |
+
+**These need no synthetic mutation: the defect is the mutation.** Every one was red on the tree
+that carried the defect it covers, and the commit that closed it records that output. That is
+the rule for adding one -- a fixture that has never been seen red is a fixture nobody has shown
+can fail.
+
+A refusal is four things and all four are checked: the process exits 0, it prints a diagnostic
+naming the file, no sanitizer reports anything, and **it still answers**. A parser that takes
+the engine down with it has not refused a file, it has been defeated by one.
+
+It builds its own engine under `sanitize="address undefined" debug=yes`, from the **working
+tree** rather than from `HEAD`, because the gate exists to be run on a change before that change
+is a commit. Sanitized on purpose: the tables are `mmap`ed and a read just past the end lands in
+the page's zero padding, so the shipped build absorbs exactly the class of defect this gate is
+for. **A gate for refusals has to be stricter than the binary it protects**, or it certifies the
+reads it cannot see. `corpus-flags` SKIPS loudly without `tbfetch.sh`'s corpus rather than
+passing.
 
 ### setoption during an unbounded search deadlocks the engine
 
@@ -969,7 +1049,7 @@ comments rather than blocks.
 |---|---|
 | `stockfish.yml` | the umbrella: calls the rest |
 | `tests.yml` | the compile matrix: every platform/compiler configuration in its `config:` list, several architectures each, all benching the signature |
-| `sanitizers.yml` | TSan, UBSan, valgrind, valgrind-thread, uninstrumented, glibcxx assertions |
+| `sanitizers.yml` | TSan, UBSan, valgrind, valgrind-thread, uninstrumented, glibcxx assertions, and `malformed.sh` in a job of its own |
 | `matetrack.yml` | mate-finding over a position suite |
 | `games.yml` | a short self-play match on a debug build; fails on an assertion or a disconnect |
 | `avx2_compilers.yml` | a compiler sweep at one architecture |
@@ -1013,7 +1093,7 @@ flowchart LR
     D --> G5["docslint.sh<br/>lanecheck.sh<br/>buildcoverage.sh<br/>depcheck.sh<br/>linkcheck.sh<br/>enginelink.sh"]
     GO --> G6["golden.sh"]
     FZ --> G7["fuzz.py (uci, net, shm)<br/>fuzzsearch.sh"]
-    SAN --> G3["instrumented.py"]
+    SAN --> G3["instrumented.py<br/>malformed.sh"]
     PB --> G4["perfbudget.sh<br/>textequal.sh"]
     L(["no trigger -- by hand only"]) --> G2["negative_control.sh<br/>fingerprint.sh<br/>npsab.sh<br/>match.sh<br/>perfcounters.sh<br/>perfdecomp.sh"]
     style G2 stroke-dasharray: 5 5
