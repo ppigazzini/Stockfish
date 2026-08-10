@@ -139,6 +139,12 @@ using ArenaPtr = std::conditional_t<std::is_array_v<T>,
                                     std::unique_ptr<T, ArenaArrayDeleter<std::remove_extent_t<T>>>,
                                     std::unique_ptr<T, ArenaDeleter<T>>>;
 
+template<typename T, typename... Args>
+std::enable_if_t<!std::is_array_v<T>, ArenaPtr<T>> make_arena_unique(Args&&... args) {
+    static_assert(alignof(T) <= 4096, "arena alloc may fail for such an alignment");
+    return ArenaPtr<T>(memory_allocator<T>(arena_alloc, std::forward<Args>(args)...));
+}
+
 template<typename T>
 std::enable_if_t<std::is_array_v<T>, ArenaPtr<T>> make_arena_unique(usize num) {
     using ElementType = std::remove_extent_t<T>;
