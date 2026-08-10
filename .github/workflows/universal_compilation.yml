@@ -39,7 +39,7 @@ jobs:
           for hash in $(git rev-list -100 HEAD); do
             benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
           done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
+          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || { echo "No bench found in the last 100 commits -- refusing to run the anchor lanes against an empty reference"; exit 1; }
 
       - name: Check arch selection under SDE
         run: ./scripts/check_universal.sh ./stockfish-linux-x86-64-universal "$SDE_DIR/sde" "$benchref"
@@ -96,7 +96,7 @@ jobs:
           for hash in $(git rev-list -100 HEAD); do
             benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
           done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
+          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || { echo "No bench found in the last 100 commits -- refusing to run the anchor lanes against an empty reference"; exit 1; }
 
       - name: Check arch selection under SDE
         run: ./scripts/check_universal.sh ./stockfish-windows-x86-64-universal.exe "$SDE_DIR/sde" "$benchref"
@@ -149,7 +149,7 @@ jobs:
           for hash in $(git rev-list -100 HEAD); do
             benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
           done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
+          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || { echo "No bench found in the last 100 commits -- refusing to run the anchor lanes against an empty reference"; exit 1; }
 
       - name: Check arch selection under qemu
         run: ./scripts/check_universal_arm.sh ./stockfish-linux-arm64-universal "$benchref"
@@ -195,12 +195,12 @@ jobs:
           for hash in $(git rev-list -100 HEAD); do
             benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
           done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
+          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || { echo "No bench found in the last 100 commits -- refusing to run the anchor lanes against an empty reference"; exit 1; }
 
       - name: Verify bench and compiler
         working-directory: src
         run: |
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
           ./stockfish compiler 2>&1 | grep -q DOTPROD || { echo "compiler output missing DOTPROD" >&2; exit 1; }
 
       - name: Rename binary
@@ -300,7 +300,7 @@ jobs:
           for hash in $(git rev-list -100 HEAD); do
             benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
           done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
+          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || { echo "No bench found in the last 100 commits -- refusing to run the anchor lanes against an empty reference"; exit 1; }
       - name: Check arch selection under qemu
         run: |
           QEMU=qemu-riscv64 QEMU_LD_PREFIX=/usr/riscv64-linux-gnu \
