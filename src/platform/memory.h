@@ -23,12 +23,10 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <new>
 #include <type_traits>
 #include <utility>
 
 #include "../engine/arena.h"
-#include "../engine/types.h"
 #include "../engine/basetypes.h"
 
 #if defined(_WIN64)

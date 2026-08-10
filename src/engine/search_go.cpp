@@ -31,6 +31,10 @@
 #include "search.h"
 #include "searchoptions.h"
 #include "tt.h"
+#include "timeman.h"
+#include "tb_source.h"
+#include "../platform/numa.h"
+#include "../platform/misc.h"
 
 namespace Stockfish::Search {
 

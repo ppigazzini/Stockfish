@@ -31,6 +31,7 @@
 #include "bitboard.h"
 #include "../platform/misc.h"
 #include "types.h"
+#include "basetypes.h"
 
 namespace Stockfish {
 

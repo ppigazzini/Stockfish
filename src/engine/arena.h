@@ -20,7 +20,6 @@
 #define ARENA_H_INCLUDED
 
 #include <algorithm>
-#include <cstdlib>
 #include <memory>
 #include <new>
 #include <type_traits>
