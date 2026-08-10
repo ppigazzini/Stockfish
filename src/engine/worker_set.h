@@ -19,7 +19,6 @@
 #ifndef WORKER_SET_H_INCLUDED
 #define WORKER_SET_H_INCLUDED
 
-#include <atomic>
 
 #include "basetypes.h"
 

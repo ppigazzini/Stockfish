@@ -23,7 +23,7 @@
 #include <cmath>
 
 #include "search.h"
-#include "../platform/platform.h"
+#include "searchoptions.h"
 
 namespace Stockfish {
 

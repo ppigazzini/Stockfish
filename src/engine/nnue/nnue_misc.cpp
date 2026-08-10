@@ -33,6 +33,7 @@
 #include "../score.h"
 #include "network.h"
 #include "nnue_accumulator.h"
+#include "../basetypes.h"
 
 namespace Stockfish::Eval::NNUE {
 

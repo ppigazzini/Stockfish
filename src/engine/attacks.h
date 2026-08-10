@@ -25,8 +25,12 @@
 #include <utility>
 
 #include "types.h"
+// Kept: RESTRICT, used below under USE_DUAL_HYPERBOLA_QUINT, expands to the
+// __restrict__ KEYWORD. A macro that expands to a keyword leaves no AST node,
+// so IWYU attributes no use to it and asks for a removal that reds every avx2
+// build -- including the analyze lane's own ARCH, which compiles this branch.
+#include "../platform/platform.h"  // IWYU pragma: keep
 #include "bitboard.h"
-#include "../platform/platform.h"
 
 #ifdef __aarch64__
     #include <arm_acle.h>
