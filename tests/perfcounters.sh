@@ -167,8 +167,18 @@ RESULTS="$WORK/results.tsv"
 for arch in $TIERS; do
     echo "== $arch =="
 
-    binbase=$(build base "$arch") || { echo "  SKIPPED -- base did not build at $arch"; continue; }
-    binhead=$(build head "$arch") || { echo "  SKIPPED -- head did not build at $arch"; continue; }
+    # A tier that did not build measured nothing. Record it in the exit code:
+    # `continue` alone leaves rc at 0, so a grid in which every tier failed to
+    # compile exits clean and reads as a pass.
+    #
+    # DEMOTE, NEVER OVERWRITE. rc is last-writer-wins, so a plain `rc=2` here
+    # erases a VOID an earlier tier already recorded, and exit 1 is reserved for
+    # the one thing this script decides alone: the two sides searched different
+    # trees. A skip must never bury that.
+    binbase=$(build base "$arch") \
+      || { echo "  SKIPPED -- base did not build at $arch"; [ "$rc" = 1 ] || rc=2; echo; continue; }
+    binhead=$(build head "$arch") \
+      || { echo "  SKIPPED -- head did not build at $arch"; [ "$rc" = 1 ] || rc=2; echo; continue; }
 
     # PIN WHAT IS ABOUT TO BE MEASURED, BY CONTENT. Two different revisions
     # cannot produce the same binary: the build stamp alone embeds a different
@@ -180,7 +190,7 @@ for arch in $TIERS; do
     echo "  base $hb  head $hh"
     if [ "$hb" = "$hh" ] && [ "$BASE_SHA" != "$HEAD_SHA" ]; then
         echo "  SKIPPED -- both sides are the same binary; one side was measured twice" >&2
-        rc=2
+        [ "$rc" = 1 ] || rc=2
         echo
         continue
     fi
@@ -210,7 +220,7 @@ for arch in $TIERS; do
         done
         [ "$bad" = 1 ] && break
     done
-    [ "$bad" = 1 ] && { rc=2; echo; continue; }
+    [ "$bad" = 1 ] && { [ "$rc" = 1 ] || rc=2; echo; continue; }
 
     if [ "$nodes_base" != "$nodes_head" ]; then
         echo "  VOID -- base searched $nodes_base nodes, head searched $nodes_head."
