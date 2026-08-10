@@ -24,4 +24,4 @@ Key: 07EA21D9A952A6B4
 Checkers: 
 info string Available processors: <cpus>
 info string Using 1 thread
-bestmove e2e3 ponder b7b5
+bestmove b2b4 ponder c5b4
