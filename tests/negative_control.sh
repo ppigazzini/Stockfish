@@ -428,6 +428,37 @@ if selected tbfetch; then
     rm -rf "$NCMIRROR" "$NCDEST"
 fi
 
+# --------------------------------------------------------------- malformed
+
+row malformed
+if selected malformed; then
+    # malformed.sh's claim is that a file refused yesterday is refused today, so
+    # the mutation has to be a BOUND rather than a behaviour beside it. Every
+    # other decision in set() stays exactly where it was; only the answer to
+    # "does the file hold this span" is removed, by putting the mapping's end a
+    # million times further out than the file.
+    #
+    # Two fixtures ride on that answer alone -- the btree the file declares 65535
+    # symbols for, and the real table whose flags byte sends the parser down the
+    # full decode path -- and both go back to reading past the mapping.
+    echo "negative-control: malformed   -- the mapping end pushed past the file"
+    mutate src/platform/syzygy/tbprobe.cpp \
+        'if (data && !set(e, data, (const u8*) e.baseAddress + size))' \
+        'if (data && !set(e, data, (const u8*) e.baseAddress + size * 1024 * 1024))'
+    ./tests/malformed.sh >/dev/null 2>&1; NCRC=$?
+    restore
+    if [ "$NCRC" = "2" ]; then
+        # Exit 2 is SKIPPED, and reading it as a detection is the whole failure
+        # this file exists to prevent one level up.
+        echo "  SKIPPED -- malformed.sh could not build or run"; SKIP=$((SKIP+1))
+    elif [ "$NCRC" = "0" ]; then
+        echo "  NOT DETECTED -- a table describing more than the file holds was accepted"
+        FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+fi
+
 # --------------------------------------------------------------- reprosearch
 
 row reprosearch
