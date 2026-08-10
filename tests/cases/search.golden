@@ -24,4 +24,4 @@ option name EvalFile type string default nn-ab28990d4ea3.nnue
 uciok
 info string Available processors: <cpus>
 info string Using 1 thread
-bestmove e2e4 ponder e7e5
+bestmove e2e4 ponder c7c5
