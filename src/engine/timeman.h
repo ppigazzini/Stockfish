@@ -24,13 +24,13 @@
 
 #include "clock.h"
 #include "basetypes.h"
-#include "../platform/platform.h"
 
-#include "searchoptions.h"
 
 namespace Stockfish {
 
 enum Color : u8;
+
+struct SearchOptions;
 
 namespace Search {
 struct LimitsType;

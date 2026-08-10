@@ -46,10 +46,11 @@
 #include "../../engine/position.h"
 #include "../../engine/search.h"
 #include "../../engine/types.h"
-#include "../../shell/ucioption.h"
 #include "../../engine/basetypes.h"
 #include "../platform.h"
 #include "../../shell/console.h"
+#include "../../engine/tb_source.h"
+#include "../../engine/searchoptions.h"
 
 #ifndef _WIN32
     #include <fcntl.h>
