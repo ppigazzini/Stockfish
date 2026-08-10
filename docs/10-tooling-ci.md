@@ -747,8 +747,27 @@ Each takes a **reference from the clean input first**, and compares against it:
 
 | harness | the property, beyond surviving |
 |---|---|
-| `tb` | if the engine still probes a table (`tbhits` above zero) and still answers, the move must be the one the unmutated tables gave. A different move is the search believing a table that lied to it. |
+| `tb` | after a corrupt table has been probed, a probe of a table the mutation did NOT touch must return exactly what the clean corpus returned. One table's corruption reaching another's verdict is the search believing a reader that lost track of which bytes belonged to what. |
 | `net` | a corrupt network must be refused, not loaded. Reporting an evaluation that differs from the shipped net's, with no error, is the engine passing off a corrupt network as an opinion. |
+
+**`tb` probes twice per iteration, and only the second probe carries a claim.** A table is
+mapped at first probe, so the only way to put the mutated bytes through the parser is to probe
+the material that table holds -- and once that has happened, its answer is comparable to
+nothing. The Syzygy format has no integrity field, the mutated bytes *are* the compressed
+values for that material, and a reader that decodes them perfectly returns a different move
+than the clean table did.
+
+That is not a theory. The harness asserted the opposite for its whole life and never showed it,
+because the crashes below fired first; with those closed, it reported a "wrong verdict" about
+once every twenty iterations, every one of them a correct read of bytes the harness had itself
+changed. **A property no implementation can satisfy is not a check, it is a scheduled false
+alarm** -- the same objection this page makes to the `tb` lane it dropped.
+
+So the first probe is the stimulus, judged on liveness alone, and the second reads an untouched
+table and is judged on its answer. What that leaves uncovered is worth stating rather than
+asserting away: **nothing in this tree can tell a correctly-read corrupt table from an
+incorrectly-read one**, and with no checksum in the format nothing can. What a corrupt table
+must not do is crash, hang, or contaminate a neighbour, and those three are what is checked.
 
 The reference is what makes these checkable at all: without it there is no way to tell a
 refused input from an accepted one that lies, because both leave the engine alive and both
