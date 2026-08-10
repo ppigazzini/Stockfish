@@ -221,8 +221,25 @@ struct LR {
 
 static_assert(sizeof(LR) == 3, "LR tree entry must be 3 bytes");
 
+// A Sym read out of btree[] is twelve bits, so its domain is this and no larger
+// whatever the file says about how many symbols it declared. symlen[], visited[]
+// and the reader's own copy of btree[] are all sized here, which is what lets
+// set_symlen() and decompress_pairs() index them with a value straight from the
+// file and still stay inside the buffer -- with no test in either loop.
 constexpr usize SymCount = 4096;
 
+// True when COUNT items of STRIDE bytes each still fit between P and the end of
+// the mapping.
+//
+// Every bound in this reader is O(1) in the file's SIZE. The tables are mmapped
+// and paged in on demand, so a validation pass that walked sparseIndex[] or
+// blockLength[] would force a whole 6-man table resident and defeat the laziness
+// the reader is built on: compare the ends, never the contents.
+//
+// A division rather than a product. COUNT * STRIDE evaluated in u64 wraps for a
+// pair a crafted file can name -- blocksNum is a u32 from the file and
+// sizeofBlock is 1 << a byte from it -- and a bound that wraps is a bound the
+// file walks straight through.
 bool fits(const u8* p, u64 count, u64 stride, const u8* end) {
 
     if (p > end)
@@ -265,6 +282,11 @@ class TBFile: public std::ifstream {
         }
     }
 
+    // Memory map the file and check it. SIZE receives the number of bytes the
+    // mapping actually holds: every bound in set() and set_sizes() is a compare
+    // against that end, and the reader has no other way to know where the file
+    // stops. POSIX already had it in statbuf and threw it away; Windows had it
+    // in the two halves it passes to CreateFileMapping.
     u8* map(void** baseAddress, u64* mapping, usize* size, TBType type) {
         if (is_open())
             close();  // Need to re-open to get native file descriptor
@@ -276,6 +298,8 @@ class TBFile: public std::ifstream {
         if (fd == -1)
             return *baseAddress = nullptr, nullptr;
 
+        // Check the status before st_size sizes the mapping: on a failure the
+        // struct is untouched, so an unchecked call maps a stack value.
         if (fstat(fd, &statbuf) != 0)
         {
             ::close(fd);
@@ -388,8 +412,8 @@ struct PairsData {
     Piece           pieces[TBPIECES];  // Position pieces: the order of pieces defines the groups
     u64 groupIdx[TBPIECES + 1];        // Start index used for the encoding of the group's pieces
     int groupLen[TBPIECES + 1];        // Number of pieces in a given group: KRKN -> (3, 1)
-    u16 map_idx[4];  // WDLWin, WDLLoss, WDLCursedWin, WDLBlessedLoss (used in DTZ)
-    std::vector<LR> btreeBuf;
+    u16 map_idx[4];            // WDLWin, WDLLoss, WDLCursedWin, WDLBlessedLoss (used in DTZ)
+    std::vector<LR> btreeBuf;  // btree[] copied out of the mapping, sized at SymCount
 };
 
 // struct TBTable contains indexing information to access the corresponding TBFile.
@@ -1133,6 +1157,9 @@ u8 set_symlen(PairsData* d, Sym s, std::vector<u8>& colour, bool& cyclic) {
     return d->symlen[sl] + d->symlen[sr] + 1;
 }
 
+// Returns nullptr when the file describes a table that does not fit the bytes it
+// was read from, which the caller turns into a refused table rather than a
+// parse that continues on the value.
 u8* set_sizes(PairsData* d, u8* data, const u8* end) {
 
     if (!fits(data, 1, 1, end))
@@ -1156,9 +1183,13 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     // element stores the biggest index that is the tb size.
     u64 tbSize = d->groupIdx[std::find(d->groupLen, d->groupLen + 7, 0) - d->groupLen];
 
+    // The fixed header below: two shift counts, the padding byte, the block
+    // count and the two symbol lengths.
     if (!fits(data, 9, 1, end))
         return nullptr;
 
+    // Both block sizes are 1ULL << a byte taken raw from the file, so a byte of
+    // 64 or more is undefined before it is anything else.
     if (data[0] >= 64 || data[1] >= 64)
         return nullptr;
 
@@ -1173,12 +1204,21 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     d->maxSymLen = *data++;
     d->minSymLen = *data++;
 
+    // Both lengths are bytes from the file and both are used as arithmetic, not
+    // as data. minSymLen > maxSymLen makes the resize below a length of about
+    // 1.8e19; minSymLen == 0 makes the right-padding shift further down exactly
+    // 64; and maxSymLen >= 64 makes it negative. A Huffman code over this
+    // alphabet is nowhere near 64 bits long, so refusing all three costs no real
+    // table anything.
     if (d->minSymLen == 0 || d->minSymLen > d->maxSymLen || d->maxSymLen >= 64)
         return nullptr;
 
     d->lowestSym = (Sym*) data;
     d->base64.resize(d->maxSymLen - d->minSymLen + 1);
 
+    // lowestSym[] is read at i and at i + 1 below, for i up to base64.size() - 2,
+    // and again per symbol in decompress_pairs(): the span it must own is one
+    // entry per base64[] entry.
     if (!fits(data, d->base64.size(), sizeof(Sym), end))
         return nullptr;
 
@@ -1222,6 +1262,21 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     if (!fits(data, symlenSize, sizeof(LR), end))
         return nullptr;
 
+    // COPY btree[] out of the mapping, into a buffer sized at the symbol's own
+    // domain rather than at the count the file declared.
+    //
+    // set_symlen() below follows child symbols decoded from btree[] -- twelve
+    // bits, 0 to 4095, straight from the file -- and uses them both to index
+    // visited[] and to WRITE symlen[]. Sizing those from the file's own u16 is
+    // what makes a file that declares one symbol and names 2048 as its child an
+    // out-of-bounds heap write. Sizing them at the index's domain instead
+    // removes the write with no test in the loop that walks them, which is the
+    // one place in this reader a compare would be paid per symbol decoded.
+    //
+    // The tail the file did not declare is filled with LEAVES -- Right == 0xFFF,
+    // Left == 0 -- so the recursion terminates on a symbol the file never wrote,
+    // and a walk that reaches one yields a value rather than a wild read. About
+    // 16 KiB per PairsData, paid once per table opened.
     d->btreeBuf.assign(SymCount, LR{{0x00, 0xF0, 0xFF}});
     std::memcpy(d->btreeBuf.data(), data, symlenSize * sizeof(LR));
     d->btree = d->btreeBuf.data();
@@ -1261,6 +1316,8 @@ u8* set_dtz_map(TBTable<DTZ>& e, u8* data, File maxFile, const u8* end) {
                 data += uintptr_t(data) & 1;  // Word alignment, we may have a mixed table
                 for (int i = 0; i < 4; ++i)
                 {  // Sequence like 3,x,x,x,1,x,0,2,x,x
+                    // The step is read from the file before it is taken, so both
+                    // the read and the landing point are bounded.
                     if (!fits(data, sizeof(u16), 1, end))
                         return nullptr;
 
@@ -1296,7 +1353,10 @@ u8* set_dtz_map(TBTable<DTZ>& e, u8* data, File maxFile, const u8* end) {
 }
 
 // Populate entry's PairsData records with data from the just memory-mapped file.
-// Called at first access.
+// Called at first access. END is one past the last byte of the mapping.
+//
+// Returns false when any pointer or span the file describes leaves the mapping,
+// which is a table the caller must refuse rather than one it can parse further.
 template<typename T>
 bool set(T& e, u8* data, const u8* end) {
 
@@ -1310,8 +1370,8 @@ bool set(T& e, u8* data, const u8* end) {
     if (!fits(data, 1, 1, end))
         return false;
 
-    if (e.hasPawns != bool(*data & HasPawns) || (e.key != e.key2) != bool(*data & Split))
-        return false;
+    assert(e.hasPawns == bool(*data & HasPawns));
+    assert((e.key != e.key2) == bool(*data & Split));
 
     data++;  // First byte stores flags
 
@@ -1328,6 +1388,7 @@ bool set(T& e, u8* data, const u8* end) {
         for (int i = 0; i < sides; i++)
             *e.get(i, f) = PairsData();
 
+        // The order byte or pair, then one byte per piece.
         if (!fits(data, u64(1 + pp) + u64(e.pieceCount), 1, end))
             return false;
 
@@ -1353,6 +1414,9 @@ bool set(T& e, u8* data, const u8* end) {
     if (!(data = set_dtz_map(e, data, maxFile, end)))
         return false;
 
+    // The three arrays below are used through the pointer stored here and the
+    // size stored beside it, so each is bounded once, here, and never again:
+    // both ends of every span the file describes must lie inside the mapping.
     for (File f = FILE_A; f <= maxFile; ++f)
         for (int i = 0; i < sides; i++)
         {
@@ -1426,10 +1490,15 @@ void* mapped(TBTable<Type>& e, const Position& pos) {
     usize size = 0;
     u8*   data = TBFile(fname).map(&e.baseAddress, &e.mapping, &size, Type);
 
+    // A table whose own header describes something the file does not hold is
+    // refused exactly as a bad magic is: unmapped, baseAddress left null, the
+    // probe reporting FAIL and the search carrying on without it. The engine has
+    // no way to tell a truncated table from a crafted one, and no reason to.
     if (data && !set(e, data, (const u8*) e.baseAddress + size))
     {
         std::cerr << "Corrupted table in file " << fname << std::endl;
-        exit(EXIT_FAILURE);
+        TBFile::unmap(e.baseAddress, e.mapping);
+        e.baseAddress = nullptr;
     }
 
     e.ready.store(true, std::memory_order_release);
