@@ -8,7 +8,9 @@ Four harnesses, because they fail differently and none substitutes for another:
        is overwhelmingly rejected at the first token.
   tb   mutated Syzygy table bytes. The highest-consequence reader in the tree:
        an index computed one off returns a CONFIDENT WRONG VERDICT the search
-       believes, so "did not crash" is not the property that matters.
+       believes, so "did not crash" is not the property that matters. It probes
+       twice per iteration and makes its verdict claim on the table it did NOT
+       mutate; harness_tb says why the other one cannot carry a claim.
   net  a mutated network file through EvalFile. The engine embeds a network, so
        the failure mode is a REPLACEMENT net rather than a missing one.
   shm  concurrent engines contending for the shared network segment. The only
@@ -96,12 +98,21 @@ TOKENS = [
     "1e9",
 ]
 
-# A LEGAL 3-man position the fetched tables cover, so a clean run reports
-# tbhits. An illegal one makes the engine refuse the `position` command, and a
-# harness that cannot tell a refused fixture from a defect banks its own rig
-# fault as a finding -- which is why the reference run below is checked for
-# tbhits before any mutation is tried.
-TB_FEN = "8/8/8/8/3k4/8/3Q4/3K4 b - - 0 1"
+# One LEGAL 3-man position per stem the fetched corpus carries, so a clean run
+# reports tbhits for each. An illegal one makes the engine refuse the `position`
+# command, and a harness that cannot tell a refused fixture from a defect banks
+# its own rig fault as a finding -- which is why every reference verdict below is
+# checked for tbhits before any mutation is tried.
+#
+# One per stem, rather than one position, because the tb harness probes TWICE per
+# iteration and the two probes ask different questions: see harness_tb.
+TB_FENS = {
+    "KQvK": "4k3/8/8/8/8/8/8/3QK3 w - - 0 1",
+    "KRvK": "4k3/8/8/8/8/8/8/3RK3 w - - 0 1",
+    "KBvK": "4k3/8/8/8/8/8/8/3BK3 w - - 0 1",
+    "KNvK": "4k3/8/8/8/8/8/8/3NK3 w - - 0 1",
+    "KPvK": "4k3/8/8/8/8/8/3P4/4K3 w - - 0 1",
+}
 
 
 def run(cmds, timeout=25, extra_env=None):
@@ -168,56 +179,79 @@ def harness_uci(rng, deadline, findings):
     return n
 
 
-def tb_verdict(out):
-    """The engine's answer, as the pair a caller would act on."""
-    best = next(
-        (
-            line.split()[1]
-            for line in out.splitlines()
-            if line.startswith("bestmove") and len(line.split()) > 1
-        ),
-        None,
-    )
-    hits = 0
+def tb_verdicts(out):
+    """One (move, tbhits) pair per search in the session, in order.
+
+    Per search, not per session: the tb harness runs two searches in one engine
+    and the pair it can make a claim about is the second. Reading the first
+    `bestmove` and the last `tbhits` -- which is what a session-wide reader does
+    -- crosses the two and compares an answer to a count from the other search.
+    """
+    verdicts, hits = [], 0
     for line in out.splitlines():
         if " tbhits " in line:
             with contextlib.suppress(IndexError, ValueError):
                 hits = int(line.split(" tbhits ")[1].split()[0])
-    return best, hits
+        if line.startswith("bestmove") and len(line.split()) > 1:
+            verdicts.append((line.split()[1], hits))
+            hits = 0
+    return verdicts
 
 
 def harness_tb(rng, deadline, findings):
-    src = [f for f in sorted(os.listdir(TB))] if os.path.isdir(TB) else []
-    if not src:
-        return None
+    """Mutated Syzygy bytes, with two probes per iteration and a claim on one.
 
-    # The reference answer, from the UNMUTATED tables. Without it the harness can
-    # only ask whether the engine survived; with it, it can ask whether the
-    # engine was RIGHT -- which is the failure that does not announce itself. A
-    # corrupt table that still answers, still reports tbhits, and returns a
-    # different move than the clean tables did is a confident wrong verdict, and
-    # nothing else in this tree looks for one.
-    rc, out = run(
-        [
-            f"setoption name SyzygyPath value {TB}",
-            "isready",
-            f"position fen {TB_FEN}",
-            "go depth 8",
-        ]
-    )
-    if rc != 0 or "bestmove" not in out:
+    WHY TWO PROBES, AND WHY THE CLAIM IS ON THE SECOND. A table is mmapped at
+    first probe, so the only way to put the mutated bytes through the parser is
+    to probe the material that table holds. But once that probe has happened, its
+    answer is not comparable to anything: the Syzygy format carries no checksum,
+    the mutated bytes ARE the compressed values for that material, and a reader
+    that decodes them perfectly returns a different move than the clean table
+    did. Asserting otherwise makes the harness red on its own stimulus -- which
+    it was, at about one iteration in twenty, once the crashes that hid it were
+    fixed.
+
+    So the first probe is the STIMULUS and is judged on liveness alone, and the
+    second probe reads a table the mutation did not touch and must return exactly
+    what the clean corpus returned. That claim is sound by construction, and it
+    is not vacuous: it fails if a corrupt table's parse spills into a neighbour,
+    if it leaves the reader's shared state wrong, or if the engine answers from a
+    table it refused.
+
+    What is left uncovered is stated rather than asserted away: nothing here can
+    tell a correctly-read corrupt table from an incorrectly-read one, because
+    with no integrity field in the format nothing can.
+    """
+    corpus = sorted(os.listdir(TB)) if os.path.isdir(TB) else []
+    stems = sorted({f.split(".")[0] for f in corpus} & set(TB_FENS))
+    # Two, not one: the claim below needs a stem to leave alone.
+    if len(stems) < 2:
+        return None
+    victims = [f for f in corpus if f.split(".")[0] in stems]
+
+    # The reference answers, from the UNMUTATED tables, one per stem. Without
+    # them the harness can only ask whether the engine survived; with them it can
+    # ask whether the engine was RIGHT -- which is the failure that does not
+    # announce itself.
+    probes = [c for s in stems for c in (f"position fen {TB_FENS[s]}", "go depth 8")]
+    rc, out = run([f"setoption name SyzygyPath value {TB}", "isready", *probes])
+    ref = tb_verdicts(out)
+    if rc != 0 or len(ref) != len(stems):
         raise SystemExit("fuzz: RIG FAULT -- the clean tables gave no reference verdict")
-    ref_move, ref_hits = tb_verdict(out)
-    if not ref_hits:
-        raise SystemExit("fuzz: RIG FAULT -- the reference run probed no tablebase")
+    if not all(hits for _, hits in ref):
+        raise SystemExit("fuzz: RIG FAULT -- a reference run probed no tablebase")
+    ref = dict(zip(stems, ref, strict=True))
 
     n = 0
     with tempfile.TemporaryDirectory() as d:
         while time.time() < deadline:
             n += 1
-            for f in src:
+            for f in corpus:
                 shutil.copy(os.path.join(TB, f), os.path.join(d, f))
-            victim = os.path.join(d, rng.choice(src))
+            name = rng.choice(victims)
+            victim = os.path.join(d, name)
+            hurt = name.split(".")[0]
+            intact = rng.choice([s for s in stems if s != hurt])
             size = os.path.getsize(victim)
             with open(victim, "r+b") as fh:
                 for _ in range(rng.randint(1, 8)):
@@ -227,12 +261,14 @@ def harness_tb(rng, deadline, findings):
                 [
                     f"setoption name SyzygyPath value {d}",
                     "isready",
-                    f"position fen {TB_FEN}",
+                    f"position fen {TB_FENS[hurt]}",
+                    "go depth 8",
+                    f"position fen {TB_FENS[intact]}",
                     "go depth 8",
                 ]
             )
             if rc is None:
-                findings.append(("tb", "hang on a corrupt table", victim))
+                findings.append(("tb", f"hang on a corrupt {hurt} table", victim))
                 return n
             if rc < 0:
                 findings.append(("tb", f"killed by signal {-rc}", victim))
@@ -249,23 +285,25 @@ def harness_tb(rng, deadline, findings):
             if "Found 0 WDL" in out:
                 raise SystemExit("fuzz: RIG FAULT -- no tablebase was loaded")
             # Refusing a corrupt file is correct. Answering from it is correct
-            # only if the engine accepted it. Crashing or hanging is not.
-            if "bestmove" not in out:
-                findings.append(("tb", "no bestmove", victim))
+            # only if the engine accepted it. Crashing or hanging is not, and
+            # neither is stopping between the two probes.
+            got = tb_verdicts(out)
+            if len(got) < 2:
+                findings.append(("tb", f"no bestmove after a corrupt {hurt} table", victim))
                 return n
 
-            # The property that matters. If the engine still probed a table and
-            # still answered, the answer must be the one the clean tables gave:
-            # this position's value does not depend on the bytes we corrupted
-            # being right, only on them being READ right. A different move here
-            # is the search believing a table that lied to it.
-            move, hits = tb_verdict(out)
-            if hits and move != ref_move:
+            # The property that matters, on the probe that can carry it. INTACT's
+            # tables were copied in clean and never touched, so its answer does
+            # not depend on the mutated bytes at all -- only on the engine having
+            # kept them apart. A different move here is the reader letting one
+            # table's corruption reach another's verdict.
+            move, hits = got[1]
+            if hits and move != ref[intact][0]:
                 findings.append(
                     (
                         "tb",
-                        f"wrong verdict from a corrupt table: {move}, clean tables say {ref_move}"
-                        f" (tbhits {hits})",
+                        f"a corrupt {hurt} table changed the {intact} verdict: {move},"
+                        f" clean tables say {ref[intact][0]} (tbhits {hits})",
                         victim,
                     )
                 )
