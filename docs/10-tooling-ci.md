@@ -1032,6 +1032,68 @@ The harness must guard against generating an unbounded `go` with no `stop` behin
 hangs on this engine behaviour rather than reporting it -- and a leading empty token makes a
 generated line read as `" go"`, which a guard matching on the first character misses.
 
+## `tests/uci_driver.py`
+
+Drive the engine over UCI without tripping the stdin-EOF trap. An operator
+harness, not a lane -- `lanecheck.sh` excuses it on the grounds that every check
+it can make is owned by a gate that *is* dispatched.
+
+```sh
+python3 tests/uci_driver.py smoke          # 15 surfaces, exit 0 or 1, ~2s
+python3 tests/uci_driver.py bench          # and compare to the anchor in git log
+python3 tests/uci_driver.py perft --full   # tests/perft.sh's list, without expect
+python3 tests/uci_driver.py during --then 'setoption name Hash value 32'
+python3 tests/uci_driver.py go --depth 14 --threads 4 --syzygy tests/syzygy
+python3 tests/uci_driver.py raw 'position startpos' 'go movetime 500'
+```
+
+**The trap it exists for.** The engine is a REPL on stdin. A shell pipe closes
+stdin as the last command is written, the UCI loop reads EOF, and it quits
+*mid-search* -- returning a depth-1 move in a millisecond, with exit code 0 and
+nothing in the output saying the search was cut short:
+
+```sh
+printf 'position startpos\ngo movetime 3000\n' | ./stockfish | tail -1
+# bestmove a2a3                 <- 0.35s, depth 1, exit 0
+
+( printf 'position startpos\ngo movetime 3000\n'; sleep 4 ) | ./stockfish | tail -1
+# bestmove e2e4 ponder e7e5     <- 4.0s, depth 27
+```
+
+Every command it sends waits for the sentinel line that command actually
+produces -- `uciok`, `readyok`, `bestmove`, `Nodes searched:` -- on a pipe held
+open until `quit`. Stdlib only, no venv.
+
+Two subcommands do something no gate here does.
+
+**`during` is the liveness shape.** It is the only way to reach the engine while
+it is searching; everything else in the tree is request/response. It owns a
+deadline and reports a wedge *as a wedge* rather than as a harness timeout,
+which is the distinction M0.4 in the defect backlog asks for -- `golden.sh`
+compares text and `instrumented.py` looks for substrings, and to both of them a
+deadlocked engine is a rig fault. Its control passes; `--then 'setoption name
+Hash value 32'` hangs, and that is a live upstream defect described under
+fuzzing above, not a driver fault.
+
+**`perft` is the replacement on a box with no `expect`.** `tests/perft.sh` drives
+the engine through an expect script; where that is absent every case exits 127
+and the gate prints `Some tests failed` in a tenth of a second -- a missing
+interpreter reported as a movegen bug. The driver reads the same positions and
+the same expected counts out of `perft.sh` itself and speaks UCI directly, so
+the two cannot drift. **It is not a substitute for the gate in CI**, where
+`expect` is installed and `perft.sh` is what `tests.yml` runs.
+
+`bench` reads the expected node count out of `git log`, never from a constant,
+and `negative_control.sh uci_driver` is what shows that comparison can fail: the
+same futility mutation the `signature` row uses, and the driver must report
+MISMATCH. A mismatch is a **behaviour change**, not a performance question.
+
+`games` needs a `fastchess` binary and a book, looked for in `resources/` and
+overridable with `SF_FASTCHESS` / `SF_BOOK` or `--fastchess` / `--book`. Nothing
+fetches them; `tests/match.sh` is the project's own wrapper and builds its own.
+The Elo it prints establishes nothing at this game count -- the pass criterion is
+that every game finished legally.
+
 ## Local hooks
 
 ```sh
