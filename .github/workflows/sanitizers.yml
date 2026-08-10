@@ -100,3 +100,36 @@ jobs:
           make clean
           make -j4 ARCH=x86-64-sse41-popcnt ${{ matrix.sanitizers.make_option }} debug=yes optimize=no build > /dev/null
           python3 ../tests/instrumented.py --${{ matrix.sanitizers.instrumented_option }} ./stockfish
+
+  # Every lane above drives the engine with input the engine would accept. This
+  # one drives it with input that was ONCE accepted and must never be again: the
+  # fixtures are the crafted tablebase headers that reached an out-of-bounds
+  # write, a negative resize and two undefined shifts. They are regression
+  # fixtures rather than a fuzzer -- fuzz.yml looks for what nobody has described
+  # yet, on a nightly budget, and is explicitly not a merge gate. This is.
+  Malformed-input:
+    name: Refuse a malformed file
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the used network from the fishtest framework
+        working-directory: src
+        run: make net
+
+      # Same workaround as the matrix above: since Linux 6.5 the runner's ASLR
+      # entropy makes ASan report false positives.
+      - name: Lower ALSR entropy
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+
+      # The gate's last fixture is one byte of a REAL table, which needs the
+      # corpus. A mirror outage must not fail the job -- the fixture then SKIPS
+      # loudly inside the gate and the other five still run.
+      - name: Fetch the 3-man tablebases
+        continue-on-error: true
+        run: ./tests/tbfetch.sh
+
+      - name: Refuse every known-bad fixture
+        run: ./tests/malformed.sh

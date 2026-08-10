@@ -32,7 +32,6 @@ EXCUSED_NAMES=(
   testing.py
   get_native_properties.sh
   net.sh
-  tbfetch.sh
   fingerprint.sh
   zones.sh
   perfcounters.sh
@@ -47,7 +46,6 @@ EXCUSED_WHY=(
   "a harness imported by instrumented.py rather than a gate"
   "invoked by the Makefile, not by a workflow"
   "invoked by the Makefile's net target"
-  "downloads the tablebase corpus a fuzz harness needs; a lane would re-fetch it every run, so it is run by hand"
   "callgrind over the whole call graph, far costlier than the budget gate; run by hand before a decomposition"
   "the zone table, sourced by depcheck.sh, linkcheck.sh, enginelink.sh and fuzzsearch.sh rather than run"
   "reads the CPU's hardware counters; a virtualised hosted runner exposes no PMU, so a lane would skip every run"
