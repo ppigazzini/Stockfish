@@ -24,11 +24,11 @@
 #include <vector>
 
 
-#include "../../engine/searchoptions.h"
 #include "../../engine/tb_source.h"
 
 namespace Stockfish {
 class Position;
+struct SearchOptions;
 
 using Depth = int;
 

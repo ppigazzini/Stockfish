@@ -24,9 +24,7 @@
 #include <cassert>
 #include <exception>  // IWYU pragma: keep
 // IWYU pragma: no_include <__exception/terminate.h>
-#include <functional>
 #include <filesystem>
-#include <iosfwd>
 #include <optional>
 #include <string>
 #include <string_view>
