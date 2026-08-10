@@ -53,7 +53,7 @@ jobs:
           for hash in $(git rev-list -100 HEAD); do
             benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
           done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
+          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || { echo "No bench found in the last 100 commits -- refusing to run the anchor lanes against an empty reference"; exit 1; }
 
       - name: Download the used network from the fishtest framework
         run: make net
@@ -82,7 +82,7 @@ jobs:
           make clean
           make -j4 profile-build ARCH=$BINARY COMP=$COMP RUN_PREFIX=$EMU
           make strip ARCH=$BINARY COMP=$COMP
-          RUN_PREFIX=$EMU ../tests/signature.sh $benchref
+          RUN_PREFIX=$EMU ../tests/signature.sh "$benchref"
           mv ./stockfish$EXT ../stockfish-android-$BINARY$EXT
 
       - name: Remove non src files

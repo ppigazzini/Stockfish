@@ -179,7 +179,7 @@ jobs:
           for hash in $(git rev-list -100 HEAD); do
             benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
           done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
+          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || { echo "No bench found in the last 100 commits -- refusing to run the anchor lanes against an empty reference"; exit 1; }
 
       - name: Check compiler
         run: |
@@ -207,35 +207,35 @@ jobs:
           export CXXFLAGS="-Werror -D_GLIBCXX_DEBUG"
           make clean
           make -j4 ARCH=x86-32 optimize=no debug=yes build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test x86-32 build
         if: matrix.config.run_32bit_tests
         run: |
           make clean
           make -j4 ARCH=x86-32 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test x86-32-sse41-popcnt build
         if: matrix.config.run_32bit_tests
         run: |
           make clean
           make -j4 ARCH=x86-32-sse41-popcnt build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test x86-32-sse2 build
         if: matrix.config.run_32bit_tests
         run: |
           make clean
           make -j4 ARCH=x86-32-sse2 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test general-32 build
         if: matrix.config.run_32bit_tests
         run: |
           make clean
           make -j4 ARCH=general-32 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       # x86-64 tests
 
@@ -245,21 +245,21 @@ jobs:
           export CXXFLAGS="-Werror -D_GLIBCXX_DEBUG"
           make clean
           make -j4 ARCH=x86-64-avx2 optimize=no debug=yes build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test x86-64-bmi2 build
         if: matrix.config.run_64bit_tests
         run: |
           make clean
           make -j4 ARCH=x86-64-bmi2 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test x86-64-avx2 build
         if: matrix.config.run_64bit_tests
         run: |
           make clean
           make -j4 ARCH=x86-64-avx2 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       # Test a deprecated arch
       - name: Test x86-64-modern build
@@ -267,56 +267,56 @@ jobs:
         run: |
           make clean
           make -j4 ARCH=x86-64-modern build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test x86-64-sse41-popcnt build
         if: matrix.config.run_64bit_tests
         run: |
           make clean
           make -j4 ARCH=x86-64-sse41-popcnt build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test x86-64-ssse3 build
         if: matrix.config.run_64bit_tests
         run: |
           make clean
           make -j4 ARCH=x86-64-ssse3 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test x86-64-sse3-popcnt build
         if: matrix.config.run_64bit_tests
         run: |
           make clean
           make -j4 ARCH=x86-64-sse3-popcnt build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test x86-64 build
         if: matrix.config.run_64bit_tests
         run: |
           make clean
           make -j4 ARCH=x86-64 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test general-64 build
         if: matrix.config.run_64bit_tests
         run: |
           make clean
           make -j4 ARCH=general-64 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test apple-silicon build
         if: matrix.config.run_m1_tests
         run: |
           make clean
           make -j4 ARCH=apple-silicon build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test apple-silicon build with system g++ (macOS g++ == clang++)
         if: matrix.config.run_m1_tests
         run: |
           make clean
           env -u COMPCXX make -j4 ARCH=apple-silicon build COMP=gcc
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       # armv8 tests
 
@@ -329,7 +329,7 @@ jobs:
           fi
           make clean
           make -j4 ARCH=armv8 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test armv8-dotprod build
         if: matrix.config.run_armv8_tests
@@ -340,7 +340,7 @@ jobs:
           fi
           make clean
           make -j4 ARCH=armv8-dotprod build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       # armv7 tests
 
@@ -351,7 +351,7 @@ jobs:
           export LDFLAGS="-static -Wno-unused-command-line-argument"
           make clean
           make -j4 ARCH=armv7 build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test armv7-neon build
         if: matrix.config.run_armv7_tests
@@ -360,7 +360,7 @@ jobs:
           export LDFLAGS="-static -Wno-unused-command-line-argument"
           make clean
           make -j4 ARCH=armv7-neon build
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       # ppc64 tests
 
@@ -369,7 +369,7 @@ jobs:
         run: |
           echo "cd src && export LDFLAGS='-static' && make clean && make -j4 ARCH=ppc-64 build" > script.sh
           docker run --rm --platform ${{ matrix.config.platform }} -v ${{ github.workspace }}:/app sf_builder
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       # loongarch64 tests
 
@@ -378,21 +378,21 @@ jobs:
         run: |
           echo "cd src && export LDFLAGS='-static' && make clean && make -j4 ARCH=loongarch64 build" > script.sh
           docker run --rm --platform ${{ matrix.config.platform }} -v ${{ github.workspace }}:/app sf_builder
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test loongarch64-lsx build
         if: matrix.config.run_loongarch64_tests
         run: |
           echo "cd src && export LDFLAGS='-static' && make clean && make -j4 ARCH=loongarch64-lsx build" > script.sh
           docker run --rm --platform ${{ matrix.config.platform }} -v ${{ github.workspace }}:/app sf_builder
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       - name: Test loongarch64-lasx build
         if: matrix.config.run_loongarch64_tests
         run: |
           echo "cd src && export LDFLAGS='-static' && make clean && make -j4 ARCH=loongarch64-lasx build" > script.sh
           docker run --rm --platform ${{ matrix.config.platform }} -v ${{ github.workspace }}:/app sf_builder
-          ../tests/signature.sh $benchref
+          ../tests/signature.sh "$benchref"
 
       # Other tests
 
