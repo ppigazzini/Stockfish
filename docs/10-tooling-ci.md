@@ -608,6 +608,12 @@ Exit 0 means measured, not clean -- whether a moved miss rate is acceptable is a
 table informs rather than makes. Exit 1 is reserved for the one thing the script can decide
 alone: the two sides searched a different number of nodes, so the comparison is VOID.
 
+A tier that fails to build measured nothing and is recorded as exit 2, because `continue` alone
+would leave the exit code at 0 and a grid in which every tier failed to compile would read as a
+pass. **A skip demotes, it never overwrites**: the status variable is last-writer-wins, so a
+late tier failing to build would otherwise bury a VOID an earlier tier already found, and exit 1
+has to survive everything that follows it to mean what the paragraph above says.
+
 **Two rig faults it refuses rather than reports.** A counter the kernel multiplexed carries only
 part of the run, so the tool scales it and flags `scaled=1`, and the script drops the reading
 rather than quote it. And both binaries hashing identically means one side was measured twice --
@@ -644,11 +650,39 @@ may be a `cfn=` line, and the cost line following `calls=` is the callee's **inc
 which must be skipped or the whole NNUE evaluation is counted inside `search` and again inside
 itself.
 
-**Two diagnostics that make a broken grouping visible.** A component whose regex matches nothing
-on either side is named rather than printed as a zero, because a zero on one side reads as a
-total win forever. And the largest *ungrouped* symbols are listed for both sides, because a
-symbol that is a call on one side and inlined on the other lands in a different component on
-each, which the component totals report as a large regression that no code caused.
+**A grouping can break in four ways, and each is reported differently** -- because the cost of
+getting this wrong is a plausible-looking table that a reader quotes.
+
+A component whose regex matches nothing **on both sides** is named rather than printed as a
+zero, and the run still succeeds: a symmetric absence is an inlining fact, while a zero on one
+side reads as a total win forever. Which symbols collapse is a property of the compiler *and*
+the tier, so a row empty under clang at one ARCH may be populated at another; compare the
+neighbouring row that absorbed the cost rather than the empty one.
+
+A component matching **on one side only** divides a real cost by nothing. That row is marked `X`
+and excluded from the verdict, the rest of the table still prints, and the run exits 1. It is
+not a refusal because asymmetric inlining is the expected outcome of the refactors this gate
+exists to measure -- suppressing twenty-six sound rows to report one artifact trades away the
+measurement.
+
+A profile in which more than 5% of **either side's** instructions carry no symbol -- a raw
+address or an unresolved name-compression id -- cannot be attributed at all, so no table is
+printed and the run exits 2. A healthy profile reads 0.0% to 0.1% here, so the limit sits far
+above the noise; the failure it catches reads 81.5% against 0.1%, and arises when valgrind
+resolves no symbol table for one binary while the other is fine. Every row then matches on the
+named side alone and the grouped total becomes arithmetic on a hole. An empty profile refuses
+the same way, because a truncated callgrind file otherwise reads as a total win.
+
+Alongside these, the largest *ungrouped* symbols are listed for both sides, and the unnamed
+share is printed beside the coverage figure on every run.
+
+**Anchor a component on a symbol that survives both compilers.** clang inlines more
+aggressively, so a row naming only the narrow callee empties there while its cost reappears
+inside a wider symbol. Name both: `net parse` matches `read_leb_128` and the
+`read_parameters` that swallows it, and `NNUE network evaluate` matches `Network::evaluate` and
+the `NetworkArchitecture::propagate` that survives at some tiers and folds in at others. Anchor
+on `Name::` when widening, or a bare identifier will claim same-named methods from the rows
+below it -- the file is first-match-wins.
 
 ## `tests/docslint.sh`
 
