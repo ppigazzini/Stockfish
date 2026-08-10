@@ -35,7 +35,6 @@
 #include "history.h"
 #include "../platform/misc.h"
 #include "movegen.h"
-#include "../platform/syzygy/tbprobe.h"
 #include "tt.h"
 #include "basetypes.h"
 #include "../platform/platform.h"

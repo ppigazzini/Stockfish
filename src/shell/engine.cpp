@@ -50,6 +50,15 @@
 #include "uci.h"
 #include "ucioption.h"
 #include "console.h"
+#include "../platform/thread.h"
+#include "../platform/numa_shared.h"
+#include "../platform/memory.h"
+#include "../engine/tt.h"
+#include "../engine/tb_source.h"
+#include "../engine/searchoptions.h"
+#include "../engine/history.h"
+#include "../engine/bitboard.h"
+#include "../engine/basetypes.h"
 
 namespace Stockfish {
 
