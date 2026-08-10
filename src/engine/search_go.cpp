@@ -100,9 +100,9 @@ Context* context() {
         // applies the depth cap and drives the aspiration loop. A non-main
         // worker searches until someone else stops it, and headless nobody
         // would.
-        c->worker = ArenaPtr<Worker>(memory_allocator<Worker>(
-          arena_alloc, *c->shared, std::make_unique<SearchManager>(c->updates), usize(0), usize(0),
-          usize(1), NumaReplicatedAccessToken{}));
+        c->worker =
+          make_arena_unique<Worker>(*c->shared, std::make_unique<SearchManager>(c->updates),
+                                    usize(0), usize(0), usize(1), NumaReplicatedAccessToken{});
 
         return c;
     }();
