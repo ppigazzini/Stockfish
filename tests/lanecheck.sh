@@ -30,6 +30,7 @@ EXCUSED_NAMES=(
   npsab.sh
   negative_control.sh
   testing.py
+  uci_driver.py
   get_native_properties.sh
   net.sh
   fingerprint.sh
@@ -44,6 +45,7 @@ EXCUSED_WHY=(
   "wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
   "mutates tracked sources and rebuilds per row, so it cannot share a checkout with a lane"
   "a harness imported by instrumented.py rather than a gate"
+  "an operator harness for driving the engine by hand; every check it can make is owned by a gate that IS dispatched -- signature.sh the bench, perft.sh the movegen -- and a lane running it would assert them twice"
   "invoked by the Makefile, not by a workflow"
   "invoked by the Makefile's net target"
   "callgrind over the whole call graph, far costlier than the budget gate; run by hand before a decomposition"
