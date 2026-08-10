@@ -18,6 +18,8 @@
 
 #include "network.h"
 
+#include "../output_sink.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
@@ -28,11 +30,14 @@
 #include <filesystem>
 
 #define INCBIN_SILENCE_BITCODE_WARNING
+// Kept: stringify() is a macro from platform/misc.h, used below under
+// DEFAULT_NNUE_DIRECTORY -- a packager knob no CI lane defines. IWYU cannot see
+// a macro use, and no gate compiles that branch, so nothing would catch the
+// removal until a distro build broke.
+#include "../../platform/misc.h"  // IWYU pragma: keep
 #include "../../incbin/incbin.h"
 
 #include "../evaluate.h"
-#include "../output_sink.h"
-#include "../../platform/misc.h"
 #include "../position.h"
 #include "../types.h"
 #include "nnue_architecture.h"
@@ -40,6 +45,7 @@
 #include "nnue_misc.h"
 #include "nnz_helper.h"
 #include "../hashing.h"
+#include "../basetypes.h"
 
 // Macro to embed the default efficiently updatable neural network (NNUE) file
 // data in the engine binary (using incbin.h, by Dale Weiler).

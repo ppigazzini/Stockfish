@@ -18,13 +18,8 @@
 
 #include "misc.h"
 
-#include <array>
-#include <atomic>
-#include <cassert>
 #include <cctype>
-#include <cstring>
 #include <cerrno>
-#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -32,7 +27,6 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
-#include <mutex>
 #include <sstream>
 #include <string_view>
 
@@ -46,7 +40,7 @@
 #endif
 
 #include "../engine/types.h"
-#include <chrono>
+#include "../engine/basetypes.h"
 
 namespace Stockfish {
 

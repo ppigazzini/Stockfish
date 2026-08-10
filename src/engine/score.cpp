@@ -25,6 +25,7 @@
 #include <cmath>
 #include <sstream>
 #include <algorithm>
+#include <iostream>
 
 
 namespace Stockfish {

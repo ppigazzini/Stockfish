@@ -22,11 +22,11 @@
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
-// Used only inside the _WIN64 blocks below, which no build here compiles, so
-// dropping it during the header split cost nothing on this platform and would
-// have broken the Windows build on a standard library whose transitive includes
+// Kept: std::numeric_limits is used only inside the _WIN64 blocks below, which a
+// Linux analyze lane never compiles, so IWYU sees no use and asks for a removal
+// that breaks the Windows build on a standard library whose transitive includes
 // differ.
-#include <limits>
+#include <limits>  // IWYU pragma: keep
 #include <map>
 #include <memory>
 #include <mutex>
@@ -73,7 +73,11 @@ using GetThreadSelectedCpuSetMasks_t = BOOL (*)(HANDLE, PGROUP_AFFINITY, USHORT,
 #include <assert.h>
 #include <optional>
 #include "../engine/basetypes.h"
-#include "memory.h"
+// Kept: align_ptr_up and std::memset are used below only inside the _WIN64
+// blocks, which a Linux analyze lane never compiles. align_ptr_up is declared
+// in no other header, so dropping this is an undeclared-identifier error on
+// every 64-bit Windows lane.
+#include "memory.h"  // IWYU pragma: keep
 
 namespace Stockfish {
 

@@ -17,6 +17,7 @@
 */
 
 #include "memory.h"
+#include "../engine/basetypes.h"
 
 #include <cstdlib>
 #include <iostream>  // std::cerr

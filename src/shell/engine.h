@@ -30,7 +30,6 @@
 #include <variant>
 #include <vector>
 
-#include "../platform/misc.h"
 #include "../engine/history.h"
 #include "../engine/nnue/network.h"
 #include "../engine/nnue/nnue_misc.h"

@@ -18,13 +18,13 @@
 
 #include "console.h"
 
-#include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <cstdlib>
 #include <iostream>
 #include <mutex>
-#include <string>
+#include <limits>
+#include <cassert>
+#include <array>
 
 #include "../engine/basetypes.h"
 

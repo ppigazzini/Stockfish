@@ -23,7 +23,6 @@
 #include "tb_source.h"
 #include "worker_set.h"
 
-#include "../platform/numa_shared.h"
 
 #include <algorithm>
 #include <array>
@@ -34,7 +33,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
-#include <iostream>
 #include <list>
 #include <ratio>
 #include <string>
@@ -57,6 +55,8 @@
 #include "types.h"
 #include "../platform/platform.h"
 #include "basetypes.h"
+#include "searchoptions.h"
+#include "../platform/numa.h"
 
 namespace Stockfish {
 
