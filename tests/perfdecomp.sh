@@ -23,7 +23,8 @@
 # callgrind implements no AVX-512, so this tops out at avx2 -- which is exactly
 # why perfcounters.sh exists beside it.
 #
-# Exit codes:  0 reported   1 VOID (the node counts differ)   2 skipped
+# Exit codes:  0 reported   1 VOID (the node counts differ), or a component matched
+#              on one side only   2 skipped, or the profiles could not be grouped
 
 set -u
 set -o pipefail
@@ -156,9 +157,15 @@ rcpy=$?
 
 echo
 echo "perfdecomp: base=$BASE_SHA head=$HEAD_SHA arch=$ARCH"
-if [ "$rcpy" != 0 ]; then
-    echo "perfdecomp: SKIPPED -- the decomposition could not be produced" >&2
-    exit 2
-fi
-echo "perfdecomp: reported -- every figure is deterministic and every figure is a model"
-exit 0
+# Three outcomes, and they are not interchangeable. Collapsing them all to
+# SKIPPED tells a reader "the tool was absent" when what happened is "the two
+# profiles are not comparable", and hides a table that WAS printed.
+case "$rcpy" in
+    0) echo "perfdecomp: reported -- every figure is deterministic and every figure is a model"
+       exit 0 ;;
+    1) echo "perfdecomp: FINDINGS -- a component matched on one side only; that row is"
+       echo "perfdecomp: marked X above and excluded from the verdict. The rest stands." >&2
+       exit 1 ;;
+    *) echo "perfdecomp: VOID -- the profiles could not be grouped; see the reason above" >&2
+       exit 2 ;;
+esac

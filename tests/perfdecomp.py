@@ -11,10 +11,20 @@ inclusive cost and is skipped. Summing it would count the whole NNUE evaluation
 inside `search` and again inside itself.
 
 Components come from a TSV of NAME <TAB> REGEX. A component whose regex matches
-nothing on a side is reported rather than silently zero, because a zero on one
-side reads as a total win forever.
+nothing on BOTH sides is reported by name rather than printed as a zero, because
+a zero reads as a total win forever.
 
-Exit codes:  0 reported   2 a profile could not be read
+A component matching on ONE side only divides a real cost by nothing. That row is
+marked X and excluded from the verdict, and the run exits 1 -- the other rows are
+still worth reading, and asymmetric inlining is the expected outcome of the very
+refactors this gate measures.
+
+A profile carrying no cost, or one where a large share of either side's cost has
+no symbol at all, cannot be grouped in the first place. Those refuse before
+printing anything a reader could quote.
+
+Exit codes:  0 reported   1 a component matched on one side only
+             2 a profile could not be read or could not be grouped
 """
 
 import contextlib
@@ -39,6 +49,14 @@ EVENTS = [
     "Bi",
     "Bim",
 ]
+
+# Symbols valgrind could not name: a raw address, or an unresolved
+# name-compression id. A profile in which a large share of ONE side's cost
+# carries no symbol cannot be decomposed at all -- every component then matches
+# on the named side only, and a real cost divided by nothing reads as a total
+# win. The limit is a share of that side's instructions.
+UNNAMED = re.compile(r"^(0x[0-9a-fA-F]+|\?\d+|\?+)$")
+UNNAMED_LIMIT = 5.0
 
 
 def parse_callgrind(path):
@@ -130,6 +148,21 @@ def ratio(head, base):
     return head / base if base else None
 
 
+def unnamed_share(profile):
+    """Percentage of a side's instructions sitting under an unnamed symbol."""
+    total = sum(c.get("Ir", 0) for c in profile.values())
+    if not total:
+        return 0.0
+    unnamed = sum(c.get("Ir", 0) for s, c in profile.items() if UNNAMED.match(s))
+    return 100.0 * unnamed / total
+
+
+def biggest(profile, predicate, n=4):
+    rows = [(c.get("Ir", 0), s) for s, c in profile.items() if predicate(s) and c.get("Ir", 0)]
+    rows.sort(reverse=True)
+    return rows[:n]
+
+
 def main():
     if len(sys.argv) != 4:
         print("usage: perfdecomp.py <base.out> <head.out> <components.tsv>", file=sys.stderr)
@@ -150,6 +183,42 @@ def main():
     tot_b = sum(c.get("Ir", 0) for c in base.values())
     tot_h = sum(c.get("Ir", 0) for c in head.values())
 
+    # REFUSE BEFORE PRINTING ANYTHING. A table is not a safe way to report
+    # either failure below: the reader sees plausible per-row numbers and a
+    # grouped total that is arithmetic on a hole. Both conditions mean the two
+    # profiles are not comparable per component, so say so and produce no table.
+    if not tot_b or not tot_h:
+        print(
+            f"perfdecomp: VOID -- a profile carries no cost at all"
+            f" (upstream {tot_b} Ir, head {tot_h} Ir). A truncated or empty callgrind"
+            f" file reads as a total win; it is a dead run, not a result.",
+            file=sys.stderr,
+        )
+        return 2
+
+    un_b, un_h = unnamed_share(base), unnamed_share(head)
+    if max(un_b, un_h) > UNNAMED_LIMIT:
+        print(
+            f"perfdecomp: VOID -- {un_b:.1f}% of upstream and {un_h:.1f}% of head instructions"
+            f" carry no symbol (limit {UNNAMED_LIMIT:.0f}%).",
+            file=sys.stderr,
+        )
+        print(
+            "perfdecomp: cost that carries no symbol cannot be attributed to any"
+            " component, so the grouping below it would be arithmetic on a hole."
+            " When only one side is affected every component matches on the other"
+            " side alone. Whole-program totals come from valgrind's own summary and"
+            " are unaffected.",
+            file=sys.stderr,
+        )
+        for label, prof in (("upstream", base), ("head", head)):
+            rows = biggest(prof, lambda s: bool(UNNAMED.match(s)))
+            if rows:
+                print(f"  largest unnamed symbols ({label} side):", file=sys.stderr)
+                for ir, sym in rows:
+                    print(f"    {fmt_m(ir):>10}  {sym}", file=sys.stderr)
+        return 2
+
     print(
         f"  {'component':<26} {'up Ir':>10} {'re Ir':>10} {'Ir':>7} "
         f"{'up D1mr':>9} {'re D1mr':>9} {'D1mr':>7} "
@@ -161,11 +230,14 @@ def main():
     )
 
     missing = []
+    one_sided = []
     for name, _ in components:
         b, h = gb[name], gh[name]
         if b["Ir"] == 0 and h["Ir"] == 0:
             missing.append(name)
             continue
+        if (b["Ir"] == 0) != (h["Ir"] == 0):
+            one_sided.append(name)
         r_ir = ratio(h["Ir"], b["Ir"])
         r_d1 = ratio(h["D1mr"], b["D1mr"])
         r_bc = ratio(h["Bcm"], b["Bcm"])
@@ -174,7 +246,12 @@ def main():
         # band is still required: a component difference inside it is code
         # layout rather than work, and calling that a winner invites a refactor
         # to be argued from the rounding.
-        if r_ir is None:
+        if name in one_sided:
+            # A real cost divided by nothing. Name it as an artifact rather than
+            # ranking it, and keep every other row: asymmetric inlining is the
+            # expected outcome of the refactors this gate exists to measure.
+            winner = "X one side"
+        elif r_ir is None:
             winner = "-"
         elif r_ir < 0.9995:
             winner = "refish"
@@ -201,6 +278,7 @@ def main():
     cov_b = 100 * cb / tot_b if tot_b else 0
     cov_h = 100 * ch / tot_h if tot_h else 0
     print(f"  coverage: {cov_b:.1f}% of upstream Ir, {cov_h:.1f}% of refish Ir is grouped")
+    print(f"  unnamed:  {un_b:.1f}% of upstream Ir, {un_h:.1f}% of refish Ir carries no symbol")
 
     if missing:
         print()
@@ -211,6 +289,15 @@ def main():
     # The biggest ungrouped symbols are the next rows worth adding -- on BOTH
     # sides. A component matching on one side only divides a real cost by a
     # near-zero one, so a broken regex reads as a catastrophic regression.
+    if one_sided:
+        print()
+        print("  MATCHED ON ONE SIDE ONLY -- marked X above, not ranked:")
+        for name in one_sided:
+            side = "head" if gb[name]["Ir"] == 0 else "upstream"
+            print(f"    {name}  (no match on the {side} side)")
+        print("  Either the regex is wrong, or the symbol was inlined away on that side")
+        print("  only. Compare the neighbouring row that absorbed it, not this one.")
+
     for label, prof, claimed in (("upstream", base, claimed_b), ("refish", head, claimed_h)):
         rest = [(c.get("Ir", 0), s) for s, c in prof.items() if s not in claimed and c.get("Ir", 0)]
         rest.sort(reverse=True)
@@ -219,7 +306,7 @@ def main():
             print(f"  largest ungrouped symbols ({label} side):")
             for ir, sym in rest[:4]:
                 print(f"    {fmt_m(ir):>10}  {sym[:86]}")
-    return 0
+    return 1 if one_sided else 0
 
 
 def rf_(r):
