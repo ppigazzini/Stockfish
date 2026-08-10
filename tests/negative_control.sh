@@ -501,7 +501,13 @@ if selected reprosearch; then
     threads.clear();' \
         '    threads.clear();'
     if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
-        if ( cd src && ../tests/reprosearch.sh ) >/dev/null 2>&1; then
+        ( cd src && ../tests/reprosearch.sh ) >/dev/null 2>&1; NCRC=$?
+        if [ "$NCRC" = "2" ]; then
+            # SKIPPED, because expect is not installed. Scoring that as a
+            # detection is the exact confusion this file exists to prevent one
+            # level up: the gate did not catch the mutation, it never ran.
+            echo "  SKIPPED -- reprosearch could not run (no expect)"; SKIP=$((SKIP+1))
+        elif [ "$NCRC" = "0" ]; then
             echo "  NOT DETECTED -- node counts still repeated across ucinewgame"; FAIL=$((FAIL+1))
         else
             echo "  ok, red (1)"; PASS=$((PASS+1))
