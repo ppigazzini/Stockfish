@@ -134,7 +134,7 @@ optimism += optimism * i64(nnueComplexity) / 476;
 nnue     -= nnue     * i64(nnueComplexity) / 18236;
 
 int material = 534 * pos.count<PAWN>() + pos.non_pawn_material();
-int v = (nnue * i64(77871 + material) + optimism * i64(7191 + material)) / 77871;
+int v = (nnue * i64(91000 + material) + optimism * i64(7675)) / 91000;
 
 v -= v * pos.rule50_count() / 199;
 v  = std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
@@ -146,8 +146,10 @@ shape, and each line is doing something specific:
 - **Complexity** is the disagreement between the two heads. Where they disagree the position
   is sharp, so optimism is amplified and the raw evaluation is damped -- the network is less
   sure, so the number is trusted less and the search's own disposition counts for more.
-- **Optimism** is the per-thread search disposition, blended in proportionally to material.
-  It is what makes different threads explore differently in Lazy SMP.
+- **Optimism** is the per-thread search disposition, mixed in at a flat weight while the
+  network's own term is the one that scales with material -- so the more material stands on
+  the board, the more the network outweighs the disposition. It is what makes different
+  threads explore differently in Lazy SMP.
 - **The fifty-move damping** pulls the evaluation toward zero as the halfmove clock runs: an
   advantage that cannot be converted before the rule draws the game is not worth its
   nominal value.

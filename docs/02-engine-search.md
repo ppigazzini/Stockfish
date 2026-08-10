@@ -91,7 +91,15 @@ hands out the **counter** rather than the row: `pawn_correction(pos, us)`,
 `minor_piece_correction(pos, us)`, and `nonpawn_correction<c>(pos, us)`, which is templated on
 the colour whose key selects the row and so yields the remaining two counters. Each picks the
 key and the field in one place, so a caller cannot pair one key's row with another key's
-field. `do_move` prefetches the four counters, written out at the call site.
+field. `Position::do_move` prefetches the four counters, written out at the call site.
+
+`Search::Worker::do_move` prefetches two more, and they are a different pair: the
+continuation-correction entries the *child* will read, taken from the parent's
+`(ss - 1)` and `(ss - 3)`. The child reads `(ss - 2)` and `(ss - 4)`, and child `ss` is
+parent `ss + 1`, so the addresses match exactly for a normal move -- castling and promotion
+prefetch an approximation and land on an unused line. Keep the two offsets in step with the
+reads in `correction_value`: shifting one without the other costs the prefetch silently,
+because a prefetch to the wrong line is not a fault and no gate can see it.
 
 `ContinuationHistory` is a `MultiArray<PieceToHistory, PIECE_NB, SQUARE_NB>`: a plane per
 (piece, destination) of the *previous* move, each plane itself a history over the current
