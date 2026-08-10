@@ -26,6 +26,17 @@ tests/bench_tmp.epd
 # directory exists, and would then wait 300s for tables nobody fetched.
 tests/syzygy-3man
 
+# resources/ is a scratch directory, not a source directory: every byte in it is
+# fetched or dropped there by hand -- a toolchain built from source, a tablebase
+# set, an opening book, a match runner. `.gitkeep` is the ONLY tracked entry, so
+# ignore the contents wholesale and re-include that one. Listing artifact types
+# one at a time is what leaves a multi-gigabyte build tree sitting outside the
+# ignore rules: each new kind needs a new line and nobody adds one. This needs
+# none. To commit something here anyway, `git add -f` -- and then give it a real
+# home, because nothing the engine builds reads from resources/.
+resources/*
+!resources/.gitkeep
+
 # uv's virtualenv; uv.lock IS tracked.
 .venv/
 .ruff_cache/
