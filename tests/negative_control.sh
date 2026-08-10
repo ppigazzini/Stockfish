@@ -459,6 +459,32 @@ if selected malformed; then
     fi
 fi
 
+# --------------------------------------------------------------- uci_driver
+
+row uci_driver
+if selected uci_driver; then
+    # The driver is an operator harness rather than a lane, so what has to be
+    # shown is narrower than for a gate: that the one thing it ASSERTS can go
+    # red. `bench` reads the anchor out of git log and compares -- the same
+    # mutation the signature row uses moves the node count, so a driver that had
+    # stopped comparing would still print MATCH.
+    echo "negative-control: uci_driver  -- futility multiplier base 45 -> 46"
+    mutate src/engine/search.cpp \
+        'Value futilityMult = std::min(45 + depth * 4, 85);' \
+        'Value futilityMult = std::min(46 + depth * 4, 85);'
+    if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
+        if python3 ./tests/uci_driver.py bench >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- the driver still reported MATCH"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+    else
+        restore; die "the uci_driver mutant did not compile"
+    fi
+    restore
+    ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
+fi
+
 # --------------------------------------------------------------- reprosearch
 
 row reprosearch
