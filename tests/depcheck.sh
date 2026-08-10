@@ -34,14 +34,25 @@ command -v git >/dev/null || { echo "depcheck: SKIPPED -- no git" >&2; exit 2; }
 FILES=$(git ls-files 'src/*.h' 'src/*.cpp' 'src/**/*.h' 'src/**/*.cpp')
 [ -n "$FILES" ] || { echo "depcheck: SKIPPED -- no sources listed" >&2; exit 2; }
 
+# Ask the zone question of EVERY tracked file under src/, not only of the ones
+# carrying a source extension. A file in no zone is precisely what this check
+# exists to catch, so filtering the corpus by extension exempts the case: an
+# extensionless file dropped in src/ joins no zone, is named by no build list,
+# and is reported by nothing. src/Makefile is the one tracked file that belongs
+# at the root of src/ by necessity.
+#
+# Read the list NUL-separated. A path with a space in it is exactly the shape
+# that gets dropped in by accident, and word-splitting reports it under three
+# names none of which exist.
 echo "== files with no zone =="
 unassigned=0
-for f in $FILES; do
+while IFS= read -r -d '' f; do
+    [ "$f" = src/Makefile ] && continue
     if [ "$(zone_of_path "$f")" = unassigned ]; then
         echo "  UNASSIGNED  $f"
         unassigned=$((unassigned+1))
     fi
-done
+done < <(git ls-files -z src)
 [ "$unassigned" = 0 ] && echo "  ok"
 
 echo
