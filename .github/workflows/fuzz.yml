@@ -18,15 +18,28 @@ on:
 # NOT a merge gate. A clean run means "nothing failed inside that budget", never
 # "there is nothing to find".
 #
-# `tb` IS NOT IN THE MATRIX. It finds one of two known defects within seconds
-# of every run:
+# `tb` IS NOT IN THE MATRIX. It used to find either of two known defects within
+# seconds of every run:
 #
 #   E1  a corrupt table crashes the engine (SIGSEGV in decompress_pairs)
 #   E2  a corrupt table aborts through an uncaught std::bad_alloc
 #
-# A job that reports the same two recorded defects every night is not a check,
-# and continue-on-error would only have made it a check nobody is required to
-# read. It is out until the defects are fixed.
+# A job that reports the same recorded defect every night is not a check, and
+# continue-on-error would only have made it a check nobody is required to read.
+#
+# E2 IS CLOSED, and so is every header-shaped form of E1: the reader now bounds
+# every span it derives against the mapping it read them from, and tests/
+# malformed.sh holds six fixtures on it. What is left of E1 is ONE site, and it
+# is not a header defect -- decompress_pairs walks blockLength[] forwards and
+# backwards from a block index that came out of sparseIndex[], with no bound on
+# either loop. Measured on this branch: 1728 mutation rounds clean, round 1728 a
+# SIGSEGV in the backward walk. That is inside a nightly budget, so the lane
+# would still be red on a known defect, which is the whole objection above.
+#
+# The bound cannot move to load time -- validating sparseIndex[] is O(file size)
+# and would force a 6-man table resident -- so it costs a compare inside the
+# decode loop and needs a measurement on a probing workload. No perf gate here
+# can take one yet: the bench never probes.
 #
 # Everything `tb` needs is still in the tree -- the harness, tbfetch.sh, the
 # verdict comparison against a clean reference, and the fuzz-tb / fuzz-rig /
@@ -34,7 +47,7 @@ on:
 #
 #   ./tests/tbfetch.sh && ./tests/fuzz.py --seconds 600 --harness tb
 #
-# Restoring it in the commit that closes E1 and E2 means adding `tb` to the
+# Restoring it in the commit that bounds the block walk means adding `tb` to the
 # matrix AND adding back the fetch step it needs, which does not sit here as a
 # step that can never run:
 #
