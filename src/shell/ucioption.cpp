@@ -27,8 +27,8 @@
 #include <sstream>
 #include <utility>
 
-#include "../platform/misc.h"
 #include "console.h"
+#include "../engine/basetypes.h"
 
 namespace Stockfish {
 

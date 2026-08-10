@@ -32,6 +32,7 @@
 #include "attacks.h"
 #include "bitboard.h"
 #include "types.h"
+#include "basetypes.h"
 
 namespace Stockfish {
 

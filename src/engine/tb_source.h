@@ -22,7 +22,6 @@
 #include <functional>
 #include <vector>
 
-#include "basetypes.h"
 #include "types.h"
 
 namespace Stockfish {

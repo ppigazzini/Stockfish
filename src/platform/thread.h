@@ -34,7 +34,6 @@
 #include "thread_native.h"
 #include "../engine/basetypes.h"
 
-#include "../engine/searchoptions.h"
 
 namespace Stockfish {
 
@@ -44,6 +43,12 @@ namespace Stockfish {
 // this header. Naming it by value anywhere here makes that include mandatory.
 template<typename T>
 class LazyNumaReplicatedSystemWide;
+
+struct SearchOptions;
+
+namespace Eval::NNUE {
+class Network;
+}
 
 
 using Value = int;

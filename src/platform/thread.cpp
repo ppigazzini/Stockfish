@@ -20,14 +20,11 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cmath>
-#include <cstdlib>
 #include <deque>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -40,9 +37,13 @@
 #include "../engine/timeman.h"
 #include "../engine/types.h"
 #include "../shell/uci.h"
-#include "../shell/ucioption.h"
 
 #include "../engine/searchoptions.h"
+#include "numa_shared.h"
+#include "../engine/tb_source.h"
+#include "../engine/position.h"
+#include "../engine/nnue/network.h"
+#include "../engine/basetypes.h"
 
 namespace Stockfish {
 

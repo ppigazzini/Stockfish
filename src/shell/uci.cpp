@@ -40,9 +40,10 @@
 #include "../engine/search.h"
 #include "../engine/types.h"
 #include "ucioption.h"
-#include "../platform/platform.h"
 #include "../platform/misc.h"
 #include "console.h"
+#include "../engine/clock.h"
+#include "../engine/basetypes.h"
 
 namespace Stockfish {
 
