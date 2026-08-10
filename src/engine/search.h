@@ -38,11 +38,11 @@
 #include "position.h"
 #include "score.h"
 #include "../platform/syzygy/tbprobe.h"
-#include "searchoptions.h"
 #include "timeman.h"
 #include "types.h"
 #include "basetypes.h"
-#include "../platform/platform.h"
+#include "tb_source.h"
+#include "clock.h"
 
 namespace Stockfish {
 
@@ -55,6 +55,7 @@ enum NodeType {
 
 class TranspositionTable;
 class ThreadPool;
+struct SearchOptions;
 
 namespace Eval::NNUE {
 class Network;
@@ -358,7 +359,6 @@ class NullSearchManager: public ISearchManager {
 // Search::Worker is the class that does the actual search.
 // It is instantiated once per thread, and it is responsible for keeping track
 // of the search history, and storing data required for the search.
-class Worker;
 Worker* best_worker(const std::vector<Worker*>& workers);
 
 class Worker {

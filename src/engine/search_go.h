@@ -20,7 +20,6 @@
 #define SEARCH_GO_H_INCLUDED
 
 #include <optional>
-#include <string>
 #include <string_view>
 
 #include "basetypes.h"
