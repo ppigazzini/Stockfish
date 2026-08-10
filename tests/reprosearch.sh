@@ -8,7 +8,23 @@ error()
 }
 trap 'error ${LINENO}' ERR
 
+# expect drives the engine below, and its absence used to read as a PASS: the
+# comparison is a pipeline whose exit status is awk's, so a missing interpreter
+# left grep with nothing to match, awk with no lines to reject, and the script
+# printing "reprosearch testing OK" having checked nothing. Refuse instead.
+# Exit 2 is SKIPPED -- it proves nothing, which is the honest answer.
+if ! command -v expect >/dev/null; then
+  echo "reprosearch: SKIPPED -- expect is not installed" >&2
+  exit 2
+fi
+
 echo "reprosearch testing started"
+
+# The driver script is written into the working directory, so remove it on EVERY
+# exit and not only on the successful one. Leaving it behind on a failure drops
+# an untracked file into src/, which is the shape tests/depcheck.sh's zone check
+# now refuses.
+trap 'rm -f repeat.exp' EXIT
 
 # repeat two short games, separated by ucinewgame.
 # with go nodes $nodes they should result in exactly
@@ -52,10 +68,19 @@ do
   echo "reprosearch testing with $nodes nodes"
 
   # each line should appear exactly an even number of times
-  expect repeat.exp $nodes 2>&1 | grep -o "nodes [0-9]*" | sort | uniq -c | awk '{if ($1%2!=0) exit(1)}'
+  counts=$(expect repeat.exp $nodes 2>&1 | grep -o "nodes [0-9]*" | sort | uniq -c)
+
+  # A round that reported no node counts at all compared nothing, and the
+  # even-count test below is vacuously satisfied by an empty input. Treat it as
+  # the failure it is: the driver died, timed out, or the engine printed no
+  # bestmove.
+  if [ -z "$counts" ]; then
+    echo "reprosearch: no node counts from the driver at $nodes nodes"
+    exit 1
+  fi
+
+  printf '%s\n' "$counts" | awk '{if ($1%2!=0) exit(1)}'
 
 done
-
-rm repeat.exp
 
 echo "reprosearch testing OK"
