@@ -47,3 +47,9 @@ resources/*
 config.json
 
 __DEV/
+
+# Claude Code's per-repository skills and settings. Host-specific by nature --
+# they record what is installed on THIS box and how long a build took here -- so
+# they are notes about an environment rather than about the engine. The tool
+# tests/uci_driver.py that grew out of them is tracked; the notes are not.
+.claude/
