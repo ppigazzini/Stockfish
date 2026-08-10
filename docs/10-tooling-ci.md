@@ -65,6 +65,13 @@ It compares one binary against itself, at the default thread count, so it establ
 are the right ones, which is `signature.sh`'s question, or about what a second thread would
 do to them.
 
+**It drives the engine through `expect`, and exits 2 when `expect` is absent.** The
+comparison is a pipeline ending in `awk`, so the pipeline's status is `awk`'s: with no
+interpreter, `grep` matched nothing, `awk` rejected nothing, and the script printed
+`reprosearch testing OK`. A round that reports no node counts now fails for the same reason.
+Exit 2 is SKIPPED and proves nothing -- `tests.yml` installs `expect`, so the merge lane
+still runs it, but a local run on a box without it establishes nothing about `ucinewgame`.
+
 ### `tests/instrumented.py`
 
 The CLI and interactive suite, driven under valgrind, TSan, UBSan and
