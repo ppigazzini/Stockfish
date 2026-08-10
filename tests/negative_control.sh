@@ -698,6 +698,18 @@ if selected linkcheck; then
     # includes cannot see this, and linkcheck goes RED. A row that only checked
     # the second would not show why the second gate is needed.
     echo "negative-control: linkcheck   -- an engine-to-shell call with no include"
+    # A control has to start GREEN. This row asserts that depcheck stays green
+    # and that linkcheck goes red, but never that linkcheck was green to begin
+    # with -- so on a tree where it is already red it prints "ok, red (1)" for a
+    # reason its own mutation did not supply, and silently stops controlling
+    # anything. Not hypothetical: the rebase onto upstream 5062aee5 reddened
+    # both link gates on its own.
+    nc_link_baseline=1
+    ./tests/linkcheck.sh >/dev/null 2>&1 || nc_link_baseline=0
+    if [ "$nc_link_baseline" = 0 ]; then
+        echo "  NO BASELINE -- linkcheck is already red; this row can attribute nothing"
+        FAIL=$((FAIL+1))
+    fi
     mutate src/shell/benchmark.cpp \
         'namespace Stockfish::Benchmark {' \
         'namespace Stockfish {
@@ -720,8 +732,10 @@ namespace { const int nc_link_sink = nc_link_probe(); }'
     if ./tests/linkcheck.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- linkcheck passed an engine object calling a shell symbol"
         FAIL=$((FAIL+1))
-    else
+    elif [ "$nc_link_baseline" = 1 ]; then
         echo "  ok, red (1)"; PASS=$((PASS+1))
+    else
+        echo "  red, but it was red before the mutation -- not scored"
     fi
     restore
 fi
@@ -739,6 +753,13 @@ if selected enginelink; then
     # reports CLEAN on exactly this mutation, so this row is what proves the
     # COMPCXX wrapper is still stripping the flag.
     echo "negative-control: enginelink  -- an engine object calling a platform symbol"
+    # Green before the mutation, for the reason spelled out in the linkcheck row.
+    nc_englink_baseline=1
+    ./tests/enginelink.sh >/dev/null 2>&1 || nc_englink_baseline=0
+    if [ "$nc_englink_baseline" = 0 ]; then
+        echo "  NO BASELINE -- enginelink is already red; this row can attribute nothing"
+        FAIL=$((FAIL+1))
+    fi
     mutate src/engine/search.cpp \
         'void Search::Worker::start_searching() {' \
         'void aligned_large_pages_free(void*);
@@ -759,8 +780,10 @@ void Search::Worker::start_searching() {
     if ./tests/enginelink.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- the engine linked alone while calling a platform symbol"
         FAIL=$((FAIL+1))
-    else
+    elif [ "$nc_englink_baseline" = 1 ]; then
         echo "  ok, red (1)"; PASS=$((PASS+1))
+    else
+        echo "  red, but it was red before the mutation -- not scored"
     fi
     restore
 fi
