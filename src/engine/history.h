@@ -29,7 +29,6 @@
 #include <limits>
 #include <type_traits>  // IWYU pragma: keep
 
-#include "../platform/memory.h"
 #include "../platform/misc.h"
 #include "position.h"
 #include "arena.h"
@@ -214,7 +213,7 @@ struct ContinuationHistoryBlock {
 struct SharedHistories {
     SharedHistories(usize threadCount) :
         correctionHistory(threadCount),
-        continuationHistoryBlock(make_unique_large_page<ContinuationHistoryBlock>()),
+        continuationHistoryBlock(make_arena_unique<ContinuationHistoryBlock>()),
         pawnHistory(threadCount) {
         assert((threadCount & (threadCount - 1)) == 0 && threadCount != 0);
         sizeMinus1         = correctionHistory.get_size() - 1;
@@ -273,9 +272,9 @@ struct SharedHistories {
             return bundle.nonPawnBlack;
     }
 
-    UnifiedCorrectionHistory               correctionHistory;
-    LargePagePtr<ContinuationHistoryBlock> continuationHistoryBlock;
-    PawnHistory                            pawnHistory;
+    UnifiedCorrectionHistory           correctionHistory;
+    ArenaPtr<ContinuationHistoryBlock> continuationHistoryBlock;
+    PawnHistory                        pawnHistory;
 
 
    private:
