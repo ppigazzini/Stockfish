@@ -805,10 +805,14 @@ if selected fuzz-rig; then
         # defect is how a harness earns credit for an experiment it never ran.
         # The required answer is RIG FAULT, not FINDING and not clean.
         echo "negative-control: fuzz [rig]  -- a rig with no tables must not read as a finding"
+        # One bestmove per stem the harness probes in its reference run, all with
+        # no tbhits. Answering FEWER would stop the harness one check earlier, on
+        # "no reference verdict" -- also a rig fault, but not the one this row is
+        # about.
         stub norig '#!/bin/bash
 echo "info string Found 0 WDL and 0 DTZ tablebase files (up to 3-man)."
 cat >/dev/null
-echo "bestmove a1a1"
+for _ in 1 2 3 4 5; do echo "bestmove a1a1"; done
 exit 0'
         out=$(EXE="$NCSTUB/norig" ./tests/fuzz.py --seconds 1 --harness tb 2>&1)
         if printf '%s' "$out" | grep -q 'RIG FAULT'; then
@@ -845,20 +849,32 @@ if selected fuzz-verdict; then
         SKIP=$((SKIP+1))
     else
         # The property that is not liveness: an engine that survives a corrupt
-        # table, still probes it, and returns a DIFFERENT move than the clean
-        # tables gave. No mutation of a real table reliably produces that -- the
-        # prober rejects most corruption and crashes on the rest -- so the
+        # table and then answers a question about a table the mutation never
+        # touched with a DIFFERENT move than the clean tables gave. No mutation
+        # of a real table reliably produces that -- keeping one table's
+        # corruption out of another's verdict is what the reader is for -- so the
         # detector is driven directly, the way the other fuzz rows drive theirs.
-        echo "negative-control: fuzz [vrd]  -- a corrupt table answering with the wrong move"
+        #
+        # The stub answers the reference run with one verdict per stem, then puts
+        # the divergence on the SECOND probe of each mutation round, which is the
+        # only one the harness makes a claim about. A stub that diverged on the
+        # first would be exercising nothing: that probe reads the mutated table
+        # and is judged on liveness alone.
+        echo "negative-control: fuzz [vrd]  -- one table's corruption reaching another's verdict"
+        rm -f "$NCSTUB/count"
         stub verdict '#!/bin/bash
 C="$(dirname "$0")/count"
 n=$(cat "$C" 2>/dev/null || echo 0); echo $((n+1)) > "$C"
 echo "info string Found 5 WDL and 5 DTZ tablebase files (up to 3-man)."
 cat >/dev/null
-echo "info depth 8 tbhits 4"
-if [ "$n" = "0" ]; then echo "bestmove d2d4"; else echo "bestmove h1h8"; fi'
+if [ "$n" = "0" ]; then
+    for _ in 1 2 3 4 5; do echo "info depth 8 tbhits 4"; echo "bestmove d2d4"; done
+else
+    echo "info depth 8 tbhits 4"; echo "bestmove d2d4"
+    echo "info depth 8 tbhits 4"; echo "bestmove h1h8"
+fi'
         out=$(EXE="$NCSTUB/verdict" ./tests/fuzz.py --seconds 1 --harness tb 2>&1)
-        if printf '%s' "$out" | grep -q 'wrong verdict'; then
+        if printf '%s' "$out" | grep -q 'changed the'; then
             echo "  ok, red (1)"; PASS=$((PASS+1))
         elif printf '%s' "$out" | grep -q 'RIG FAULT'; then
             echo "  NOT DETECTED -- the reference run itself was refused"; FAIL=$((FAIL+1))
