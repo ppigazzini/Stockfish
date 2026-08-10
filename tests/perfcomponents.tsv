@@ -27,8 +27,26 @@
 # folded them into the engine rows would describe the loader as much as the
 # search -- and would move whenever the net does.
 
+# CHOOSE A SYMBOL THAT SURVIVES ON BOTH COMPILERS, NOT JUST ON gcc. clang
+# inlines more aggressively, and a row anchored on the narrow callee alone goes
+# empty there while its cost reappears inside a wider symbol: `read_leb_128`
+# vanishes into `Network::read_parameters`, and `NetworkArchitecture::propagate`
+# survives at sse41 but is folded into `Network::evaluate` at avx2. Both rows
+# below therefore name the narrow symbol AND the wider one that swallows it, so
+# the component means the same work under either compiler.
+#
+# Some collapses cannot be repaired by a regex, because the symbol is gone from
+# the profile entirely, and WHICH ones collapse is per TIER, not per compiler.
+# Under clang at sse41 `update_accumulator_incremental` and
+# `update_accumulator_refresh_cache` fold away while `apply_combined` survives;
+# at avx2 `apply_combined` and `attacks_bb` fold away while
+# `update_accumulator_incremental` survives. `partial_insertion_sort` folds into
+# `MovePicker` and the correction-history helpers into their callers at both.
+# Those rows report MATCHED NOTHING there and their cost sits in the neighbouring
+# row that did match -- compare the group, not the row, on a clang profile.
+
 # -- startup: the net parse and the tables built before the first search --
-net parse (leb128)	read_leb_128
+net parse	read_leb_128|Network::read_parameters|NetworkArchitecture::read_parameters
 # hash_bytes belongs HERE, not in a row of its own: it survives as a call on one
 # side and inlines into the shared-memory constructor on the other, so a row of
 # its own matches on one side only and reports one symbol's move as a
@@ -41,7 +59,7 @@ copying (memcpy)	__memcpy_|__memmove_
 NNUE accumulator apply	apply_combined
 NNUE incremental update	update_accumulator_incremental
 NNUE refresh cache	update_accumulator_refresh_cache
-NNUE network evaluate	NNUE::Network::evaluate
+NNUE network evaluate	NNUE::Network::evaluate|NetworkArchitecture::propagate
 NNUE accumulator stack	AccumulatorStack::|AccumulatorCaches::
 # The affine output layers and the clipped-ReLU stages have NO row: both sides
 # inline them into NNUE::Network::evaluate, so they cannot be separated from it
