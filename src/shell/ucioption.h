@@ -99,6 +99,14 @@ class OptionsMap {
     using OptionsStore = std::map<std::string, Option, CaseInsensitiveLess>;
 
     OptionsStore options_map;
+
+    // Per MAP, not per process. It was a function-local `static` inside add(),
+    // shared by every OptionsMap ever constructed, while operator<< scans the
+    // indices 0..size()-1 -- so a second OptionsMap started numbering where the
+    // first stopped and every one of its options fell outside the printed
+    // range, silently dropping the whole `uci` handshake. Nothing constructs a
+    // second one today, which is why this is a bound and not a repair.
+    usize insertOrder = 0;
     InfoListener info;
 };
 
