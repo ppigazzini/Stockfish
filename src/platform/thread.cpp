@@ -323,15 +323,20 @@ void ThreadPool::start_thinking(const SearchOptions&  options,
 
     for (auto&& th : threads)
     {
-        th->run_custom_job([&]() {
-            th->worker->limits = limits;
-            th->worker->nodes = th->worker->tbHits = th->worker->bestMoveChanges = 0;
-            th->worker->nmpMinPly                                                = 0;
-            th->worker->rootDepth                                                = 0;
-            th->worker->rootMoves                                                = rootMoves;
-            th->worker->rootPos.set(pos.fen(), pos.is_chess960());
-            th->worker->rootPos.copy_state_infos(pos);
-            th->worker->tbConfig = tbConfig;
+        // Capture the range-for's reference BY VALUE. `[&]` captured `th`
+        // itself, a reference whose lifetime ends with the iteration while the
+        // job it was handed to may still be running: formally undefined, and
+        // both compilers happen to capture the referent.
+        Thread* thread = th.get();
+        thread->run_custom_job([&, thread]() {
+            thread->worker->limits = limits;
+            thread->worker->nodes = thread->worker->tbHits = thread->worker->bestMoveChanges = 0;
+            thread->worker->nmpMinPly                                                        = 0;
+            thread->worker->rootDepth                                                        = 0;
+            thread->worker->rootMoves                                                        = rootMoves;
+            thread->worker->rootPos.set(pos.fen(), pos.is_chess960());
+            thread->worker->rootPos.copy_state_infos(pos);
+            thread->worker->tbConfig = tbConfig;
         });
     }
 
