@@ -58,6 +58,11 @@ void TimeManagement::init(Search::LimitsType& limits,
     if (useNodesTime)
         limits.movetime *= npmsec;
 
+    // No clock for the side to move. Write the budgets anyway: leaving them is
+    // not "no time management", it is the PREVIOUS search's time management. A
+    // `go wtime 200 btime 200` followed by a `go btime 1000` used to stop at
+    // depth 4 in about a millisecond on the second one, spending a budget that
+    // belonged to the move before it.
     if (limits.time[us] == 0)
     {
         optimumTime = maximumTime = NoBound;
