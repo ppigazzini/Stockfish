@@ -58,9 +58,24 @@ class TimeManagement {
     void advance_nodes_time(i64 nodes);
 
    private:
+    // Every member a reader can reach carries a value this class wrote. init()
+    // returns early whenever limits.time[us] is zero -- after startTime, before
+    // the other two -- and use_time_management() does NOT exclude that case: it
+    // is true when only the OPPOSING side has a clock. `go btime N` with White
+    // to move therefore used to read two budgets out of storage nobody had
+    // written, which memcheck reported at search.cpp's `elapsed > tm.maximum()`
+    // and at its `min(totalTime, double(tm.maximum()))`.
+    //
+    // NoBound rather than zero, because the value chosen IS the behaviour on
+    // that input. Zero is an instant move; NoBound is a search that runs until
+    // something stops it, which is what the engine already did when the read
+    // happened to find a large number, and it is the answer that cannot lose a
+    // game on a clock the caller never gave. A real GUI sends both clocks; this
+    // is what the malformed case means, stated once instead of decided by
+    // whatever the heap held.
     static constexpr TimePoint NoBound = std::numeric_limits<TimePoint>::max() / 2;
 
-    TimePoint startTime;
+    TimePoint startTime   = 0;
     TimePoint optimumTime = NoBound;
     TimePoint maximumTime = NoBound;
 
