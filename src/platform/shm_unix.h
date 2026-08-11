@@ -32,7 +32,6 @@
 #include <pthread.h>
 #include <string>
 #include <inttypes.h>
-#include <thread>
 #include <type_traits>
 #include <utility>
 
