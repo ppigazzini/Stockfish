@@ -38,7 +38,14 @@
 #elif defined(__loongarch__) && __loongarch_grlen == 64
     #define USE_HYPERBOLA_QUINT
 #elif defined(USE_AVX2)
+    // All three, and the two narrower ones are not redundant: DualMagic's
+    // both_attacks_bb finishes in SSE -- _mm_or_si128 is <emmintrin.h>,
+    // _mm_extract_epi64 is <smmintrin.h> -- and <immintrin.h> reaching them is
+    // a property of this toolchain, not of the language.
+    #include <emmintrin.h>
     #include <immintrin.h>
+    #include <smmintrin.h>
+    #include "basetypes.h"  // DualMagic's rankAttacksLookup is a u8*
     #define USE_DUAL_HYPERBOLA_QUINT
 #endif
 

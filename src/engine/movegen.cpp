@@ -26,9 +26,12 @@
 #include "position.h"
 
 #if defined(USE_AVX512ICL)
-    #include <array>
-    #include <algorithm>
+    // The splat finishes in SSE -- _mm_or_si128 and _mm_slli_epi16 are
+    // <emmintrin.h>, _mm_cvtepi8_epi16 is <smmintrin.h> -- and <immintrin.h>
+    // reaching them is a property of this toolchain, not of the language.
+    #include <emmintrin.h>
     #include <immintrin.h>
+    #include <smmintrin.h>
 #endif
 
 namespace Stockfish {
