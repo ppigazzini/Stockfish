@@ -21,6 +21,10 @@
 #ifndef NNUE_FEATURES_K32Q2_H_INCLUDED
 #define NNUE_FEATURES_K32Q2_H_INCLUDED
 
+#if defined(USE_AVX512ICL)
+    #include <array>
+#endif
+
 #include "../../types.h"
 #include "../nnue_common.h"
 #include "../../basetypes.h"
