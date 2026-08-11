@@ -28,6 +28,7 @@
 #include <limits>
 #include <vector>
 #include "../engine/basetypes.h"
+#include "engine.h"
 
 namespace {
 
@@ -454,6 +455,18 @@ BenchmarkSetup setup_benchmark(std::istream& is) {
 
     static constexpr int DEFAULT_DURATION_S = 150;
 
+    // `desiredTimeS * 1000` and `TT_SIZE_PER_THREAD * threads` are both done
+    // below on a number a user typed, and both used to be done in `int`.
+    // `speedtest 4 128 2147484` overflowed the first, made timeScaleFactor
+    // negative and handed every `go movetime` a negative argument -- a run that
+    // asked for 2147484 seconds finished in 5.47. `speedtest 100000000`
+    // overflowed the second to -84901888, which was emitted as
+    // `setoption name Hash value -84901888`, rejected by the option layer, and
+    // the run then measured whatever Hash happened to be set.
+    //
+    // So each input is clamped to the range the thing it feeds will accept, and
+    // the clamp is reported: a silently corrected number is the same failure in
+    // a nicer disguise.
     static constexpr int MaxDurationS = std::numeric_limits<int>::max() / 1000;
 
     BenchmarkSetup setup{};
