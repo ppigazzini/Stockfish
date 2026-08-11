@@ -74,6 +74,20 @@ search driver	iterative_deepening|start_searching|aspiration|best_worker
 worker clear / init	Worker::clear|SharedHistories|ButterflyHistory|ContinuationHistory
 time management	TimeManagement|check_time|Worker::elapsed
 
+# -- tablebases: absent from every default run, and 23.6% of a probing one --
+#
+# The bench list never probes, so on a default profile every row below MATCHES
+# NOTHING and says so. That is the point: it makes the absence visible instead
+# of letting a bound placed inside decompress_pairs read as free. Feed it
+# tests/perfbudget.sh --syzygy and the same row is a quarter of the program.
+#
+# rank_root_moves is deliberately NOT here. Its comparison lambda is baked into
+# the demangled name of the std::__insertion_sort and std::__merge_* symbols the
+# root ranking instantiates, so a row naming it would reach past the tablebase
+# reader and claim the sorting -- and `move sort` below, which is tried later,
+# would go empty on a probing profile for a reason nobody would find.
+tablebase probe	decompress_pairs|do_probe_table|Tablebases::probe_
+
 # -- move generation and ordering --
 movepick	MovePicker
 move sort	partial_insertion_sort|insertion_sort
