@@ -128,11 +128,17 @@ prepare_tree() {
     [ "$found" = "1" ] || skip "no .nnue in $SRC_ROOT/src -- run 'make net' there first"
 }
 
+# The build stamp is neutralised on BOTH sides. An empty GIT_SHA selects a
+# DIFFERENT branch of engine_version_info, so a `worktree` side -- a tar copy,
+# which carries no .git -- and a revision side do not compile the same source
+# unless both are forced empty, and under LTO that macro moves inlining
+# decisions nowhere near the version string. tests/perfbudget.sh carries the
+# measurement: 0.11% of its search figure, on one commit built both ways.
 build_side() {
     local dir=$1 label=$2
     echo "  building $label ..." >&2
-    ( cd "$dir/src" && make -j"$JOBS" build ARCH="$ARCH" COMP="$COMP" ) \
-        > "$dir/build.log" 2>&1 \
+    ( cd "$dir/src" && make -j"$JOBS" build ARCH="$ARCH" COMP="$COMP" \
+        GIT_SHA= GIT_DATE= GIT_DIFFINDEX= ) > "$dir/build.log" 2>&1 \
         || { tail -25 "$dir/build.log" >&2; die "$label failed to build"; }
 }
 
