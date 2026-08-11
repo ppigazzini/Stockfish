@@ -159,6 +159,23 @@ prepare_tree() {
     [ "$found" = "1" ] || skip "no .nnue in $SRC_ROOT/src -- run 'make net' there first"
 }
 
+# The build stamp is neutralised on BOTH sides, for the reason tests/textequal.sh
+# states at length: an empty GIT_SHA selects a DIFFERENT branch of
+# engine_version_info, so a `worktree` side -- a tar copy, which carries no .git
+# -- and a revision side do not compile the same source unless both are forced
+# empty. Under LTO that one macro moves inlining decisions far away from the
+# version string. Measured here on ONE commit built both ways, gcc, avx2:
+#
+#   git worktree  2,645,245,271 Ir      tar copy  2,646,892,448 Ir
+#   see_ge  15,560,170 -> 16,568,336    both_attacks_bb  1,888,890 -> 2,476,500
+#
+# +0.11% of the search figure on identical source: five times this gate's
+# tolerance, reported as a regression the change did not cause.
+#
+# It is why this gate cannot be used to argue about the SHIPPED binary's
+# absolute cost: the shipped binary carries its stamp. It compares two sides.
+STAMP_OFF=( GIT_SHA= GIT_DATE= GIT_DIFFINDEX= )
+
 # `make profile-build` is the shipped recipe: PGO on top of LTO, trained on the
 # engine's own bench. It is what a player runs and what a strength test
 # measures, and it is where a refactor can cost work that plain -O3 does not
@@ -168,8 +185,8 @@ build_side() {
     local dir=$1 label=$2 target=build
     [ "$PGO" = "1" ] && target=profile-build
     echo "  building $label ($target) ..." >&2
-    ( cd "$dir/src" && make -j"$JOBS" "$target" ARCH="$ARCH" COMP="$COMP" ) \
-        > "$dir/build.log" 2>&1 \
+    ( cd "$dir/src" && make -j"$JOBS" "$target" ARCH="$ARCH" COMP="$COMP" \
+        "${STAMP_OFF[@]}" ) > "$dir/build.log" 2>&1 \
         || { tail -25 "$dir/build.log" >&2; die "$label failed to build"; }
     [ -x "$dir/src/stockfish" ] || die "$label produced no binary"
 }
