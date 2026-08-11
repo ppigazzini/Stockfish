@@ -904,37 +904,52 @@ if selected fuzz-verdict; then
         SKIP=$((SKIP+1))
     else
         # The property that is not liveness: an engine that survives a corrupt
-        # table and then answers a question about a table the mutation never
-        # touched with a DIFFERENT move than the clean tables gave. No mutation
-        # of a real table reliably produces that -- keeping one table's
-        # corruption out of another's verdict is what the reader is for -- so the
-        # detector is driven directly, the way the other fuzz rows drive theirs.
+        # table and then cannot probe a table the mutation never touched. That
+        # is one table's corruption reaching another's mapping, and no mutation
+        # of a real table reliably produces it -- keeping the two apart is what
+        # the reader is for -- so the detector is driven directly, the way the
+        # other fuzz rows drive theirs.
         #
-        # The stub answers the reference run with one verdict per stem, then puts
-        # the divergence on the SECOND probe of each mutation round, which is the
+        # The stub answers the reference run with one verdict per stem, then
+        # zeroes tbhits on the SECOND probe of each mutation round, which is the
         # only one the harness makes a claim about. A stub that diverged on the
         # first would be exercising nothing: that probe reads the mutated table
         # and is judged on liveness alone.
-        echo "negative-control: fuzz [vrd]  -- one table's corruption reaching another's verdict"
+        #
+        # IT ANSWERS INCREMENTALLY, one reply per `go`, and that is not a style
+        # choice. The harness now drives the engine with a runner that waits for
+        # each `bestmove` before sending the next command, so a stub that reads
+        # to EOF before replying deadlocks it -- and the deadline then reports a
+        # hang, which this row would read as "the reference run itself was
+        # refused". A stub is a fake engine and has to keep the protocol.
+        echo "negative-control: fuzz [vrd]  -- one table's corruption reaching another's mapping"
         rm -f "$NCSTUB/count"
         stub verdict '#!/bin/bash
 C="$(dirname "$0")/count"
 n=$(cat "$C" 2>/dev/null || echo 0); echo $((n+1)) > "$C"
 echo "info string Found 5 WDL and 5 DTZ tablebase files (up to 3-man)."
-cat >/dev/null
-if [ "$n" = "0" ]; then
-    for _ in 1 2 3 4 5; do echo "info depth 8 tbhits 4"; echo "bestmove d2d4"; done
-else
-    echo "info depth 8 tbhits 4"; echo "bestmove d2d4"
-    echo "info depth 8 tbhits 4"; echo "bestmove h1h8"
-fi'
+g=0
+while IFS= read -r line; do
+    case "$line" in
+        go*)
+            g=$((g+1))
+            if [ "$n" != "0" ] && [ "$g" = "2" ]; then
+                echo "info depth 8 tbhits 0"
+            else
+                echo "info depth 8 tbhits 4"
+            fi
+            echo "bestmove d2d4"
+            ;;
+        quit*) exit 0 ;;
+    esac
+done'
         out=$(EXE="$NCSTUB/verdict" ./tests/fuzz.py --seconds 1 --harness tb 2>&1)
-        if printf '%s' "$out" | grep -q 'changed the'; then
+        if printf '%s' "$out" | grep -q 'unprobed'; then
             echo "  ok, red (1)"; PASS=$((PASS+1))
         elif printf '%s' "$out" | grep -q 'RIG FAULT'; then
             echo "  NOT DETECTED -- the reference run itself was refused"; FAIL=$((FAIL+1))
         else
-            echo "  NOT DETECTED -- a changed verdict from a corrupt table ran clean"; FAIL=$((FAIL+1))
+            echo "  NOT DETECTED -- a corrupt table reaching another's mapping ran clean"; FAIL=$((FAIL+1))
         fi
     fi
 fi
