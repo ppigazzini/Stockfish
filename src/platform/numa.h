@@ -888,7 +888,7 @@ class NumaReplicated: public NumaReplicatedBase {
 
     NumaReplicated& operator=(const NumaReplicated&) = delete;
     NumaReplicated& operator=(NumaReplicated&& other) noexcept {
-        NumaReplicatedBase::operator=(*this, std::move(other));
+        NumaReplicatedBase::operator=(std::move(other));
         instances = std::exchange(other.instances, {});
 
         return *this;
@@ -974,7 +974,7 @@ class LazyNumaReplicated: public NumaReplicatedBase {
 
     LazyNumaReplicated& operator=(const LazyNumaReplicated&) = delete;
     LazyNumaReplicated& operator=(LazyNumaReplicated&& other) noexcept {
-        NumaReplicatedBase::operator=(*this, std::move(other));
+        NumaReplicatedBase::operator=(std::move(other));
         instances = std::exchange(other.instances, {});
 
         return *this;

@@ -104,8 +104,12 @@ class TranspositionTable {
    private:
     friend struct TTEntry;
 
-    usize    clusterCount;
-    Cluster* table = nullptr;
+    // Both initialised, and the pointer beside it always was. resize() is
+    // reached from the constructor via resize_threads() before any reader, so
+    // this is a bound on what a future caller can observe rather than a repair
+    // of a reachable path.
+    usize    clusterCount = 0;
+    Cluster* table        = nullptr;
 
     u8 generation8 = 0;
 };

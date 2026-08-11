@@ -54,6 +54,14 @@ inline Move* splat_pawn_moves(Move* moveList, Bitboard to_bb) {
 inline Move* splat_moves(Move* moveList, Square from, Bitboard to_bb) {
     assert(popcount(to_bb) <= 32);  // Q can attack up to 27 squares
 
+    // THE STORE BELOW WRITES 32 MOVES REGARDLESS OF THE POPCOUNT. The caller's
+    // buffer must therefore hold 32 slots from moveList even when this call
+    // contributes one, which means at most MAX_MOVES - 32 moves may already be
+    // in it. The bound is real and was undocumented; it cannot be asserted here
+    // because this function is never told where the buffer ends. Measured
+    // maximum over bench plus the 218-move record position: 218 of MAX_MOVES.
+    static_assert(MAX_MOVES >= 32 + 218, "the unmasked store needs 32 slots past the worst case");
+
     const __m512i fromVec = _mm512_set1_epi16(Move(from, SQUARE_ZERO).raw());
     const __m512i toSquares =
       _mm512_cvtepi8_epi16(_mm512_castsi512_si256(_mm512_maskz_compress_epi8(to_bb, AllSquares)));
