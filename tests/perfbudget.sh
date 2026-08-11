@@ -41,6 +41,8 @@ TOLERANCE=0.02     # percent
 REPEAT=1
 COMP=gcc
 PGO=0
+SYZYGY=
+DEPTH_GIVEN=0
 KEEP=0
 JOBS=$(nproc 2>/dev/null || echo 4)
 
@@ -58,8 +60,13 @@ Usage: $0 [options] <base-rev> [<head-rev>]
 Options:
   --arch ARCH        build architecture (default: $ARCH; callgrind cannot run avx512)
   --comp COMP        compiler, gcc or clang (default: $COMP)
-  --depth D          bench depth (default: $DEPTH)
+  --depth D          bench depth (default: $DEPTH, or 14 with --syzygy)
   --tt MB            bench hash size (default: $TT)
+  --syzygy DIR       measure a PROBING workload instead of the bench list, with
+                     SyzygyPath pointed at DIR. The bench list never probes, so
+                     without this the whole tablebase reader is absent from
+                     every figure this gate produces and a bound placed inside
+                     decompress_pairs reads as free. An empty DIR SKIPS.
   --pgo              build both sides with profile-guided optimisation, which is
                      what ships; roughly 3x slower to build
   --tolerance PCT    fail above this percent regression (default: $TOLERANCE)
@@ -72,6 +79,7 @@ Examples:
   $0 HEAD~1                      # this commit against its parent
   $0 origin/master worktree      # uncommitted work against master
   $0 --repeat 3 HEAD~1 HEAD      # with a measured spread
+  $0 --syzygy tests/syzygy HEAD~1 HEAD
 EOF
 }
 
@@ -91,7 +99,8 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --arch)      ARCH=$2; shift 2 ;;
         --comp)      COMP=$2; shift 2 ;;
-        --depth)     DEPTH=$2; shift 2 ;;
+        --depth)     DEPTH=$2; DEPTH_GIVEN=1; shift 2 ;;
+        --syzygy)    SYZYGY=$2; shift 2 ;;
         --tt)        TT=$2; shift 2 ;;
         --tolerance) TOLERANCE=$2; shift 2 ;;
         --repeat)    REPEAT=$2; shift 2 ;;
@@ -117,6 +126,11 @@ num() {
         ''|*[!0-9.]*|*.*.*) die "$1 must be a number, got '$2'" ;;
     esac
 }
+# A probing run wants depth, not breadth: the positions are four men and the
+# search converges early, so a depth-8 run barely reaches the reader it exists
+# to measure. Only the DEFAULT moves; --depth still wins.
+[ -n "$SYZYGY" ] && [ "$DEPTH_GIVEN" = "0" ] && DEPTH=14
+
 num --depth "$DEPTH"; num --tt "$TT"; num --repeat "$REPEAT"; num --jobs "$JOBS"
 num --tolerance "$TOLERANCE"
 [ "$REPEAT" -ge 1 ] 2>/dev/null || die "--repeat must be at least 1"
@@ -125,6 +139,46 @@ awk -v t="$TOLERANCE" 'BEGIN{exit !(t > 0 && t <= 1)}' \
     || die "--tolerance must be in (0, 1] percent; $TOLERANCE would gate nothing"
 
 command -v valgrind >/dev/null || skip "valgrind is not installed"
+
+# ------------------------------------------------------- the probing workload
+#
+# BENCH_FILE is empty for the default list and a path for --syzygy. The file is
+# assembled here rather than committed, because its first line has to name a
+# directory only the caller knows, and a committed absolute path is a file that
+# works on exactly one machine.
+#
+# An empty or missing corpus SKIPS. It must not pass: a probing measurement
+# taken with no tables loaded is the bench list wearing a different name, and it
+# would certify a bound inside decompress_pairs that was never executed.
+BENCH_FILE=
+BENCH_ARGS=()
+PROBE_SETUP=()
+if [ -n "$SYZYGY" ]; then
+    # Resolve into a second name: assigning to SYZYGY first would leave the
+    # diagnostic below naming the empty string it just became.
+    SYZYGY_ABS=$(cd "$SYZYGY" 2>/dev/null && pwd) \
+        || skip "--syzygy: no such directory: $SYZYGY"
+    SYZYGY=$SYZYGY_ABS
+    ls "$SYZYGY"/*.rtbw >/dev/null 2>&1 \
+        || skip "--syzygy: no .rtbw in $SYZYGY -- run tests/tbfetch.sh"
+    FENS=$SRC_ROOT/tests/tbprobe.fens
+    [ -f "$FENS" ] || skip "--syzygy: $FENS is missing"
+
+    BENCH_FILE=$WORK/tbprobe.bench
+    {
+        echo "setoption name SyzygyPath value $SYZYGY"
+        grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$FENS"
+    } > "$BENCH_FILE"
+    [ "$(grep -cve '^setoption' "$BENCH_FILE")" != "0" ] \
+        || skip "--syzygy: $FENS holds no positions"
+
+    BENCH_ARGS=( "$BENCH_FILE" depth )
+    # The startup probe loads the tables too, so the table LOAD is subtracted
+    # and what is left in the search figure is the PROBE. Without this the
+    # mapping of 35 files would sit inside the measured search on both sides,
+    # burying the thing being measured under something that is not it.
+    PROBE_SETUP=( "setoption name SyzygyPath value $SYZYGY" )
+fi
 
 case "$ARCH" in
     *avx512*|*vnni*) skip "callgrind implements no AVX-512; ARCH=$ARCH cannot be measured" ;;
@@ -223,7 +277,7 @@ measure_side() {
     local -a search_ir
     local nodes= startup= net=
 
-    startup=$(printf 'isready\nquit\n' > "$dir/probe.in";
+    startup=$(printf '%s\n' "${PROBE_SETUP[@]}" isready quit > "$dir/probe.in";
               valgrind --tool=callgrind --callgrind-out-file="$dir/cg.startup" \
                        --cache-sim=no --branch-sim=no \
                        "$dir/src/stockfish" < "$dir/probe.in" \
@@ -233,7 +287,8 @@ measure_side() {
 
     for i in $(seq 1 "$REPEAT"); do
         local total
-        total=$(callgrind_ir "$dir/src/stockfish" "$dir/cg.$i" bench "$TT" 1 "$DEPTH")
+        total=$(callgrind_ir "$dir/src/stockfish" "$dir/cg.$i" \
+                              bench "$TT" 1 "$DEPTH" "${BENCH_ARGS[@]}")
         [ -n "$total" ] || die "$label: no instruction count from callgrind"
         local n
         n=$(grep -a 'Nodes searched' "$dir/cg.$i.stderr" | awk -F': *' '{print $2}' | tr -d ' \r')
@@ -264,6 +319,10 @@ measure_side() {
 
 MODE=-O3; [ "$PGO" = "1" ] && MODE=PGO
 echo "perfbudget: arch=$ARCH comp=$COMP mode=$MODE depth=$DEPTH tt=$TT repeat=$REPEAT tolerance=${TOLERANCE}%"
+if [ -n "$SYZYGY" ]; then
+    echo "perfbudget: workload=probing ($(grep -cve '^setoption' "$BENCH_FILE") positions, SyzygyPath=$SYZYGY)"
+    echo "perfbudget: the corpus here is 4-man; a block-walk cost measured on it is a LOWER BOUND"
+fi
 echo "perfbudget: base=$BASE_REV head=$HEAD_REV"
 
 prepare_tree "$BASE_REV" "$WORK/base"
