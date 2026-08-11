@@ -19,6 +19,7 @@
 #ifndef UCI_H_INCLUDED
 #define UCI_H_INCLUDED
 
+#include <functional>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -62,6 +63,7 @@ class UCIEngine {
     void bench(std::istream& args);
     void benchmark(std::istream& args);
     void position(std::istringstream& is);
+    void apply_idle(const std::function<void()>& mutate);
     void setoption(std::istringstream& is);
     u64  perft(const Search::LimitsType&);
 
