@@ -10,6 +10,18 @@ error()
 }
 trap 'error ${LINENO}' ERR
 
+# expect drives the engine below, and its absence read as a FINDING: every
+# run_test spawned a missing interpreter, took exit 127, and the script reported
+# "FAILED (exit code: 127)" on 30 positions and exited 1. A movegen count that
+# was never taken is not a movegen count that disagrees, and a rig fault dressed
+# as a chess bug costs whoever reads it the time to rule the chess out.
+# Exit 2 is SKIPPED -- it proves nothing, which is the honest answer, and it is
+# what tests/reprosearch.sh already does with the same dependency.
+if ! command -v expect >/dev/null; then
+  echo "perft: SKIPPED -- expect is not installed" >&2
+  exit 2
+fi
+
 echo "perft testing started"
 
 EXPECT_SCRIPT=$(mktemp)
