@@ -33,6 +33,10 @@
 // net name, and `**/*.nnue` is gitignored, so src/ accumulates the nets of older
 // builds and naming one from outside picks a stale one that will not parse.
 //
+// It also carries the engine-side invariants that need no host at all, for the
+// same reason: linking engine/ alone is what this program is for, and a pure
+// function of the engine has nowhere else in the tree to be checked.
+//
 // Deliberately not a test framework: it must build from the engine sources
 // alone.
 
@@ -40,9 +44,11 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <string>
 
 #include "../src/engine/attacks.h"
+#include "../src/engine/hashing.h"
 #include "../src/engine/nnue/network.h"
 #include "../src/engine/nnue/nnue_misc.h"
 #include "../src/engine/position.h"
@@ -68,6 +74,40 @@ struct Case {
     int         depth;
 };
 
+// An engine-side invariant that needs no host, checked here because this is the
+// only program in the tree that links engine/ and runs it.
+//
+// hash_bytes' tail loop reads through `char`, and `char` is signed on the
+// platforms this ships to: a tail byte >= 0x80 sign-extends and the `or` then
+// sets every bit above bit 7, erasing everything already accumulated from the
+// higher indices. The property is stated as a DOMAIN COUNT rather than as a
+// golden hash: a golden pins the algorithm, and what has to hold is that
+// distinct inputs get distinct hashes. Over all 65536 two-byte inputs the
+// signed form produced 32896 distinct values.
+int check_hash_domain() {
+    std::set<u64> seen;
+    for (int a = 0; a < 256; ++a)
+        for (int b = 0; b < 256; ++b)
+        {
+            const char in[2] = {char(a), char(b)};
+            seen.insert(hash_bytes(in, sizeof(in)));
+        }
+
+    if (seen.size() != 65536)
+        return fail("hash_bytes maps 65536 two-byte inputs onto " + std::to_string(seen.size())
+                    + " values");
+
+    // The pair the report names, kept because a count can be satisfied by an
+    // accident and this one cannot.
+    const char x[3] = {'\x80', '\x02', '\x03'};
+    const char y[3] = {'\x80', '\x02', '\x04'};
+    if (hash_bytes(x, sizeof(x)) == hash_bytes(y, sizeof(y)))
+        return fail("hash_bytes collides {80 02 03} with {80 02 04}");
+
+    std::cout << "  hash_bytes: 65536 distinct values over the two-byte domain\n";
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -77,6 +117,9 @@ int main(int argc, char** argv) {
     const std::filesystem::path netDir(argv[1]);
     if (!std::filesystem::is_directory(netDir))
         return fail("no such directory: " + netDir.string());
+
+    if (const int rc = check_hash_domain(); rc != 0)
+        return rc;
 
     // Startup, engine-side only. shell/main.cpp calls exactly these two before
     // anything searches.
