@@ -227,6 +227,9 @@ static_assert(sizeof(LR) == 3, "LR tree entry must be 3 bytes");
 // set_symlen() and decompress_pairs() index them with a value straight from the
 // file and still stay inside the buffer -- with no test in either loop.
 constexpr usize SymCount = 4096;
+static_assert((SymCount & (SymCount - 1)) == 0,
+              "decompress_pairs masks a Sym with SymCount - 1; a non-power-of-two would let "
+              "an index past the end through");
 
 // True when COUNT items of STRIDE bytes each still fit between P and the end of
 // the mapping.
@@ -752,8 +755,23 @@ int decompress_pairs(PairsData* d, u64 idx) {
         // Now add the value of the lowest symbol of length len to get our symbol
         sym += number<Sym, LittleEndian>(&d->lowestSym[len]);
 
+        // MASK IT INTO THE ALPHABET. Both terms above are file data -- buf64 is
+        // the compressed stream, base64[] and lowestSym[] are read out of the
+        // table -- so `sym` is a full u16 here, while symlen[] and btree[] are
+        // SymCount entries because a Sym stored in btree[] is twelve bits. On a
+        // WELL-FORMED table the mask is a no-op: a table whose btree cannot
+        // address a symbol cannot contain one, so a valid alphabet is 12-bit by
+        // construction and this value is already inside it. On a crafted one it
+        // is the difference between a wrong verdict and an out-of-bounds read
+        // through the whole expansion below, which indexes symlen[] and
+        // btree[] with it again.
+        //
+        // A mask and not a test, for the reason SymCount exists at all: one
+        // `and` in the hottest loop this file has, no branch to predict, and
+        // nothing for a corrupt table to steer.
         static_assert((SymCount & (SymCount - 1)) == 0);
         sym &= SymCount - 1;
+
 
         // If our offset is within the number of values represented by symbol sym,
         // we are done.
