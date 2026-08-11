@@ -1,0 +1,40 @@
+# Positions that PROBE. The bench list does not: every one of its FENs has more
+# men than any table anyone installs for a test run, so the whole tablebase
+# reader -- TBFile::map, decompress_pairs, probe_wdl, probe_dtz -- is absent
+# from every instruction and counter figure this tree records. A bound placed
+# inside decompress_pairs is therefore free according to every perf gate here,
+# which is not the same as being free.
+#
+# Four men, because tests/syzygy holds the 3-4-5 set's 3-man and 4-man tables
+# and nothing larger. THIS IS A LOWER BOUND ON THE BLOCK WALK. Block count
+# scales with table size, so the two walk loops in decompress_pairs iterate less
+# here than they would on a 6-man table, and a cost measured on this list must
+# be read as "at least this much", never as "this much".
+#
+# Blank lines and lines beginning with '#' are not FENs; setup_bench pushes
+# every non-empty line, so this file is fed through a filter rather than read
+# directly. tests/perfbudget.sh --syzygy does that and prepends the SyzygyPath
+# setoption line, which has to name a directory only the caller knows.
+#
+# Each position is the side to move having to convert or hold: the root ranking
+# probes every legal move, and the search probes again at every node inside the
+# cardinality. A position already won or lost by mate distance would return
+# from the root and probe nothing.
+8/8/8/4k3/8/8/3Q4/4K2r w - - 0 1
+8/8/8/8/1k1p4/8/1K6/3R4 w - - 0 1
+8/8/4k3/8/8/8/4b3/R3K3 w - - 0 1
+8/8/8/4k3/8/8/3BB3/4K3 w - - 0 1
+8/8/8/4k3/8/8/3BN3/4K3 w - - 0 1
+8/8/8/4k3/8/8/3NN3/4K3 w - - 0 1
+8/8/8/3kp3/8/3KP3/8/8 w - - 0 1
+8/8/8/8/3k4/3p4/8/3QK3 w - - 0 1
+8/8/8/4k3/8/8/4r3/R3K3 w - - 0 1
+8/8/8/4k3/8/8/4b3/3QK3 w - - 0 1
+8/8/8/4k3/8/4P3/8/R3K3 w - - 0 1
+8/8/8/4k3/8/4P3/8/3QK3 w - - 0 1
+8/8/8/4k3/8/3BP3/8/4K3 w - - 0 1
+8/8/8/4k3/8/2N1P3/8/4K3 w - - 0 1
+8/8/8/4k3/8/3PP3/8/4K3 w - - 0 1
+8/8/8/4k3/8/8/4N3/4K1n1 w - - 0 1
+8/8/8/4k3/8/8/3R4/4K1r1 w - - 0 1
+8/8/8/4k3/8/8/3Q4/4K1q1 w - - 0 1
