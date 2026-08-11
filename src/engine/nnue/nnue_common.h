@@ -224,6 +224,16 @@ inline void read_leb_128_detail(std::istream& stream,
     static_assert(std::is_signed_v<IntType>, "Not implemented for unsigned types");
     static_assert(sizeof(IntType) <= 4, "Not implemented for types larger than 32 bit");
 
+    // THE CURSOR IS HELD IN LOCALS and written back on the way out. All three
+    // of these are reference parameters -- the caller's fold expression carries
+    // them from one array to the next -- and the loop below contains a
+    // stream.read() the compiler cannot prove does not alias them, so used
+    // directly they are reloaded every byte. Adding `buf_end` as a fourth
+    // reference and reading it per byte cost 12.2M startup instructions, 1.7%
+    // of what this decoder spends. Locals cost nothing and the write-back is
+    // once per call.
+    u32 pos = buf_pos, end = buf_end, left = bytes_left;
+
     // Accumulate UNSIGNED. `(byte & 0x7f) << (shift % 32)` overflows a signed
     // int at shift 28 and 31, which a retrained net can reach and no shipped
     // net does.
@@ -231,22 +241,22 @@ inline void read_leb_128_detail(std::istream& stream,
     usize shift = 0, i = 0;
     while (i < Count)
     {
-        if (buf_pos == buf_end)
+        if (pos == end)
         {
-            stream.read(reinterpret_cast<char*>(buf.data()),
-                        std::min(usize(bytes_left), buf.size()));
-            buf_pos = 0;
-            buf_end = u32(stream.gcount());
+            stream.read(reinterpret_cast<char*>(buf.data()), std::min(usize(left), buf.size()));
+            pos = 0;
+            end = u32(stream.gcount());
 
-            if (buf_end == 0)
+            if (end == 0)
             {
+                buf_pos = pos, buf_end = end, bytes_left = left;
                 stream.setstate(std::ios::failbit);
                 return;
             }
         }
 
-        u8 byte = buf[buf_pos++];
-        --bytes_left;
+        u8 byte = buf[pos++];
+        --left;
         result |= u32(byte & 0x7f) << (shift % 32);
         shift += 7;
 
@@ -258,6 +268,8 @@ inline void read_leb_128_detail(std::istream& stream,
             shift  = 0;
         }
     }
+
+    buf_pos = pos, buf_end = end, bytes_left = left;
 }
 
 // The magic string and the closing balance are the ONLY integrity checks this
