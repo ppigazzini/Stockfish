@@ -1185,10 +1185,26 @@ void set_groups(T& e, PairsData* d, int order[], File f) {
 // In Recursive Pairing each symbol represents a pair of children symbols. So
 // read d->btree[] symbols data and expand each one in his left and right child
 // symbol until reaching the leaves that represent the symbol value.
+// THE TREE IS NOT KNOWN TO BE ACYCLIC. Upstream's own comment here said "we can
+// set it now because tree is acyclic", and that is a claim about a file rather
+// than about the program: btree[] is read out of the table, and a crafted one
+// closes a loop. Nothing downstream survives it -- decompress_pairs' expansion
+// walk takes `sym = left` WITHOUT decreasing `offset`, so a cycle spins it
+// forever, and a spinning engine is the failure a UCI host cannot distinguish
+// from a slow one.
+//
+// A three-colour DFS, and the colours are the whole point: a `visited` flag
+// cannot tell a SHARED subtree -- which recursive pairing produces legitimately,
+// so the structure is a DAG rather than a tree -- from a BACK EDGE, which is the
+// cycle. Grey means "on the current path"; reaching grey is the cycle and
+// nothing else is.
+//
+// It costs nothing where it matters: this runs once per table opened, and
+// decompress_pairs is untouched.
 enum SymColour : u8 {
-    White,
-    Grey,
-    Black
+    White,  // not yet reached
+    Grey,   // on the current path
+    Black   // finished
 };
 
 u8 set_symlen(PairsData* d, Sym s, std::vector<u8>& colour, bool& cyclic) {
@@ -1367,7 +1383,7 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
             d->symlen[sym] = set_symlen(d, sym, colour, cyclic);
 
     if (cyclic)
-        return nullptr;
+        return nullptr;  // refused, the way a bad magic already is
 
     return data + symlenSize * sizeof(LR) + (symlenSize & 1);
 }
