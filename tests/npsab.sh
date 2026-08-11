@@ -165,37 +165,35 @@ build_side   "$WORK/head" head
 run_once "$WORK/base/src/stockfish" > /dev/null || exit 1
 run_once "$WORK/head/src/stockfish" > /dev/null || exit 1
 
-# The A/A control. The box's noise floor is a property of its STATE, not a
-# constant of the host: the same control immediately after a heavy build reads
-# far wider than a settled one. So it is measured here, adjacent in time to the
-# comparison it floors, by racing the BASE binary against itself in the same
-# alternating pattern. A control taken once at the start of a session floors
-# nothing an hour later.
+# The A/A control is INTERLEAVED with the comparison, one control pair inside
+# every round, not three pairs up front.
+#
+# The box's noise floor is a property of its STATE, not a constant of the host,
+# and the state right after two full builds is not the state ten minutes later.
+# Run first, the control samples the post-build thermal transient while the
+# comparison samples a settling box, and the band then measures cooling rather
+# than noise. One gcc run on this tree said so directly:
+#
+#   A/A control: 0.9475 .. 1.0552   (half-width 0.0552)
+#   7 paired A/B ratios: 1.0069 .. 1.0221   (all seven above 1.000)
+#
+# A box with an 11%-wide noise floor cannot produce seven paired ratios inside
+# 1.5%. NO DIRECTION was the right verdict on the rule and the wrong verdict on
+# the box. The same run showed the ramp underneath it: nps rising 1,280,848 ->
+# 1,411,169 across the seven rounds, monotonically apart from one.
+#
+# The control pair has the SAME SHAPE as the comparison pair -- two adjacent
+# runs, one round apart from the next pair -- because a floor measured at a
+# different temporal separation floors nothing. It costs two extra runs per
+# round.
 #
 # When the control is wider than the effect, discard the COMPARISON, not the
 # control: a wide A/A is the box saying every ratio measured beside it is noise.
-echo "  A/A control (base against itself) ..." >&2
-CTRL=()
-for r in 1 2 3; do
-    XO=$(run_once "$WORK/base/src/stockfish") || exit 1
-    YO=$(run_once "$WORK/base/src/stockfish") || exit 1
-    read -r x _ <<< "$XO"; read -r y _ <<< "$YO"
-    CTRL+=( "$(awk -v a="$y" -v b="$x" 'BEGIN{printf "%.4f", a/b}')" )
-done
-CSORT=$(printf '%s\n' "${CTRL[@]}" | sort -n)
-CLO=$(printf '%s\n' "$CSORT" | head -1)
-CHI=$(printf '%s\n' "$CSORT" | tail -1)
-# Both quantities must be displacements from 1.0 or the comparison below is a
-# width against an offset. The control's half-width is the larger of the two
-# ends' distances from unity.
-CBAND=$(awk -v lo="$CLO" -v hi="$CHI" \
-    'BEGIN{a=lo-1; if(a<0)a=-a; b=hi-1; if(b<0)b=-b; printf "%.4f", (a>b)?a:b}')
-printf 'A/A control: %.4f .. %.4f   (half-width %.4f from 1.000)\n' "$CLO" "$CHI" "$CBAND"
-
 B_NODES=; H_NODES=
 RATIOS=()
+CTRL=()
 echo
-printf '%-7s %14s %14s %10s %s\n' "round" "base nps" "head nps" "ratio" "order"
+printf '%-7s %14s %14s %10s %10s %s\n' "round" "base nps" "head nps" "ratio" "A/A" "order"
 for r in $(seq 1 "$ROUNDS"); do
     if [ $((r % 2)) -eq 1 ]; then
         BO=$(run_once "$WORK/base/src/stockfish") || exit 1
@@ -208,15 +206,33 @@ for r in $(seq 1 "$ROUNDS"); do
         read -r hn hnodes <<< "$HO"; read -r bn bnodes <<< "$BO"
         order="head,base"
     fi
+
+    # The control pair, immediately beside the comparison pair it floors.
+    XO=$(run_once "$WORK/base/src/stockfish") || exit 1
+    YO=$(run_once "$WORK/base/src/stockfish") || exit 1
+    read -r x _ <<< "$XO"; read -r y _ <<< "$YO"
+    ctrl=$(awk -v a="$y" -v b="$x" 'BEGIN{printf "%.4f", a/b}')
+    CTRL+=("$ctrl")
+
     [ -z "$B_NODES" ] && B_NODES=$bnodes
     [ -z "$H_NODES" ] && H_NODES=$hnodes
     [ "$bnodes" = "$B_NODES" ] || die "base node count moved between rounds"
     [ "$hnodes" = "$H_NODES" ] || die "head node count moved between rounds"
     ratio=$(awk -v h="$hn" -v b="$bn" 'BEGIN{printf "%.4f", h/b}')
     RATIOS+=("$ratio")
-    printf '%-7s %14s %14s %10s %s\n' "$r" "$bn" "$hn" "$ratio" "$order"
+    printf '%-7s %14s %14s %10s %10s %s\n' "$r" "$bn" "$hn" "$ratio" "$ctrl" "$order"
 done
 echo
+
+CSORT=$(printf '%s\n' "${CTRL[@]}" | sort -n)
+CLO=$(printf '%s\n' "$CSORT" | head -1)
+CHI=$(printf '%s\n' "$CSORT" | tail -1)
+# Both quantities must be displacements from 1.0 or the comparison below is a
+# width against an offset. The control's half-width is the larger of the two
+# ends' distances from unity.
+CBAND=$(awk -v lo="$CLO" -v hi="$CHI" \
+    'BEGIN{a=lo-1; if(a<0)a=-a; b=hi-1; if(b<0)b=-b; printf "%.4f", (a>b)?a:b}')
+printf 'A/A control: %.4f .. %.4f   (half-width %.4f from 1.000)\n' "$CLO" "$CHI" "$CBAND"
 
 if [ "$B_NODES" != "$H_NODES" ]; then
     echo "npsab: VOID -- base searched $B_NODES nodes, head $H_NODES."
