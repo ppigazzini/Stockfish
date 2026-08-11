@@ -19,6 +19,8 @@
 #include "arena.h"
 
 #include <cstdlib>
+#include <iostream>
+#include <limits>
 
 // The guard platform/memory.cpp carries, repeated rather than included: these
 // toolchains do not declare std::aligned_alloc, and engine/ must not include a
@@ -42,7 +44,14 @@ namespace {
 // allocate on its own, or tests/enginelink.sh links an engine it cannot run.
 void* default_alloc(usize bytes) {
     constexpr usize Alignment = 4096;
-    const usize     rounded   = ((bytes + Alignment - 1) / Alignment) * Alignment;
+
+    // Rounding up is itself arithmetic on an untrusted size: a request within
+    // Alignment of the top wraps to a small allocation. Refuse it here so the
+    // caller's null check reports it.
+    if (bytes > std::numeric_limits<usize>::max() - (Alignment - 1))
+        return nullptr;
+
+    const usize rounded = ((bytes + Alignment - 1) / Alignment) * Alignment;
 #if defined(_WIN32)
     return _aligned_malloc(rounded, Alignment);
 #elif defined(ARENA_POSIX_ALIGNED_ALLOC)
@@ -70,5 +79,16 @@ Arena current = {default_alloc, default_alloc_hinted, default_free};
 const Arena& arena() { return current; }
 
 void set_arena(const Arena& a) { current = a; }
+
+void arena_alloc_failed(usize bytes) {
+    std::cerr << "Failed to allocate " << bytes << " bytes." << std::endl;
+    std::exit(EXIT_FAILURE);
+}
+
+void arena_size_overflow(usize num, usize elementSize) {
+    std::cerr << "Refusing an array of " << num << " x " << elementSize
+              << " bytes: the byte count does not fit a size_t." << std::endl;
+    std::exit(EXIT_FAILURE);
+}
 
 }  // namespace Stockfish
