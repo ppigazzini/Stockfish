@@ -351,6 +351,36 @@ check_survives() {
     fi
 }
 
+# Two fixtures the tb fuzz harness found, replayed as the exact byte edits it
+# made rather than as a seed. A seed is a reproducer for the harness; a byte
+# list is a reproducer for the DEFECT, and it survives the harness changing.
+#
+#   huffman-noncanon  KRvK.rtbw, 8 bytes: lowestSym[] stops descending, so the
+#                     base64[] table decompress_pairs searches is not a
+#                     canonical Huffman code. Upstream states that with an
+#                     assert, which -DNDEBUG deletes from every shipped binary.
+#   symbol-past-end   KQvK.rtbw, 8 bytes: the symbol decompress_pairs computes
+#                     from the compressed stream lands outside the 12-bit
+#                     alphabet symlen[] and btree[] are sized for.
+patch_bytes() {
+    local file=$1; shift
+    while [ $# -ge 2 ]; do
+        printf "$(printf '\\x%02x' "$2")" \
+          | dd of="$file" bs=1 seek="$1" count=1 conv=notrunc 2>/dev/null
+        shift 2
+    done
+}
+
+if [ -f "$CORPUS/KRvK.rtbw" ]; then
+    dir="$WORK/fx/huffman-noncanon"
+    mkdir -p "$dir"; cp "$CORPUS"/*.rtb? "$dir/"
+    patch_bytes "$dir/KRvK.rtbw" 32 220 108 111 29 250 109 40 189 0 65 158 113 213 163 212
+    check_survives "huffman-noncanon" "$dir" "4k3/8/8/8/8/8/8/3RK3 w - - 0 1"
+else
+    echo "malformed: huffman-noncanon SKIPPED -- no 3-man corpus; run tests/tbfetch.sh"
+    SKIP=$((SKIP+1))
+fi
+
 if [ -f "$CORPUS/KQvK.rtbw" ]; then
     dir="$WORK/fx/sparse-block"
     mkdir -p "$dir"
