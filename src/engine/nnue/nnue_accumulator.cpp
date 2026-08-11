@@ -22,6 +22,14 @@
 #include <cassert>
 #include <new>
 
+// One per tier, because the dirty-piece comparison has a branch per tier and
+// each reaches for a different intrinsic family.
+#if defined(USE_AVX2)
+    #include <immintrin.h>
+#elif defined(USE_SSE2)
+    #include <emmintrin.h>
+#endif
+
 #include "../bitboard.h"
 #include "../position.h"
 #include "../types.h"
@@ -30,6 +38,12 @@
 #include "nnue_feature_transformer.h"  // IWYU pragma: keep
 #include "simd.h"
 #include "../basetypes.h"
+// Kept: sf_always_inline, which expands to an ATTRIBUTE and leaves no AST node
+// for IWYU to attribute a use to. It asks for this header on a tier where the
+// SIMD branches are compiled and asks to drop it on one where they are not, and
+// the second answer is the wrong one -- apply_psq_features carries the macro
+// whatever the tier. Same reason engine/attacks.h keeps platform.h.
+#include "../../platform/misc.h"  // IWYU pragma: keep
 
 namespace Stockfish::Eval::NNUE {
 
