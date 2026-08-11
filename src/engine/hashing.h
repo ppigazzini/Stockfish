@@ -55,9 +55,15 @@ inline u64 hash_bytes(const char* data, usize size) {
 
     if (size & 7)
     {
+        // Read the tail byte as UNSIGNED. `end[i]` is `char`, which is signed
+        // here: a byte >= 0x80 sign-extends to 0xFFFFFFFFFFFFFF00 | byte, and
+        // the `or` then sets every bit above bit 7 -- erasing everything already
+        // accumulated from the higher indices. Reference MurmurHash64A reads
+        // through `const unsigned char*`. Over all 65536 two-byte inputs the
+        // signed form produces 32896 distinct values instead of 65536.
         u64 k = 0;
         for (int i = (size & 7) - 1; i >= 0; i--)
-            k = (k << 8) | u64(end[i]);
+            k = (k << 8) | u64(u8(end[i]));
 
         h ^= k;
         h *= m;
