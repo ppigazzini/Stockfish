@@ -294,13 +294,7 @@ top:
     case QCAPTURE_INIT : {
         MoveList<CAPTURES> ml(pos);
 
-        // endGenerated with them: QUIET_INIT is where it gets its real value,
-        // and QUIET_INIT is skipped whenever quiets are. BAD_QUIET then copied
-        // it into endCur -- an indeterminate value, saved from being read only
-        // because BAD_QUIET returns before the copy is used. `moves` is the
-        // right value for "no quiets were generated": it makes the bad-quiet
-        // range empty rather than unknown.
-        cur = endBadCaptures = endGenerated = moves;
+        cur = endBadCaptures = moves;
         endCur = endCaptures = score<CAPTURES>(ml);
 
         partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
@@ -348,9 +342,20 @@ top:
         if (select([]() { return true; }))
             return *(cur - 1);
 
-        // Prepare the pointers to loop over quiets again
-        cur    = endCaptures;
-        endCur = endGenerated;
+        // Prepare the pointers to loop over quiets again -- ONLY if any were
+        // generated. endGenerated gets its value in QUIET_INIT, and QUIET_INIT
+        // is skipped whenever quiets are, so this copied a value no search had
+        // written; it was saved from being read by BAD_QUIET returning first.
+        // Guarding the copy costs one predictable branch per node here, where
+        // initialising endGenerated in CAPTURE_INIT would cost a store at every
+        // node instead. skipQuiets is monotone -- skip_quiet_moves() only ever
+        // sets it -- so a caller cannot un-skip between the two stages and find
+        // the pointers unset.
+        if (!skipQuiets)
+        {
+            cur    = endCaptures;
+            endCur = endGenerated;
+        }
 
         ++stage;
         [[fallthrough]];
