@@ -20,8 +20,6 @@
 
 #include <array>
 
-#include "../platform/misc.h"
-
 namespace Stockfish::Attacks {
 
 Bitboard LineBB[SQUARE_NB][SQUARE_NB];

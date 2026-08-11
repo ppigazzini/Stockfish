@@ -25,16 +25,22 @@
 #include <utility>
 
 #include "../platform/misc.h"
+#include "basetypes.h"  // DualMagic's rankAttacksLookup is a u8*
 #include "types.h"
-// Kept: RESTRICT, used below under USE_DUAL_HYPERBOLA_QUINT, expands to the
-// __restrict__ KEYWORD. A macro that expands to a keyword leaves no AST node,
-// so IWYU attributes no use to it and asks for a removal that reds every avx2
-// build -- including the analyze lane's own ARCH, which compiles this branch.
+// Kept: RESTRICT, used below by DualMagic, expands to the __restrict__ KEYWORD.
+// A macro that expands to a keyword leaves no AST node, so IWYU attributes no
+// use to it and asks for a removal that reds every build.
 #include "../platform/platform.h"  // IWYU pragma: keep
 #include "bitboard.h"
 
 #if defined(USE_AVX2)
+    // All three, and the two narrower ones are not redundant: DualMagic's
+    // both_attacks_bb finishes in SSE -- _mm_cvtsi128_si64 is <emmintrin.h>,
+    // _mm_extract_epi64 is <smmintrin.h> -- and <immintrin.h> reaching them is
+    // a property of this toolchain, not of the language.
+    #include <emmintrin.h>
     #include <immintrin.h>
+    #include <smmintrin.h>
 #elif defined(__wasm_simd128__)
     #include <wasm_simd128.h>
 #endif

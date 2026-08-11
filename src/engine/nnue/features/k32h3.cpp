@@ -23,6 +23,8 @@
 #include <array>
 
 #if defined(USE_AVX512ICL)
+    #include <immintrin.h>
+    #include "../../basetypes.h"
     #include "../../bitboard.h"
 #endif
 #include "../../../platform/misc.h"
