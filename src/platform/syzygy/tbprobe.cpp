@@ -409,7 +409,10 @@ struct PairsData {
     SparseEntry* sparseIndex;  // Partial indices into blockLength[]
     usize        sparseIndexSize;  // Size of SparseIndex[] table
     u8*          data;             // Start of Huffman compressed data
-    u8*          dataEnd;
+    u8*          dataEnd;          // One past the last byte of it. TBFile::map already proves
+                                   // blocksNum * sizeofBlock fits inside the mapping; keeping
+                                   // the end is what lets decompress_pairs' bitstream walk
+                                   // stop at it.
     std::vector<u64>
       base64;  // base64[l - min_sym_len] is the 64bit-padded lowest symbol of length l
     std::vector<u8> symlen;  // Number of values (-1) represented by a given Huffman symbol: 1..256
@@ -730,6 +733,24 @@ int decompress_pairs(PairsData* d, u64 idx) {
     // Finally, we find the start address of our block of canonical Huffman symbols
     u32* ptr = (u32*) (d->data + (u64(block) * d->sizeofBlock));
 
+    // THE BITSTREAM POINTER IS FILE-DRIVEN IN BOTH DIRECTIONS, and this is the
+    // third unbounded read in this function rather than a repeat of the other
+    // two. M1a bounded the ARRAYS the symbols index; M1b bounded the BLOCK the
+    // walk lands on -- but blockLength[] is padded past blocksNum, so a walk
+    // that ends in the padding starts `ptr` past the compressed data; and the
+    // refill below then walks it forward four bytes at a time for as long as
+    // the symbol stream fails to terminate. A corrupt table does both.
+    //
+    //   AddressSanitizer: unknown-crash   READ of size 4
+    //     #0 number<unsigned int, 0>   tbprobe.cpp:171
+    //     #1 decompress_pairs          tbprobe.cpp:789
+    //
+    // Both reads are bounded against dataEnd, which TBFile::map already proved.
+    // Feeding zeros instead of faulting cannot hang the loop: `offset` falls by
+    // at least one every iteration -- symlen[] is unsigned and the loop takes
+    // symlen[sym] + 1 -- so it reaches the break in at most `offset` steps
+    // whatever the bits say.
+    //
     // Read the first 64 bits in our block, this is a (truncated) sequence of
     // unknown number of symbols of unknown length but we know the first one
     // is at the beginning of this 64-bit sequence.
@@ -788,6 +809,10 @@ int decompress_pairs(PairsData* d, u64 idx) {
         if (buf64Size <= 32)
         {  // Refill the buffer
             buf64Size += 32;
+            // dataEnd is re-read from the struct rather than hoisted into a
+            // local, for the reason M1b measured on this same function: a local
+            // held across this loop costs the symbol decoder a register and
+            // twelve times the bound it buys.
             if ((u8*) (ptr + 1) <= d->dataEnd)
                 buf64 |= u64(number<u32, BigEndian>(ptr)) << (64 - buf64Size);
             ++ptr;
@@ -1418,8 +1443,20 @@ bool set(T& e, u8* data, const u8* end) {
     if (!fits(data, 1, 1, end))
         return false;
 
-    assert(e.hasPawns == bool(*data & HasPawns));
-    assert((e.key != e.key2) == bool(*data & Split));
+    // A REFUSAL, NOT AN ASSERT, and the same inversion as the base64 check:
+    // both sides of these two comparisons come from different places, and only
+    // one of them is trustworthy. `e.hasPawns` and `e.key != e.key2` are
+    // properties of the MATERIAL the engine asked for; `*data` is the file's
+    // first byte. A table whose flags disagree with its own name is a table
+    // this reader cannot parse -- every size below is derived from `sides` and
+    // `maxFile`, which are computed from the material, while the bytes are laid
+    // out to the flags.
+    //
+    // -DNDEBUG deletes both from every shipped binary, so the configuration
+    // with the check was the debug one and the configuration that parsed on is
+    // the one players run.
+    if (e.hasPawns != bool(*data & HasPawns) || (e.key != e.key2) != bool(*data & Split))
+        return false;
 
     data++;  // First byte stores flags
 
