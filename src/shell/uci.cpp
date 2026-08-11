@@ -197,6 +197,31 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
 
     limits.startTime = now();  // The search starts as early as possible
 
+    // A clock arrives as a signed TimePoint straight off the wire and used to
+    // reach timeman.cpp's arithmetic unvalidated. `go wtime -50000000000
+    // btime 1000` is a signed overflow inside timeman.cpp, and so is
+    // `go wtime 4000000000000000000 winc 4000000000000000000 btime 1000`.
+    // Neither is a defect in the arithmetic: it is asked to hold a number the
+    // protocol never had a right to send. Bound it where it enters, which is
+    // the only place that knows it came from outside.
+    //
+    // The bound is 1e12 ms -- about 31 years, past any real time control, and
+    // far enough below the top that every product timeman forms stays inside a
+    // TimePoint. A value outside it is reported, never silently corrected.
+    constexpr TimePoint MaxClockMs = 1000000000000;
+
+    auto read_clock = [&](TimePoint& dst, const char* what) {
+        TimePoint given;
+        if (!(is >> given))
+            return;  // leave the stream failed; the check below reports it
+
+        const TimePoint bounded = std::clamp(given, TimePoint(0), MaxClockMs);
+        if (bounded != given)
+            sync_cout << "info string " << what << ' ' << given << " is outside [0, " << MaxClockMs
+                      << "]; using " << bounded << sync_endl;
+        dst = bounded;
+    };
+
     while (is >> token)
     {
         if (token == "searchmoves")  // Needs to be the last command on the line
@@ -207,13 +232,13 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
         }
 
         else if (token == "wtime")
-            is >> limits.time[WHITE];
+            read_clock(limits.time[WHITE], "wtime");
         else if (token == "btime")
-            is >> limits.time[BLACK];
+            read_clock(limits.time[BLACK], "btime");
         else if (token == "winc")
-            is >> limits.inc[WHITE];
+            read_clock(limits.inc[WHITE], "winc");
         else if (token == "binc")
-            is >> limits.inc[BLACK];
+            read_clock(limits.inc[BLACK], "binc");
         else if (token == "movestogo")
             is >> limits.movestogo;
         else if (token == "depth")
@@ -221,7 +246,7 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
         else if (token == "nodes")
             is >> limits.nodes;
         else if (token == "movetime")
-            is >> limits.movetime;
+            read_clock(limits.movetime, "movetime");
         else if (token == "mate")
             is >> limits.mate;
         else if (token == "perft")
