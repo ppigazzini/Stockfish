@@ -20,6 +20,7 @@
 #define ARENA_H_INCLUDED
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <new>
 #include <type_traits>
@@ -52,6 +53,15 @@ struct Arena {
 
 const Arena& arena();
 void         set_arena(const Arena& a);
+
+// An allocation this layer cannot satisfy is reported and ends the process, the
+// way TranspositionTable::resize already models. There is no continuing past
+// it: ASSERT_ALIGNED is NOT a null check -- it expands to `ptr % alignment == 0`
+// and `0 % n == 0` is true -- so an asserts-enabled build walks into the
+// placement new at address 0 with no assert fired, which is the configuration
+// that was supposed to catch it.
+[[noreturn]] void arena_alloc_failed(usize bytes);
+[[noreturn]] void arena_size_overflow(usize num, usize elementSize);
 
 // Free functions, so a deleter can name one without capturing.
 inline void* arena_alloc(usize bytes) { return arena().alloc(bytes); }
@@ -96,6 +106,8 @@ template<typename T, typename ALLOC_FUNC, typename... Args>
 inline std::enable_if_t<!std::is_array_v<T>, T*> memory_allocator(ALLOC_FUNC alloc_func,
                                                                   Args&&... args) {
     void* raw_memory = alloc_func(sizeof(T));
+    if (raw_memory == nullptr)
+        arena_alloc_failed(sizeof(T));
     ASSERT_ALIGNED(raw_memory, alignof(T));
     return new (raw_memory) T(std::forward<Args>(args)...);
 }
@@ -107,8 +119,16 @@ memory_allocator(ALLOC_FUNC alloc_func, usize num) {
 
     const usize array_offset = std::max(sizeof(usize), alignof(ElementType));
 
+    // The byte count is computed before it is asked for, so it must be computed
+    // in a type that holds it: `num * sizeof(ElementType)` wraps, and a wrapped
+    // total buys a few bytes that the element loop below then writes past.
+    if (num > (std::numeric_limits<usize>::max() - array_offset) / sizeof(ElementType))
+        arena_size_overflow(num, sizeof(ElementType));
+
     char* raw_memory =
       reinterpret_cast<char*>(alloc_func(array_offset + num * sizeof(ElementType)));
+    if (raw_memory == nullptr)
+        arena_alloc_failed(array_offset + num * sizeof(ElementType));
     ASSERT_ALIGNED(raw_memory, alignof(T));
 
     new (raw_memory) usize(num);
