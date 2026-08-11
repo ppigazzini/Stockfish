@@ -307,6 +307,66 @@ check_resource() {
     fi
 }
 
+# ------------------------------------------------- the block-walk fixture
+#
+# A DIFFERENT SHAPE OF REFUSAL, and the difference is the point. Every fixture
+# above is refused with a diagnostic, because what is wrong with it is visible
+# at load time. This one is not: byte 90 of KQvK.rtbw is inside sparseIndex[],
+# a 4-byte block index whose only constraint is that it points at a block, and
+# the Syzygy format carries nothing that says which value was meant. The reader
+# cannot know it is wrong and must not pretend to. What it must do is stay
+# inside blockLength[] and keep answering.
+#
+# So the judge here asks for survival, not for a diagnostic: exit 0, a
+# bestmove, and nothing from the sanitizers. Asking for the word "corrupt"
+# would be asking the parser to detect what the format does not record.
+check_survives() {
+    local name=$1 dir=$2 fen=$3 out rc
+    out=$( ( printf 'setoption name SyzygyPath value %s\nisready\n' "$dir"; sleep 0.4;
+             printf 'position fen %s\ngo depth 12\n' "$fen"; sleep 6;
+             printf 'quit\n'; sleep 0.3 ) \
+           | ( cd "$EXEDIR" && timeout -s KILL 90 "$EXE" ) 2>&1 )
+    rc=$?
+
+    local bad=0
+    [ "$rc" = "0" ] || { note "exit $rc -- survival means exiting 0"; bad=1; }
+    if grep -qE 'AddressSanitizer|runtime error:|UndefinedBehaviorSanitizer' <<< "$out"; then
+        note "a sanitizer reported:"
+        grep -m2 -E 'AddressSanitizer|runtime error:' <<< "$out" | sed 's/^/    /'
+        bad=1
+    fi
+    if grep -qE 'terminate called|Assertion|attempt to subscript|Aborted' <<< "$out"; then
+        note "the process aborted:"
+        grep -m2 -E 'terminate called|Assertion|attempt to subscript' <<< "$out" | sed 's/^/    /'
+        bad=1
+    fi
+    grep -q '^bestmove' <<< "$out" || { note "no bestmove -- it stopped answering"; bad=1; }
+    grep -q 'Found 0 WDL' <<< "$out" \
+        && { note "no table was loaded -- the fixture probed nothing"; bad=1; }
+
+    if [ "$bad" = "0" ]; then
+        echo "malformed: $name  survived"; PASS=$((PASS+1))
+    else
+        echo "malformed: $name  NOT SURVIVED"; FAIL=$((FAIL+1))
+    fi
+}
+
+if [ -f "$CORPUS/KQvK.rtbw" ]; then
+    dir="$WORK/fx/sparse-block"
+    mkdir -p "$dir"
+    cp "$CORPUS"/*.rtb? "$dir/"
+    # Offset 90 is the first SparseEntry of the non-single-value side, and its
+    # first four bytes are the block index. 0xFFFFFFFF against a table whose
+    # blockLengthSize is 2 walks decompress_pairs off the end of blockLength[]
+    # in the unbounded reader, and `--block` on the way down wraps past zero.
+    printf '\xff\xff\xff\xff' \
+      | dd of="$dir/KQvK.rtbw" bs=1 seek=90 count=4 conv=notrunc 2>/dev/null
+    check_survives "sparse-block   " "$dir" "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
+else
+    echo "malformed: sparse-block    SKIPPED -- no 3-man corpus; run tests/tbfetch.sh"
+    SKIP=$((SKIP+1))
+fi
+
 echo
 check_resource "alloc-failure  " "allocator_may_return_null=1:max_allocation_size_mb=128" 60 \
     "setoption name Threads value 16" "isready" "quit"
