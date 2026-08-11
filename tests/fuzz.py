@@ -135,6 +135,85 @@ def run(cmds, timeout=25, extra_env=None):
         return None, "TIMEOUT"
 
 
+def run_scripted(cmds, timeout=90):
+    """Like run(), but never lets `quit` cut a search short.
+
+    run() hands the engine every line at once, INCLUDING `quit`, and `quit`
+    calls engine.stop(). A `go` in that buffer is therefore aborted at whatever
+    depth it had reached when the reader thread got to the next line, so its
+    bestmove is a function of the scheduler. Measured on this tree: the same
+    two-probe session, clean tables, returned d1c2 and e1f1 on different runs
+    through run(), and one move on six runs through this.
+
+    A harness that compares verdicts cannot use a runner like that -- it reports
+    the scheduler as a defect. tests/uci_driver.py exists for the same reason
+    and cannot be reused here: it is an operator tool that raises on a wedge,
+    where a wedge is exactly what this has to return as a finding.
+
+    Returns (returncode, output); returncode is None on a hang, as run() does.
+    """
+    p = subprocess.Popen(
+        [EXE],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        cwd=os.path.join(ROOT, "src"),
+    )
+    # ty cannot see that Popen(stdin=PIPE, stdout=PIPE) makes these non-None.
+    assert p.stdin is not None and p.stdout is not None
+    stdin, stdout = p.stdin, p.stdout
+
+    out = []
+    deadline = time.time() + timeout
+
+    def feed(line):
+        """Write one command. False once the engine has stopped reading."""
+        try:
+            stdin.write(line + "\n")
+            stdin.flush()
+        except (BrokenPipeError, ValueError):
+            return False
+        return True
+
+    alive = True
+    for c in cmds:
+        if not feed(c):
+            alive = False
+            break
+        if not c.lstrip().startswith("go"):
+            continue
+        # Wait for the sentinel this command produces. An empty read means the
+        # engine is GONE, which is a crash and not a hang: stop feeding and let
+        # the returncode below say which signal. Running out of time is the hang.
+        while True:
+            if time.time() > deadline:
+                p.kill()
+                p.wait(timeout=10)
+                return None, "TIMEOUT"
+            line = stdout.readline()
+            if not line:
+                alive = False
+                break
+            out.append(line)
+            if line.startswith("bestmove"):
+                break
+        if not alive:
+            break
+
+    if alive:
+        feed("quit")
+    try:
+        rest, _ = p.communicate(timeout=max(1.0, deadline - time.time()))
+        out.append(rest)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        p.wait(timeout=10)
+        return None, "TIMEOUT"
+    return p.returncode, "".join(out)
+
+
 def gen_uci(rng):
     """A script of mostly-nonsense with some whole lines kept intact."""
     lines = ["uci", "isready"]
@@ -212,11 +291,11 @@ def harness_tb(rng, deadline, findings):
     fixed.
 
     So the first probe is the STIMULUS and is judged on liveness alone, and the
-    second probe reads a table the mutation did not touch and must return exactly
-    what the clean corpus returned. That claim is sound by construction, and it
-    is not vacuous: it fails if a corrupt table's parse spills into a neighbour,
-    if it leaves the reader's shared state wrong, or if the engine answers from a
-    table it refused.
+    second probe reads a table the mutation did not touch and must STILL HIT IT.
+    The claim is tbhits, not the move: see the comment on the reference below
+    for the two measurements that rule the move out. It is not vacuous -- it
+    fails if a corrupt table's parse spills into a neighbour or leaves the
+    reader's shared state wrong.
 
     What is left uncovered is stated rather than asserted away: nothing here can
     tell a correctly-read corrupt table from an incorrectly-read one, because
@@ -233,14 +312,41 @@ def harness_tb(rng, deadline, findings):
     # them the harness can only ask whether the engine survived; with them it can
     # ask whether the engine was RIGHT -- which is the failure that does not
     # announce itself.
+    # THE CLAIM IS THAT THE INTACT TABLE STILL WORKS, NOT THAT IT ANSWERS THE
+    # SAME MOVE, and the difference is the whole soundness of this harness.
+    #
+    # A bestmove comparison was tried and cannot be made sound here. Two
+    # independent reasons, both measured on clean tables:
+    #
+    #   * A stem's bestmove depends on WHERE IN THE SESSION it was searched.
+    #     These positions are decided by the tables, so every legal move carries
+    #     the same tablebase rank and the choice among them falls to the search,
+    #     which inherits a transposition table and histories from whatever ran
+    #     before it. KBvK answers e1f2 as the first search of a session and
+    #     d1e2 as the second, with nothing corrupted at all.
+    #
+    #   * Fixing that by taking the reference per ORDERED PAIR still fails,
+    #     because the stimulus changes the first search itself: a corrupt table
+    #     that gets REFUSED makes the first probe search without tablebases, and
+    #     the second search inherits that instead. The reference cannot hold the
+    #     first search fixed, because the first search is the experiment.
+    #
+    # What survives both is TBHITS ON THE SECOND PROBE. The intact stem's files
+    # were copied in clean and never touched, so a probe of them must still hit
+    # a table. Zero there is a corrupt table's parse reaching a neighbour, or
+    # the reader's shared state left wrong -- which is the failure this harness
+    # exists to catch and the one that does not announce itself.
+    #
+    # What is left uncovered is stated rather than asserted away: nothing here
+    # can tell a correctly-read corrupt table from an incorrectly-read one,
+    # because with no integrity field in the format nothing can.
     probes = [c for s in stems for c in (f"position fen {TB_FENS[s]}", "go depth 8")]
-    rc, out = run([f"setoption name SyzygyPath value {TB}", "isready", *probes])
+    rc, out = run_scripted([f"setoption name SyzygyPath value {TB}", "isready", *probes])
     ref = tb_verdicts(out)
     if rc != 0 or len(ref) != len(stems):
         raise SystemExit("fuzz: RIG FAULT -- the clean tables gave no reference verdict")
     if not all(hits for _, hits in ref):
         raise SystemExit("fuzz: RIG FAULT -- a reference run probed no tablebase")
-    ref = dict(zip(stems, ref, strict=True))
 
     n = 0
     with tempfile.TemporaryDirectory() as d:
@@ -257,7 +363,7 @@ def harness_tb(rng, deadline, findings):
                 for _ in range(rng.randint(1, 8)):
                     fh.seek(rng.randrange(size))
                     fh.write(bytes([rng.randrange(256)]))
-            rc, out = run(
+            rc, out = run_scripted(
                 [
                     f"setoption name SyzygyPath value {d}",
                     "isready",
@@ -293,17 +399,14 @@ def harness_tb(rng, deadline, findings):
                 return n
 
             # The property that matters, on the probe that can carry it. INTACT's
-            # tables were copied in clean and never touched, so its answer does
-            # not depend on the mutated bytes at all -- only on the engine having
-            # kept them apart. A different move here is the reader letting one
-            # table's corruption reach another's verdict.
-            move, hits = got[1]
-            if hits and move != ref[intact][0]:
+            # tables were copied in clean and never touched, so a probe of them
+            # must still reach a table. Zero hits is one table's corruption
+            # reaching another's mapping.
+            if got[1][1] == 0:
                 findings.append(
                     (
                         "tb",
-                        f"a corrupt {hurt} table changed the {intact} verdict: {move},"
-                        f" clean tables say {ref[intact][0]} (tbhits {hits})",
+                        f"a corrupt {hurt} table left the intact {intact} tables unprobed",
                         victim,
                     )
                 )
