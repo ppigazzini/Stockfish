@@ -203,11 +203,17 @@ relaxedsimd = no
 syzygy = yes
 STRIP = strip
 
-ifneq ($(shell which clang-format-20 2> /dev/null),)
-	CLANG-FORMAT = clang-format-20
-else
-	CLANG-FORMAT = clang-format
-endif
+# The version is part of the format. A different clang-format major reformats
+# the whole tree to its own house style -- running one other major here once
+# rewrote 29 files nobody had touched -- and .github/workflows/clang-format.yml
+# pins 20, so a tree formatted by anything else fails that lane. Falling back to
+# a bare `clang-format` therefore produces a diff the contributor did not ask
+# for and cannot land, which is worse than not running.
+#
+# The target refuses instead. CLANG-FORMAT stays empty when the pinned binary is
+# absent and `format` reports that; nothing else in the Makefile reads it.
+CLANG-FORMAT-PINNED = clang-format-20
+CLANG-FORMAT = $(shell which $(CLANG-FORMAT-PINNED) 2> /dev/null)
 
 ### 2.2 Architecture specific
 
@@ -1257,6 +1263,12 @@ net:
 	@$(SHELL) ../scripts/net.sh
 
 format:
+	@if [ -z "$(CLANG-FORMAT)" ]; then \
+		echo "make format: $(CLANG-FORMAT-PINNED) is not installed."; \
+		echo "  CI pins that major and a different one reformats the whole tree."; \
+		echo "  Install it rather than running another clang-format here."; \
+		exit 1; \
+	fi
 	$(CLANG-FORMAT) -i $(SRCS) $(OTHER_SRCS) $(HEADERS) -style=file
 
 ### ==========================================================================
