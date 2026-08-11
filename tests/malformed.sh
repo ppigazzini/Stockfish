@@ -259,6 +259,58 @@ else
     SKIP=$((SKIP+1))
 fi
 
+# ------------------------------------------------ resource-exhaustion fixtures
+#
+# Not a malformed FILE, but the same question asked of a different input: the
+# engine is told to acquire something the host will not give it. The acceptable
+# answers are a diagnostic and an exit; the answers this section exists to
+# refuse are a signal, an abort, and a hang. A hang is the one a timeout in the
+# harness would otherwise report as a rig fault, so every case owns a deadline.
+#
+# THE FAILURE IS INJECTED THROUGH THE SANITIZER, not through `ulimit -v`. ASan
+# reserves a shadow mapping measured in terabytes before main, so an address
+# space limit small enough to fail an engine allocation kills the sanitized
+# binary at startup and proves nothing. `max_allocation_size_mb` fails exactly
+# the allocations above a chosen size, and `allocator_may_return_null` makes
+# that failure a null return rather than the sanitizer's own abort -- which is
+# what the engine has to survive. The limit sits above the net (46 MB) and below
+# the pawn history at 16 threads (256 MiB), so startup completes and the
+# setoption is what fails.
+check_resource() {
+    local name=$1 asan=$2 deadline=$3; shift 3
+    local out rc
+    out=$( ( printf '%s\n' "$@"; sleep 0.5 ) \
+           | ( cd "$EXEDIR" && ASAN_OPTIONS="$asan" \
+               timeout -s KILL "$deadline" "$EXE" ) 2>&1 )
+    rc=$?
+
+    local bad=0
+    if [ "$rc" = "137" ]; then
+        note "no answer inside ${deadline}s -- a wedge, which is the worst answer"; bad=1
+    elif [ "$rc" -ge 128 ]; then
+        note "exit $rc -- killed by a signal"; bad=1
+    fi
+    if grep -qE 'AddressSanitizer:|runtime error:|terminate called|Assertion' <<< "$out"; then
+        note "the process did not survive its own failure:"
+        grep -m2 -E 'AddressSanitizer:|runtime error:|terminate called|Assertion' <<< "$out" \
+          | sed 's/^/    /'
+        bad=1
+    fi
+    if ! grep -qiE 'failed to allocate|failed to create|cannot' <<< "$out"; then
+        note "no diagnostic -- it failed without saying so, or did not fail at all"; bad=1
+    fi
+
+    if [ "$bad" = "0" ]; then
+        echo "malformed: $name  reported"; PASS=$((PASS+1))
+    else
+        echo "malformed: $name  NOT REPORTED"; FAIL=$((FAIL+1))
+    fi
+}
+
+echo
+check_resource "alloc-failure  " "allocator_may_return_null=1:max_allocation_size_mb=128" 60 \
+    "setoption name Threads value 16" "isready" "quit"
+
 echo
 echo "malformed: $PASS refused, $FAIL not refused, $SKIP skipped"
 [ "$FAIL" = "0" ] || exit 1
