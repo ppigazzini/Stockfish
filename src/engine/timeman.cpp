@@ -55,6 +55,14 @@ void TimeManagement::init(Search::LimitsType& limits,
     startTime    = limits.startTime;
     useNodesTime = npmsec != 0;
 
+    // elapsed() returns NODES while nodestime is in force, and check_time
+    // compares it against limits.movetime, which is milliseconds and was never
+    // converted: `setoption name nodestime value 600` then `go movetime 1000`
+    // stopped at 1496 nodes and 5 ms of a 1000 ms budget. Convert it here,
+    // beside useNodesTime and BEFORE the early return below -- the reported
+    // case carries no clock at all, so anything placed after the return never
+    // runs on it. limits is built fresh by parse_limits for each `go`, so this
+    // scales once.
     if (useNodesTime)
         limits.movetime *= npmsec;
 
