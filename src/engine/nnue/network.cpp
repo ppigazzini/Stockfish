@@ -312,6 +312,16 @@ bool Network::read_header(std::istream& stream, u32* hashValue, std::string* des
     if (!stream || version != Version)
         return false;
 
+    // `size` is a u32 read straight out of the file and used to be handed
+    // to resize() after nothing but a version check: a 12-byte file declaring
+    // 0xFFFFFFFF took 4.7 GB of resident memory on `setoption name EvalFile`
+    // alone, with no `go` needed.
+    //
+    // The bound is the stream itself, and it is applied by GROWING as the bytes
+    // arrive rather than by asking how many there are. A declared length is not
+    // evidence; a delivered byte is. This also works on the embedded net, whose
+    // MemoryBuffer implements no seeking, so the obvious tellg/seekg form would
+    // have refused the shipped network.
     constexpr u32 Chunk = 4096;
     char          buf[Chunk];
 
@@ -323,7 +333,7 @@ bool Network::read_header(std::istream& stream, u32* hashValue, std::string* des
         const u32 got = u32(stream.gcount());
         desc->append(buf, got);
         if (got != want)
-            return false;
+            return false;  // the header promised more than the file holds
         remaining -= want;
     }
     return !stream.fail();
