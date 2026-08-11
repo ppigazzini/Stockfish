@@ -188,6 +188,20 @@ inline void write_little_endian(std::ostream& stream, const IntType* values, usi
 // Read N signed integers from the stream s, putting them in the array out.
 // The stream is assumed to be compressed using the signed LEB128 format.
 // See https://en.wikipedia.org/wiki/LEB128 for a description of the compression scheme.
+// `buf_end` is how many bytes the last refill ACTUALLY delivered, and it is the
+// whole difference between decoding a file and decoding the stack behind it.
+// The refill asked for min(bytes_left, buf.size()) and recorded nothing, so a
+// length field of 0 refilled nothing, the cursor still read all 8192 slots, and
+// `--bytes_left` wrapped 0 to 0xFFFFFFFF. Under -DNDEBUG the magic check and the
+// balance assert are both gone, so a release build loaded 8 KiB of uninitialised
+// stack as network weights and said nothing.
+//
+// A short read is now a FAILED STREAM. Every read_parameters in the tree already
+// ends in `return !stream.fail()`, so setting failbit reports the file through
+// the path the callers already have, with no signature to change.
+//
+// The per-byte cost is unchanged: the refill test was a compare against a
+// constant and is now a compare against a variable.
 template<typename BufType, typename IntType>
 inline void read_leb_128_detail(std::istream& stream,
                                 IntType*      out,
@@ -200,6 +214,9 @@ inline void read_leb_128_detail(std::istream& stream,
     static_assert(std::is_signed_v<IntType>, "Not implemented for unsigned types");
     static_assert(sizeof(IntType) <= 4, "Not implemented for types larger than 32 bit");
 
+    // Accumulate UNSIGNED. `(byte & 0x7f) << (shift % 32)` overflows a signed
+    // int at shift 28 and 31, which a retrained net can reach and no shipped
+    // net does.
     u32   result = 0;
     usize shift = 0, i = 0;
     while (i < Count)
@@ -233,6 +250,10 @@ inline void read_leb_128_detail(std::istream& stream,
     }
 }
 
+// The magic string and the closing balance are the ONLY integrity checks this
+// format has, and both were asserts -- deleted from every shipped binary by
+// -DNDEBUG. What rejected a corrupt net in a release build was an incidental
+// stream.peek(). Both are returned failures now.
 template<typename... Arrays>
 inline void read_leb_128(std::istream& stream, Arrays&... outs) {
     // Check the presence of our LEB128 magic string
