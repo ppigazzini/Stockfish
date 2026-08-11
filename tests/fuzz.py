@@ -28,11 +28,13 @@ Exit codes:  0 no finding   1 a finding   2 skipped
 import argparse
 import contextlib
 import os
+import queue
 import random
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -165,6 +167,27 @@ def run_scripted(cmds, timeout=90):
     assert p.stdin is not None and p.stdout is not None
     stdin, stdout = p.stdin, p.stdout
 
+    # A READER THREAD, because the deadline has to be enforced WHILE BLOCKED.
+    # readline() on a pipe blocks until the engine writes, so a deadline checked
+    # only around it never fires on the one case this harness exists to catch:
+    # an engine that stops answering entirely. Seen on this tree -- a spinning
+    # engine held a 90s deadline open for 85 minutes and the harness reported
+    # nothing for as long as it ran.
+    #
+    # A thread and not select(). The stream is line-buffered text, so lines
+    # already sitting in Python's buffer are invisible to select() on the fd,
+    # and every read after the first chunk times out spuriously -- which is a
+    # rig that reports a hang on a healthy engine, the same defect facing the
+    # other way. Tried, seen to report at iteration 1, replaced.
+    lines: queue.Queue[str] = queue.Queue()
+
+    def pump():
+        for line in stdout:
+            lines.put(line)
+        lines.put("")  # EOF sentinel: the engine is gone
+
+    threading.Thread(target=pump, daemon=True).start()
+
     out = []
     deadline = time.time() + timeout
 
@@ -188,11 +211,12 @@ def run_scripted(cmds, timeout=90):
         # engine is GONE, which is a crash and not a hang: stop feeding and let
         # the returncode below say which signal. Running out of time is the hang.
         while True:
-            if time.time() > deadline:
+            try:
+                line = lines.get(timeout=max(0.0, deadline - time.time()))
+            except queue.Empty:
                 p.kill()
                 p.wait(timeout=10)
                 return None, "TIMEOUT"
-            line = stdout.readline()
             if not line:
                 alive = False
                 break
