@@ -383,7 +383,7 @@ std::optional<usize> str_to_size_t(const std::string& s) {
     errno                           = 0;
     char*                    endptr = nullptr;
     const unsigned long long value  = std::strtoull(s.c_str(), &endptr, 10);
-    if (errno == ERANGE || (*endptr != '\0' && !std::isspace(static_cast<unsigned char>(*endptr)))
+    if (errno == ERANGE || (*endptr != '\0' && !std::isspace((unsigned char) *endptr))
         || value > std::numeric_limits<usize>::max())
         return std::nullopt;
     return static_cast<usize>(value);
@@ -399,13 +399,14 @@ std::optional<std::string> read_file_to_string(const std::string& path) {
 
 // Remove all spaces from a string
 void remove_whitespace(std::string& s) {
-    s.erase(std::remove_if(s.begin(), s.end(), [](unsigned char c) { return std::isspace(c); }),
+    s.erase(std::remove_if(s.begin(), s.end(),
+                           [](char c) { return std::isspace((unsigned char) c); }),
             s.end());
 }
 
 // Test if a string has only spaces
 bool is_whitespace(std::string_view s) {
-    return std::all_of(s.begin(), s.end(), [](unsigned char c) { return std::isspace(c); });
+    return std::all_of(s.begin(), s.end(), [](char c) { return std::isspace((unsigned char) c); });
 }
 
 
