@@ -45,6 +45,7 @@
 #include "../platform/numa.h"
 
 #include "../engine/searchoptions.h"
+#include "../engine/types.h"
 
 namespace Stockfish {
 
