@@ -48,6 +48,12 @@
 
 namespace Stockfish {
 
+// The ranges the `Hash` and `Threads` options accept. Declared here rather than
+// left private to engine.cpp because shell/benchmark.cpp derives a Hash and a
+// thread count from what a user typed and then emits them as setoption lines:
+// a value outside these is rejected by the option layer and the run silently
+// proceeds on whatever was already set, so the producer has to know the range
+// the consumer will take.
 constexpr int MaxHashMB = Is64Bit ? 33554432 : 2048;
 extern int    MaxThreads;
 
