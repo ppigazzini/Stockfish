@@ -64,6 +64,7 @@ namespace Stockfish {
 
 namespace NN = Eval::NNUE;
 
+// MaxHashMB is in engine.h; benchmark.cpp needs the same range.
 int MaxThreads = std::max(1024, 4 * int(get_hardware_concurrency()));
 
 // The default configuration will attempt to group L3 domains up to 32 threads.
