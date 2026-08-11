@@ -20,7 +20,11 @@
 
 #include <array>
 
-#include "../platform/misc.h"
+// Kept: PRNG, used by init_magics() in the branch that builds magic bitboards
+// -- the one compiled when the vector paths are not. IWYU asks to drop it at
+// every ARCH that takes a vector path, and dropping it stops the tree building
+// at the configurations that do not, including the analyze lane's own.
+#include "../platform/misc.h"  // IWYU pragma: keep
 
 namespace Stockfish::Attacks {
 
