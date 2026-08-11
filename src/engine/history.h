@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <limits>
 #include <type_traits>  // IWYU pragma: keep
+#include <utility>
 
 #include "../platform/misc.h"
 #include "position.h"
@@ -47,6 +48,17 @@ static_assert((PAWN_HISTORY_BASE_SIZE & (PAWN_HISTORY_BASE_SIZE - 1)) == 0,
 
 static_assert((CORRHIST_BASE_SIZE & (CORRHIST_BASE_SIZE - 1)) == 0,
               "CORRHIST_BASE_SIZE has to be a power of 2");
+
+// Cut [0, count) into numaTotal contiguous slices and return the half-open
+// bounds of slice threadIdx. The whole range is covered only when every index
+// in [0, numaTotal) asks exactly once with the same numaTotal; a missing index
+// leaves its slice untouched. A slice is empty when numaTotal exceeds count,
+// which partitions the range just as correctly.
+inline std::pair<usize, usize> shared_slice(usize count, usize threadIdx, usize numaTotal) {
+    assert(threadIdx < numaTotal);
+    return {u64(threadIdx) * count / numaTotal,
+            threadIdx + 1 == numaTotal ? count : u64(threadIdx + 1) * count / numaTotal};
+}
 
 // StatsEntry is the container of various numerical statistics. We use a class
 // instead of a naked value to directly call history update operator<<() on
@@ -104,9 +116,7 @@ struct DynStats {
     // in [0, numaTotal) calls exactly once with the same numaTotal; a missing
     // index leaves that range holding the previous game's statistics.
     void clear_range(int value, usize threadIdx, usize numaTotal) {
-        usize start = u64(threadIdx) * size / numaTotal;
-        assert(start < size);
-        usize end = threadIdx + 1 == numaTotal ? size : u64(threadIdx + 1) * size / numaTotal;
+        auto [start, end] = shared_slice(size, threadIdx, numaTotal);
 
         while (start < end)
             data[start++].fill(value);
