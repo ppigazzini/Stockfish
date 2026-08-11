@@ -638,18 +638,6 @@ void TBTables::add(const std::vector<PieceType>& pieces) {
     insert(wdlTable.back().key2, &wdlTable.back(), &dtzTable.back());
 }
 
-// TB tables are compressed with canonical Huffman code. The compressed data is divided into
-// blocks of size d->sizeofBlock, and each block stores a variable number of symbols.
-// Each symbol represents either a WDL or a (remapped) DTZ value, or a pair of other symbols
-// (recursively). If you keep expanding the symbols in a block, you end up with up to 65536
-// WDL or DTZ values. Each symbol represents up to 256 values and will correspond after
-// Huffman coding to at least 1 bit. So a block of 32 bytes corresponds to at most
-// 32 x 8 x 256 = 65536 values. This maximum is only reached for tables that consist mostly
-// of draws or mostly of wins, but such tables are actually quite common. In principle, the
-// blocks in WDL tables are 64 bytes long (and will be aligned on cache lines). But for
-// mostly-draw or mostly-win tables this can leave many 64-byte blocks only half-filled, so
-// in such cases blocks are 32 bytes long. The blocks of DTZ tables are up to 1024 bytes long.
-// The generator picks the size that leads to the smallest table. The "book" of symbols and
 // Huffman codes are the same for all blocks in the table. A non-symmetric pawnless TB file
 // will have one table for wtm and one for btm, a TB file with pawns will have tables per
 // file a,b,c,d also, in this case, one set for wtm and one for btm.
@@ -690,6 +678,39 @@ int decompress_pairs(PairsData* d, u64 idx) {
     // Sum the above to offset to find the offset corresponding to our idx
     offset += diff;
 
+    // THE BLOCK INDEX IS FILE DATA and so is everything the walk below reads.
+    // `block` comes out of sparseIndex[], and neither loop was bounded: a
+    // corrupt entry sends the first one under zero -- `--block` on 0 wraps to
+    // 0xFFFFFFFF -- and the second one past the end of blockLength[]. Both
+    // arrays are proven inside the mapping, so this is an index defect and not
+    // a pointer one, and its bound cannot move to load time: validating
+    // sparseIndex[] is O(file size) and would force a 6-man table resident,
+    // defeating the mmap laziness the whole reader is built on.
+    //
+    // So the walk is CLAMPED rather than refused. A corrupt table then yields a
+    // wrong verdict instead of a wrong access, which is the trade this site has
+    // no alternative to: decompress_pairs returns a decoded value through an
+    // `int` and has no channel to say no through. A corrupt table has no right
+    // answer to return either way.
+    //
+    // THE BOUND IS RE-READ FROM MEMORY ON PURPOSE. Holding blockLengthSize (or
+    // its `- 1`) in a local across the two loops is the obvious shape and it is
+    // twelve times more expensive, because the local survives into the symbol
+    // decoder below and costs it a register. Three shapes, probing bench, gcc,
+    // avx2, whole-program instructions against the unbounded walk:
+    //
+    //   local held across both loops       +53,775,642   +0.44%
+    //   the walk in a noinline helper      +57,521,153   +0.47%
+    //   re-read in the guard, this one      +4,435,296   +0.037%
+    //
+    // The decoder is 10,457 instructions per call and the walk is five
+    // iterations, so anything that trades the decoder's registers for the
+    // walk's convenience loses by an order of magnitude. The noinline shape
+    // loses for the same reason from the other side: the call clobbers what the
+    // decoder was holding.
+    //
+    // blockLengthSize is never 0 here: set_sizes zeroes it only under
+    // TBFlag::SingleValue, and the early return above already took that flag.
     assert(d->blockLengthSize > 0);
 
     if (block >= d->blockLengthSize)
