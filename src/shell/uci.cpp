@@ -504,6 +504,24 @@ void UCIEngine::benchmark(std::istream& args) {
     init_search_update_listeners();
 }
 
+// ONE policy for every command that mutates state a live worker holds, and the
+// policy is: stop the search first, then apply.
+//
+// Waiting without stopping is a deadlock, not a wait. The main worker spins on
+// `while (!threads.stop && (ponder || limits.infinite))` and only the UCI reader
+// thread can set `threads.stop` -- and that thread is the one blocked inside the
+// wait. Neither `stop` nor `quit` is ever read again; the engine is gone.
+//
+// Not waiting at all is the same defect facing the other way. `export_net`
+// reaches modify_and_replicate, which destroys and rebuilds every network
+// replica while workers hold pointers into them, and the process aborts on an
+// empty optional mid-search.
+//
+// The choice between "stop first" and "refuse while searching" is visible to a
+// GUI and both are defensible. Stop first, because a GUI that pushes an option
+// mid-ponder gets the option applied AND a bestmove, where refusing gives it
+// neither and no way to tell. The cost is stated rather than hidden: an option
+// arriving during a ponder now ends that ponder.
 void UCIEngine::apply_idle(const std::function<void()>& mutate) {
     engine.stop();
     engine.wait_for_search_finished();
