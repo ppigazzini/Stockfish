@@ -23,7 +23,10 @@
     #include <thread>
 #else
     #include <pthread.h>
+    #include <cstdlib>
+    #include <cstring>
     #include <functional>
+    #include <iostream>
     #include <utility>
 
     #include "misc.h"
@@ -69,7 +72,21 @@ class NativeThread {
             return nullptr;
         };
 
-        pthread_create(&thread, attr, start_routine, func);
+        // A spawn that failed must not be continued past. Nothing else can
+        // clear the caller's `searching` flag, so the constructor's own
+        // wait_for_search_finished() blocks forever -- silently, on the UCI
+        // reader thread, which is what would have read the `quit`. Report and
+        // exit, which is the same answer the MSVC branch's std::thread reaches
+        // by throwing, and the same one a failed allocation gets.
+        const int rc = pthread_create(&thread, attr, start_routine, func);
+        pthread_attr_destroy(attr);
+
+        if (rc != 0)
+        {
+            delete func;
+            std::cerr << "Failed to create a thread: " << std::strerror(rc) << std::endl;
+            std::exit(EXIT_FAILURE);
+        }
     }
 
     void join() { pthread_join(thread, nullptr); }
