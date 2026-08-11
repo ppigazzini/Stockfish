@@ -39,6 +39,10 @@
 #include "basetypes.h"
 #include "../platform/platform.h"
 
+#ifdef USE_AVX512ICL
+    #include <immintrin.h>
+#endif
+
 using std::string;
 
 namespace Stockfish {

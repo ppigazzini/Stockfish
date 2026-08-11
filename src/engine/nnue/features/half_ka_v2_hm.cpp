@@ -27,6 +27,8 @@
 #include "../nnue_common.h"
 
 #if defined(USE_AVX512ICL)
+    #include <immintrin.h>
+    #include "../../basetypes.h"
     #include "../../bitboard.h"
 #endif
 

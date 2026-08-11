@@ -28,6 +28,10 @@
 #include "types.h"
 #include "basetypes.h"
 
+#ifdef USE_AVX512
+    #include <immintrin.h>
+#endif
+
 namespace Stockfish {
 
 namespace Bitboards {
