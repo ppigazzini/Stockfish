@@ -382,6 +382,16 @@ else
 fi
 
 if [ -f "$CORPUS/KQvK.rtbw" ]; then
+    dir="$WORK/fx/symbol-past-end"
+    mkdir -p "$dir"; cp "$CORPUS"/*.rtb? "$dir/"
+    patch_bytes "$dir/KQvK.rtbw" 144 1 222 248 35 189 268 220 66 15 228 85 229 65 108 212
+    check_survives "symbol-past-end " "$dir" "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
+else
+    echo "malformed: symbol-past-end  SKIPPED -- no 3-man corpus; run tests/tbfetch.sh"
+    SKIP=$((SKIP+1))
+fi
+
+if [ -f "$CORPUS/KQvK.rtbw" ]; then
     dir="$WORK/fx/sparse-block"
     mkdir -p "$dir"
     cp "$CORPUS"/*.rtb? "$dir/"
