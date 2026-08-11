@@ -327,16 +327,11 @@ class SearchManager: public ISearchManager {
     // Two members carry none. iterValue needs none because
     // iterative_deepening() fills it before the first read.
     //
-    // `tm` is a class and gets its default constructor, but that is not the same
-    // as being initialised: TimeManagement leaves startTime, optimumTime and
-    // maximumTime with no initialiser of their own, and TimeManagement::init
-    // writes startTime and then RETURNS EARLY whenever limits.time[us] is zero,
-    // before the other two. LimitsType::use_time_management() does not exclude
-    // that case -- it is true when only the opposing side has a clock -- so a
-    // `go wtime 0 btime N` reads tm.optimum() and tm.maximum() out of storage
-    // this search never wrote. Fix that in TimeManagement's own declarations,
-    // not here: those three members are private, so this site can do nothing
-    // but default-construct the object.
+    // `tm` is a class and gets its default constructor, which is enough only
+    // because TimeManagement now carries its own initialisers -- it did not,
+    // and `go wtime 0 btime N` read two budgets out of storage no search had
+    // written. That fix belongs there and not here: the members are private, so
+    // this site can do nothing but default-construct the object.
     Stockfish::TimeManagement tm;
     double                    originalTimeAdjust = -1;
     int                       callsCnt           = 0;
