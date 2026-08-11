@@ -20,7 +20,11 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cstdint>
+// Kept: uintptr_t, used by the prefetch arithmetic in the NON-AVX-512 branch
+// below. IWYU asked to drop it when analysing the AVX-512 tier, where that
+// branch is not compiled -- the include set of a file with #if in it is a
+// property of the tier, not of the file.
+#include <cstdint>  // IWYU pragma: keep
 
 #include "full_threats.h"
 #include "../../bitboard.h"
@@ -28,8 +32,15 @@
 #include "../../position.h"
 #include "../../types.h"
 #include "../nnue_common.h"
-#include "../../../platform/platform.h"
+// Kept: sf_always_inline, which expands to an ATTRIBUTE and leaves no AST node
+// for IWYU to attribute a use to -- the same reason engine/attacks.h keeps this
+// header. Dropping it reds every tier at once.
+#include "../../../platform/platform.h"  // IWYU pragma: keep
 #include "../../basetypes.h"
+
+#ifdef USE_AVX512ICL
+    #include <immintrin.h>
+#endif
 
 namespace Stockfish::Eval::NNUE::Features {
 
