@@ -406,6 +406,22 @@ else
     SKIP=$((SKIP+1))
 fi
 
+if [ -f "$CORPUS/KRvK.rtbw" ]; then
+    dir="$WORK/fx/cyclic-btree"
+    mkdir -p "$dir"; cp "$CORPUS"/*.rtb? "$dir/"
+    # A Huffman tree that closes a loop. set_symlen's own comment used to say
+    # "we can set it now because tree is acyclic" -- a claim about the file --
+    # and decompress_pairs' expansion walk takes `sym = left` WITHOUT decreasing
+    # `offset`, so a cycle spins it forever. This fixture is the one that has to
+    # own a deadline: the failure it covers is a HANG, and a harness that waits
+    # for a wedged engine reports nothing at all.
+    patch_bytes "$dir/KRvK.rtbw" 100 132 53 183 119 76 185 57 183 198
+    check_survives "cyclic-btree   " "$dir" "4k3/8/8/8/8/8/8/3RK3 w - - 0 1"
+else
+    echo "malformed: cyclic-btree    SKIPPED -- no 3-man corpus; run tests/tbfetch.sh"
+    SKIP=$((SKIP+1))
+fi
+
 if [ -f "$CORPUS/KQvK.rtbw" ]; then
     dir="$WORK/fx/bitstream-walk"
     mkdir -p "$dir"; cp "$CORPUS"/*.rtb? "$dir/"
