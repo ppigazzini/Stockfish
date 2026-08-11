@@ -391,6 +391,37 @@ else
     SKIP=$((SKIP+1))
 fi
 
+if [ -f "$CORPUS/KNvK.rtbw" ]; then
+    dir="$WORK/fx/flags-vs-material"
+    mkdir -p "$dir"; cp "$CORPUS"/*.rtb? "$dir/"
+    # Byte 4 is the flags byte, and its Split and HasPawns bits are a claim
+    # about the material the file holds. The engine derives `sides` and
+    # `maxFile` from the material it ASKED for, so a file whose flags disagree
+    # is laid out to one plan and read to another. Upstream states that with an
+    # assert, which -DNDEBUG deletes.
+    patch_bytes "$dir/KNvK.rtbw" 4 192 41 124 33 37 5 7 61 88 54 110
+    check_survives "flags-vs-material" "$dir" "4k3/8/8/8/8/8/8/3NK3 w - - 0 1"
+else
+    echo "malformed: flags-vs-material SKIPPED -- no 3-man corpus; run tests/tbfetch.sh"
+    SKIP=$((SKIP+1))
+fi
+
+if [ -f "$CORPUS/KQvK.rtbw" ]; then
+    dir="$WORK/fx/bitstream-walk"
+    mkdir -p "$dir"; cp "$CORPUS"/*.rtb? "$dir/"
+    # The Huffman stream that decompress_pairs walks forward four bytes at a
+    # time, with the block index it starts from taken out of the padded region
+    # of blockLength[]. Both ends leave the mapping. The fault is ASLR-dependent
+    # -- it needs the page after the table to be unmapped -- so this fixture is
+    # a probability, not a certainty, and it is here because a sanitizer turns
+    # that probability into a report.
+    patch_bytes "$dir/KQvK.rtbw" 144 1 222 248 35 189 268 220 66 15 228 85 229 65 108 212
+    check_survives "bitstream-walk " "$dir" "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
+else
+    echo "malformed: bitstream-walk  SKIPPED -- no 3-man corpus; run tests/tbfetch.sh"
+    SKIP=$((SKIP+1))
+fi
+
 if [ -f "$CORPUS/KQvK.rtbw" ]; then
     dir="$WORK/fx/sparse-block"
     mkdir -p "$dir"
