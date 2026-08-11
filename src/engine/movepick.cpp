@@ -294,7 +294,13 @@ top:
     case QCAPTURE_INIT : {
         MoveList<CAPTURES> ml(pos);
 
-        cur = endBadCaptures = moves;
+        // endGenerated with them: QUIET_INIT is where it gets its real value,
+        // and QUIET_INIT is skipped whenever quiets are. BAD_QUIET then copied
+        // it into endCur -- an indeterminate value, saved from being read only
+        // because BAD_QUIET returns before the copy is used. `moves` is the
+        // right value for "no quiets were generated": it makes the bad-quiet
+        // range empty rather than unknown.
+        cur = endBadCaptures = endGenerated = moves;
         endCur = endCaptures = score<CAPTURES>(ml);
 
         partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
