@@ -42,12 +42,12 @@ repos:
       # add a supply-chain edge for one command. It rewrites in place, so
       # pre-commit fails on the modified file and the next run passes.
       #
-      # ONLY with clang-format-20, the version CI pins. The Makefile falls back
-      # to a bare `clang-format` when 20 is absent, and a different major
-      # reformats the whole tree to its own house style -- running it once here
-      # rewrote 29 files nobody had touched. Skip loudly instead; CI's own
-      # clang-format step is continue-on-error, so a local skip weakens no
-      # blocking gate.
+      # ONLY with clang-format-20, the version CI pins. A different major
+      # reformats the whole tree to its own house style -- running one here once
+      # rewrote 29 files nobody had touched. `make format` refuses on its own
+      # now, so this guard chooses what happens instead: a loud SKIP rather than
+      # a failed commit. CI's own clang-format step is continue-on-error, so a
+      # local skip weakens no blocking gate.
       - id: clang-format
         name: make format
         entry: >-
