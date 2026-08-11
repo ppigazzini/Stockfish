@@ -1261,6 +1261,14 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
                         - number<Sym, LittleEndian>(&d->lowestSym[i + 1]))
                      / 2;
 
+        // A REFUSAL, NOT AN ASSERT. This is a property of a canonical Huffman
+        // code, which is a property of a WELL-FORMED file: lowestSym[] is read
+        // straight out of the table, and a pair that does not descend produces
+        // a base64[] the loop below then left-shifts and decompress_pairs then
+        // searches for a symbol length in. An assert states it in a debug build
+        // and -DNDEBUG deletes it from every shipped one, so the shipped binary
+        // was the one with no check at all -- the exact inversion M1a closed
+        // everywhere else in this parser.
         if (d->base64[i] * 2 < d->base64[i + 1])
             return nullptr;
     }
