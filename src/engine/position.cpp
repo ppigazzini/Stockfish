@@ -210,10 +210,10 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
         if (!(ss >> token))
             return PositionSetError("Invalid FEN. Unexpected end of stream.");
 
-        if (isspace(token))
+        if (isspace((unsigned char) token))
             break;
 
-        if (isdigit(token))
+        if (isdigit((unsigned char) token))
         {
             const int diff = (token - '0');
             if (diff < 1 || diff > 8)
@@ -284,7 +284,7 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
         return PositionSetError(std::string("Invalid FEN. Invalid side to move: ")
                                 + std::string(1, token));
     sideToMove = (token == 'w' ? WHITE : BLACK);
-    if (!(ss >> token) || !isspace(token) || ss.eof())
+    if (!(ss >> token) || !isspace((unsigned char) token) || ss.eof())
         return PositionSetError("Invalid FEN. Expected whitespace after side to move.");
 
     // 3. Castling availability. Compatible with 3 standards: Normal FEN standard,
@@ -301,7 +301,7 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
         if (!(ss >> token))
             break;
 
-        if (isspace(token))
+        if (isspace((unsigned char) token))
             break;
 
         if (num_castling_rights == 0 && token == '-')
@@ -315,11 +315,11 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
 
         Square rsq  = SQ_NONE;
         Square ksq  = SQ_NONE;
-        Color  c    = islower(token) ? BLACK : WHITE;
+        Color  c    = islower((unsigned char) token) ? BLACK : WHITE;
         Piece  rook = make_piece(c, ROOK);
         Piece  king = make_piece(c, KING);
 
-        token = char(toupper(token));
+        token = char(toupper((unsigned char) token));
 
         if (token == 'K' || token == 'Q')
         {
@@ -537,7 +537,8 @@ std::optional<PositionSetError> Position::set(const string& code, Color c, State
     assert(sides[0].length() > 0 && sides[0].length() < 8);
     assert(sides[1].length() > 0 && sides[1].length() < 8);
 
-    std::transform(sides[c].begin(), sides[c].end(), sides[c].begin(), tolower);
+    std::transform(sides[c].begin(), sides[c].end(), sides[c].begin(),
+                   [](char ch) { return char(tolower((unsigned char) ch)); });
 
     string fenStr = "8/" + sides[0] + char(8 - sides[0].length() + '0') + "/8/8/8/8/" + sides[1]
                   + char(8 - sides[1].length() + '0') + "/8 w - - 0 10";
@@ -1589,7 +1590,10 @@ std::optional<PositionSetError> Position::flip() {
     f += token + " ";
 
     std::transform(f.begin(), f.end(), f.begin(),
-                   [](unsigned char c) { return char(islower(c) ? toupper(c) : tolower(c)); });
+                   [](char c) {
+                       const unsigned char u = (unsigned char) c;
+                       return char(islower(u) ? toupper(u) : tolower(u));
+                   });
 
     ss >> token;  // En passant square
     f += (token == "-" ? token : token.replace(1, 1, token[1] == '3' ? "6" : "3"));
