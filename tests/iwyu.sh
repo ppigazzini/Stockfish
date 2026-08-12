@@ -138,13 +138,30 @@ IWYU_VER=$("$IWYU" --version 2>&1 | head -1)
 MAPPING=$ROOT/.github/ci/libcxx17.imp
 [ -f "$MAPPING" ] || skip "no mapping file at $MAPPING"
 
-CI_FLAGS=(-stdlib=libc++ -Xiwyu --comment_style=long -Xiwyu "--mapping=$MAPPING" -Xiwyu --error)
+STD_FLAGS=(-stdlib=libc++ -Xiwyu --comment_style=long -Xiwyu "--mapping=$MAPPING")
+CI_FLAGS=("${STD_FLAGS[@]}" -Xiwyu --error)
 
 probe=$WORK/probe.cpp
-printf '#include <sstream>\n#include <string>\nstd::string f() { std::ostringstream o; o << 1; return o.str(); }\n' > "$probe"
+printf '#include <string>\nstd::string f() { return std::string("x"); }\n' > "$probe"
+
+# The probe asks ONE question: does a unit that includes a libc++ header
+# compile? It is judged on whether the frontend errored and never on the exit
+# code, and it is run WITHOUT -Xiwyu --error.
+#
+# The first version got both wrong and inverted the mode on every host. With
+# --error, IWYU exits non-zero for a finding in the PROBE FILE -- the probe had
+# one -- so the native check failed on a host where native was correct, the shim
+# check then passed or failed on the unrelated question of whether the shim's
+# extra mapping happened to cover the probe's own includes, and a runner with
+# libc++ installed took the skip path and reported "neither libc++ compiles a
+# trivial unit" while holding a working libc++.
+probe_ok() {
+    "$IWYU" "${STD_FLAGS[@]}" "$@" -std=c++17 -fsyntax-only "$probe" >"$WORK/probe.log" 2>&1
+    ! grep -qE '(^|[[:space:]])(fatal )?error:' "$WORK/probe.log"
+}
 
 MODE=
-if "$IWYU" "${CI_FLAGS[@]}" -std=c++17 -fsyntax-only "$probe" >"$WORK/probe.log" 2>&1; then
+if probe_ok; then
     MODE=native
     SHIM=()
 else
@@ -160,8 +177,7 @@ else
     done
     SHIM=(-resource-dir="$RESDIR" -nostdinc++ -isystem "$TGTV1" -isystem "$CXXV1"
           -Xiwyu "--mapping=$DEFMAP")
-    if ! "$IWYU" "${CI_FLAGS[@]}" "${SHIM[@]}" -std=c++17 -fsyntax-only "$probe" \
-        >"$WORK/probe.log" 2>&1; then
+    if ! probe_ok "${SHIM[@]}"; then
         tail -15 "$WORK/probe.log" >&2
         skip "neither the default libc++ nor the pinned one compiles a trivial unit"
     fi
@@ -250,6 +266,16 @@ analyse() {
         if grep -q 'fatal error:' "$log"; then
             tail -20 "$log" >&2
             die "$label did not compile at $arch"
+        fi
+        # A tier that analysed nothing is not a tier with no findings, and the
+        # two are indistinguishable downstream: both contribute zero lines and
+        # read as clean. IWYU prints one "The full include-list for" per file it
+        # analysed, so requiring at least one turns a make that died for a
+        # reason other than a compile error -- a net that would not download, a
+        # target that does not exist -- into a red run instead of a green one.
+        if ! grep -q '^The full include-list for' "$log"; then
+            tail -20 "$log" >&2
+            die "$label analysed no files at $arch (exit $rc)"
         fi
         [ "$rc" = 0 ] || true
         extract "$dir" < "$log" | sed "s|^|$arch |" >> "$out"
