@@ -73,7 +73,7 @@ None of this is chess-programming vocabulary.
 | **the composition root** | `src/shell/engine.cpp`: the one file that calls a seam's setter. Nothing else does |
 | **the arena** | `src/engine/arena.h`, the allocation seam. Unregistered it falls back to plain aligned allocation, which is why a block must never be taken from one allocator and released by the other |
 | **a default that refuses** | a seam whose unregistered behaviour would be a *different* answer rather than a slower one, so it declines instead. The unregistered worker set reports **no** workers rather than answering with one; a silent single-threaded search would still print a number, and the number would look fine |
-| **headless** | running the engine with no seam registered. `Search::go` (`src/engine/search_go.h`) is the entry; `tests/enginelink.sh` and `tests/fuzzsearch.sh` are the two callers |
+| **headless** | running the engine with no host registered. `Search::go` (`src/engine/search_go.h`) is the entry; `tests/enginelink.sh` and `tests/fuzzsearch.sh` are the two callers. Above one worker it needs threads it cannot spawn, so it dispatches through the parallel-for seam and refuses a count that seam cannot supply |
 | **the standalone link** | `tests/enginelink.sh`: compile `src/engine/` alone, link with a stub `main` and nothing else, fail on any undefined symbol. Stronger than a symbol-set intersection, which cannot see an inline call |
 | **the corpus** | the inputs a fuzzer keeps because they reached new coverage. Without one persisted across runs, a nightly job re-derives the same shallow coverage every night |
 
