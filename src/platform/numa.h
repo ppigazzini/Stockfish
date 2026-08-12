@@ -20,7 +20,15 @@
 #define NUMA_H_INCLUDED
 
 #include <algorithm>
+// Kept: std::memset, which this header used to reach through
+// platform/memory.h. That header supplied <cstring> by accident and no longer
+// includes it. IWYU asks to drop this at every tier it analyses, because libc++
+// on the lane's host provides it transitively; MinGW's libstdc++ does not, and
+// dropping it fails the Windows GCC jobs with "'memset' is not a member of
+// 'std'" while every Linux build stays green. assert comes from the <assert.h>
+// this header already carries.
 #include <cstdlib>
+#include <cstring>  // IWYU pragma: keep
 #include <functional>
 // Kept: std::numeric_limits is used only inside the _WIN64 blocks below, which a
 // Linux analyze lane never compiles, so IWYU sees no use and asks for a removal

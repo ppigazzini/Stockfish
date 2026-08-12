@@ -19,7 +19,6 @@
 #ifndef MEMORY_H_INCLUDED
 #define MEMORY_H_INCLUDED
 
-#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -306,25 +305,6 @@ auto windows_try_with_large_page_priviliges([[maybe_unused]] FuncYesT&& fyes, Fu
 }
 
 #endif
-
-template<typename T, typename ByteT>
-T load_as(const ByteT* buffer) {
-    static_assert(std::is_trivially_copyable<T>::value, "Type must be trivially copyable");
-    static_assert(sizeof(ByteT) == 1);
-
-    if (reinterpret_cast<uintptr_t>(buffer) % alignof(T) != 0)
-    {
-        assert(false);
-#ifdef __GNUC__
-        __builtin_unreachable();
-#endif
-    }
-
-    T value;
-    std::memcpy(&value, buffer, sizeof(T));
-
-    return value;
-}
 
 }  // namespace Stockfish
 
