@@ -25,37 +25,38 @@ set -o pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT" || exit 2
 
-# script            reason it runs nowhere
-EXCUSED_NAMES=(
-  npsab.sh
-  negative_control.sh
-  testing.py
-  uci_driver.py
-  get_native_properties.sh
-  net.sh
-  fingerprint.sh
-  zones.sh
-  perfcounters.sh
-  perfcounters_report.py
-  perfdecomp.sh
-  perfdecomp.py
-  match.sh
+# The excuse list: a script that runs nowhere, and the reason.
+#
+# ONE array of `name<TAB>reason`, not two parallel ones. Two index-parallel
+# arrays desynchronise the first time a name is removed without its reason, and
+# nothing here would notice: every excuse below the removed index shifts up by
+# one, the gate prints a reason belonging to a different script, and it still
+# exits 0 because it only ever tested membership. That happened -- fingerprint.sh
+# was excused as "invoked by the Makefile's net target" on a green run. A single
+# array cannot express the state.
+EXCUSED=(
+  "npsab.sh	wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
+  "testing.py	a harness imported by instrumented.py rather than a gate"
+  "uci_driver.py	an operator harness for driving the engine by hand; every check it can make is owned by a gate that IS dispatched -- signature.sh the bench, perft.sh the movegen -- and a lane running it would assert them twice"
+  "get_native_properties.sh	invoked by the Makefile, not by a workflow"
+  "net.sh	invoked by the Makefile's net target"
+  "fingerprint.sh	callgrind over the whole call graph, far costlier than the budget gate; run by hand before a decomposition"
+  "zones.sh	the zone table, sourced by depcheck.sh, linkcheck.sh, enginelink.sh and fuzzsearch.sh rather than run"
+  "perfcounters.sh	reads the CPU's hardware counters; a virtualised hosted runner exposes no PMU, so a lane would skip every run"
+  "perfcounters_report.py	the aggregation half of perfcounters.sh, invoked by it rather than run"
+  "perfdecomp.sh	callgrind with the cache and branch simulators, roughly 50x; run by hand when a component moves"
+  "perfdecomp.py	the decomposition half of perfdecomp.sh, invoked by it rather than run"
+  "match.sh	plays games under a time control; a hosted runner is not idle, so it forfeits on time and scores the box"
 )
-EXCUSED_WHY=(
-  "wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
-  "mutates tracked sources and rebuilds per row, so it cannot share a checkout with a lane"
-  "a harness imported by instrumented.py rather than a gate"
-  "an operator harness for driving the engine by hand; every check it can make is owned by a gate that IS dispatched -- signature.sh the bench, perft.sh the movegen -- and a lane running it would assert them twice"
-  "invoked by the Makefile, not by a workflow"
-  "invoked by the Makefile's net target"
-  "callgrind over the whole call graph, far costlier than the budget gate; run by hand before a decomposition"
-  "the zone table, sourced by depcheck.sh, linkcheck.sh, enginelink.sh and fuzzsearch.sh rather than run"
-  "reads the CPU's hardware counters; a virtualised hosted runner exposes no PMU, so a lane would skip every run"
-  "the aggregation half of perfcounters.sh, invoked by it rather than run"
-  "callgrind with the cache and branch simulators, roughly 50x; run by hand when a component moves"
-  "the decomposition half of perfdecomp.sh, invoked by it rather than run"
-  "plays games under a time control; a hosted runner is not idle, so it forfeits on time and scores the box"
-)
+
+# An entry with no reason excuses a script while saying nothing, which is the
+# shape an excuse list rots into. Refuse rather than report a verdict.
+for e in "${EXCUSED[@]}"; do
+    case "$e" in
+        *"	"*) : ;;
+        *) echo "lanecheck: excuse entry carries no reason: $e" >&2; exit 1 ;;
+    esac
+done
 
 FAIL=0
 note() { echo "lanecheck: $*"; FAIL=1; }
@@ -77,10 +78,9 @@ dispatch_corpus() {
     # naming what actually runs it.
 }
 excuse_for() {
-    local n=$1 i=0
-    for e in "${EXCUSED_NAMES[@]}"; do
-        [ "$e" = "$n" ] && { echo "${EXCUSED_WHY[$i]}"; return 0; }
-        i=$((i+1))
+    local n=$1 e
+    for e in "${EXCUSED[@]}"; do
+        [ "${e%%	*}" = "$n" ] && { printf '%s' "${e#*	}"; return 0; }
     done
     return 1
 }
@@ -163,7 +163,8 @@ done
 echo
 echo "== excuses that name nothing =="
 stale=0
-for e in "${EXCUSED_NAMES[@]}"; do
+for entry in "${EXCUSED[@]}"; do
+    e=${entry%%	*}
     # Two separate tests, because a script lives in one directory or the other,
     # never both: `ls tests/$e scripts/$e` fails when EITHER is missing and
     # would report every excused name as absent.
