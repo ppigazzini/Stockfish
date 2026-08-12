@@ -33,7 +33,6 @@
 
 #include "history.h"
 #include "nnue/nnue_accumulator.h"
-#include "../platform/numa.h"
 #include "position.h"
 #include "score.h"
 #include "timeman.h"
@@ -205,7 +204,7 @@ struct LimitsType {
 struct SharedState {
     SharedState(const SearchOptions&                  opts,
                 TranspositionTable&                   transpositionTable,
-                std::map<NumaIndex, SharedHistories>& sharedHists,
+                std::map<HistoryBankIndex, SharedHistories>& sharedHists,
                 std::atomic<bool>&                    stopFlagRef,
                 std::atomic<bool>&                    increaseDepthFlagRef) :
         options(opts),
@@ -216,7 +215,7 @@ struct SharedState {
 
     const SearchOptions&                  options;
     TranspositionTable&                   tt;
-    std::map<NumaIndex, SharedHistories>& sharedHistories;
+    std::map<HistoryBankIndex, SharedHistories>& sharedHistories;
 
     // The two flags every worker shares. Plain std::atomic rather than a host
     // handle, so the engine names no platform type to reach them: the host owns
@@ -363,7 +362,7 @@ class Worker {
            usize,
            usize,
            usize,
-           NumaReplicatedAccessToken);
+           HistoryBankIndex);
 
     // Called at instantiation to initialize reductions tables.
     // Reset histories, usually before a new game.
@@ -435,8 +434,7 @@ class Worker {
 
     PVMoves lastIterationIdxPV;
 
-    usize                     threadIdx, numaThreadIdx, numaTotal;
-    NumaReplicatedAccessToken numaAccessToken;
+    usize threadIdx, numaThreadIdx, numaTotal;
 
     // Reductions lookup table initialized at startup
     std::array<int, MAX_MOVES> reductions;  // [depth or moveNumber]

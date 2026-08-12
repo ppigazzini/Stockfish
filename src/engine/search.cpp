@@ -52,7 +52,6 @@
 #include "compiler.h"
 #include "basetypes.h"
 #include "searchoptions.h"
-#include "../platform/numa.h"
 
 namespace Stockfish {
 
@@ -203,14 +202,13 @@ Search::Worker::Worker(SharedState&                    sharedState,
                        usize                           threadId,
                        usize                           numaThreadId,
                        usize                           numaTotalThreads,
-                       NumaReplicatedAccessToken       token) :
+                       HistoryBankIndex                bank) :
     // Unpack the SharedState struct into member variables
-    sharedHistory(sharedState.sharedHistories.at(token.get_numa_index())),
+    sharedHistory(sharedState.sharedHistories.at(bank)),
     continuationHistory(sharedHistory.continuationHistory()),
     threadIdx(threadId),
     numaThreadIdx(numaThreadId),
     numaTotal(numaTotalThreads),
-    numaAccessToken(token),
     manager(std::move(sm)),
     options(sharedState.options),
     tt(sharedState.tt),
