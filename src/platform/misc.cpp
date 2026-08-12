@@ -17,7 +17,7 @@
 */
 
 #include "misc.h"
-#include "platform.h"
+#include "../engine/compiler.h"
 
 #include <cstdlib>
 #include <filesystem>

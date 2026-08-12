@@ -38,11 +38,11 @@ ls src/incbin                           # vendored, not ours
 | `engine/score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from |
 | `engine/hashing.h` | `hash_bytes`, arithmetic over bytes with no OS in it, so both zones can call it: the net's content hash from `engine/`, the shared-memory segment name from `platform/` |
 | `engine/arena.h`, `output_sink.h`, `tb_source.h`, `clock.h`, `parallel.h`, `worker_set.h` | the seams, catalogued below |
+| `engine/compiler.h` | what the COMPILER provides, not what the machine hosts: `RESTRICT`, `prefetch`, `IsLittleEndian`, `sf_always_inline`, `stringify`. In `engine/` for the same reason as `hashing.h` -- every zone spells the compiler, only the host spells the OS |
 | `platform/memory.h/.cpp` | aligned and large-page allocation |
 | `platform/numa.h/.cpp`, `numa_shared.h`, `shm.h`, `shm_unix.h` | NUMA topology, replication, cross-process sharing |
 | `platform/thread.h/.cpp`, `platform/thread_native.h` | the worker pool and the native thread with a chosen stack |
 | `platform/syzygy/` | the tablebase prober |
-| `platform/platform.h` | what the machine provides: `prefetch`, `IsLittleEndian`, `RESTRICT` |
 | `platform/text.h/.cpp` | turning the host's text into values: `split`, `is_whitespace`, `remove_whitespace`, `str_to_size_t`, `read_file_to_string` |
 | `platform/misc.h/.cpp` | what only the shell asks for: the version strings, the logger, `CommandLine`, the utf-8 path conversions, the console |
 | `shell/main.cpp`, `shell/uci.h/.cpp`, `shell/ucioption.h/.cpp`, `shell/engine.h/.cpp` | the UCI transport, the option table, the session |
@@ -347,7 +347,7 @@ including it. Four edges decide most of that closure:
 - **`engine/` includes `platform/misc.h` nowhere, and the transitive half is the half that
   rots.** The things an engine file wants that have no OS in them are elsewhere by design:
   `RelaxedAtomic` and `mul_hi64` in `engine/basetypes.h`, `PRNG` in `engine/prng.h`,
-  `sf_always_inline` and `stringify` in `platform/platform.h`, which is the compiler header.
+  `sf_always_inline` and `stringify` in `engine/compiler.h`, which is the compiler header.
   The string helpers `platform/numa.h` needs are `platform/text.h`, and that matters because
   `engine/search.h` includes `numa.h`: point `numa.h` at the drawer and every file including
   `search.h` gets `CommandLine` and the logger, which no grep for a direct include reveals.
