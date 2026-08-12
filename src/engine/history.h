@@ -30,7 +30,6 @@
 #include <type_traits>  // IWYU pragma: keep
 #include <utility>
 
-#include "../platform/misc.h"
 #include "position.h"
 #include "arena.h"
 #include "basetypes.h"

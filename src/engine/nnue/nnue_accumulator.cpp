@@ -35,6 +35,7 @@
 #include "../types.h"
 #include "nnue_architecture.h"
 #include "nnue_common.h"
+#include "../../platform/platform.h"
 #include "nnue_feature_transformer.h"  // IWYU pragma: keep
 #include "simd.h"
 #include "../basetypes.h"
@@ -43,7 +44,6 @@
 // SIMD branches are compiled and asks to drop it on one where they are not, and
 // the second answer is the wrong one -- apply_psq_features carries the macro
 // whatever the tier. Same reason engine/attacks.h keeps platform.h.
-#include "../../platform/misc.h"  // IWYU pragma: keep
 
 namespace Stockfish::Eval::NNUE {
 

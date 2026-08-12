@@ -33,7 +33,6 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <list>
-#include <ratio>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -41,7 +40,7 @@
 #include "bitboard.h"
 #include "evaluate.h"
 #include "history.h"
-#include "../platform/misc.h"
+#include "prng.h"
 #include "movegen.h"
 #include "movepick.h"
 #include "nnue/network.h"
@@ -73,6 +72,25 @@ void syzygy_extend_pv(const SearchOptions&         options,
 using namespace Search;
 
 namespace {
+
+// Both of these lived in platform/misc.h and had exactly one caller each --
+// this file. A generic helper with one consumer is not a utility, it is a
+// private function that took a detour through a header everything includes.
+template<typename T1, typename T2>
+inline constexpr T2 interpolate(T1 x, T1 x0, T1 x1, T2 y0, T2 y1) {
+    assert(x0 != x1);
+    return T2(y0 + (y1 - y0) * (x - x0) / (x1 - x0));
+}
+
+template<typename T, typename Predicate>
+void move_to_front(std::vector<T>& vec, Predicate pred) {
+    auto it = std::find_if(vec.begin(), vec.end(), pred);
+
+    if (it != vec.end())
+    {
+        std::rotate(vec.begin(), it, it + 1);
+    }
+}
 
 constexpr u64 NODES_LIMIT_OUTPUT = 10'000'000;
 
@@ -630,7 +648,7 @@ bool Search::Worker::iterative_deepening() {
             // Bring the last best move to the front for best thread selection.
             if (!lastBestMovePV.empty())
             {
-                Utility::move_to_front(rootMoves, [&lastPV = std::as_const(lastBestMovePV)](
+                move_to_front(rootMoves, [&lastPV = std::as_const(lastBestMovePV)](
                                                     const auto& rm) { return rm == lastPV[0]; });
                 rootMoves[0].score = rootMoves[0].uciScore = lastBestMoveScore;
                 rootMoves[0].pv                            = lastBestMovePV;
