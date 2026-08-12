@@ -85,17 +85,33 @@ return an approximately right verdict; it returns a confident wrong one, and the
 believe it. That property makes this the highest-consequence code in the tree per line.
 
 The table bytes are untrusted input: they are read from disk, and nothing in the engine
-produced them. **Past the four-byte magic nothing is validated, and that is a hole rather than
-a design.** A single altered byte after it in a 3-man WDL table kills the engine with SIGSEGV
-inside `decompress_pairs` on the first probe; the reproducer, the fault site and what is still
-unknown about it are in [10-tooling-ci.md](10-tooling-ci.md). Syzygy files come off public
-mirrors, so this is a mid-game crash a user can reach without doing anything wrong.
+produced them. Syzygy files come off public mirrors, so a bad one is something a user reaches
+without doing anything wrong.
 
-The PV extension is where the prober meets the clock, and it is the one place in the engine
-that reads a clock outside the `clock.h` seam. `syzygy_extend_pv` (`src/engine/search.cpp`)
-budgets itself against `Move Overhead`, whose range starts at 0, and `TimePoint` is whole
-milliseconds, so the seam's resolution would let the abort overrun the deadline by a
-millisecond. See [00-architecture.md](00-architecture.md).
+**Every field the reader takes from the file is bounded before it is used**, and one flipped
+byte in a downloaded table is a case the reader has to answer rather than crash on. The header
+is checked at load; the block walk and both bitstream reads are clamped; a symbol index is
+masked into its alphabet; a `base64[]` table that is not a canonical Huffman code, a pairing
+that closes a loop, and a flags byte contradicting the material are all refused.
+`tests/malformed.sh` is what holds that, one fixture per field.
+
+**The bounds are O(1) in the file's size, and that is a constraint rather than an
+optimisation.** The tables are mmapped and paged in on demand, so a pass that walked
+`sparseIndex[]` or `blockLength[]` would force a whole 6-man table resident and defeat the
+laziness the reader is built on. Compare the ends, never the contents -- with a division, since
+`count * stride` in `u64` wraps for a pair a crafted file can name, and a bound that wraps is a
+bound the file walks straight through.
+
+**A flags byte is a claim about the parse, not a detail.** `TBFlag::SingleValue` is 128: a
+table storing one value for its whole material stops the parse after two bytes, so clearing
+that bit sends an 80-byte file down the full decode path, where every span it then describes
+lies past the mapping. That is why the flags byte is checked against the material the engine
+asked for, and why nothing after byte 11 is read at all on the `SingleValue` path.
+
+The PV extension is where the prober meets the clock. `syzygy_extend_pv`
+(`src/engine/search.cpp`) budgets itself against `Move Overhead`, whose range starts at 0, so
+it compares in microseconds through the `clock.h` seam: at whole-millisecond resolution the
+abort overruns its deadline by a millisecond. See [00-architecture.md](00-architecture.md).
 
 ## Configuration
 

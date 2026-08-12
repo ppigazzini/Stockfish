@@ -108,7 +108,13 @@ Retired instructions under callgrind, base against head, built and measured in t
 ./tests/perfbudget.sh HEAD~1                    # this commit against its parent
 ./tests/perfbudget.sh origin/master worktree    # uncommitted work
 ./tests/perfbudget.sh --pgo HEAD~1              # the build that actually ships
+./tests/perfbudget.sh --syzygy DIR HEAD~1       # a PROBING workload, not the bench list
 ```
+
+**`--syzygy` is not an option, it is a different workload.** The bench list never probes, so
+without it the whole tablebase reader is absent from every figure this gate produces and a
+bound placed inside `decompress_pairs` reads as free. Anything touching
+`src/platform/syzygy/` quotes that cell. An empty `DIR` skips rather than measuring nothing.
 
 **Measure both build modes.** `make profile-build` is the shipped recipe, and the two do not
 agree on the size of a regression: forcing `Position::adjust_key50` out of line reads
@@ -598,6 +604,33 @@ nodes are non-zero, the root is scored, and a repeat gives the same move. An exa
 be a second bench signature to maintain, and this gate is about whether the defaults run, not
 about what they compute.
 
+**Then it asks for two workers, which is the one thing a default cannot fake.** Every other
+default answers the same question more slowly; the worker set cannot, because fewer workers is
+a different answer. The order is the point:
+
+1. With nothing registered, `Search::go(..., 2)` must come back **empty**. The built-in
+   parallel-for runs the job inline and an inline helper never returns, so attempting it would
+   hang this gate rather than fail it -- and a hang is not a report.
+2. Then the host registers a parallel-for backed by real threads -- a thread per dispatch, not
+   a pool; the engine ships the pool and this is not it -- and asks again.
+
+Three counters decide it, and the one that matters is that the helper **finished**. A helper
+that never returns is this gate's failure mode and would show as a hang; recording that
+`start_searching` returned is the only way it leaves evidence either way. The dispatch counter
+is what stops a search that quietly ran one worker from satisfying every assertion about the
+result -- one worker searches the position perfectly well.
+
+Run it under ThreadSanitizer by pointing `CXX` at a wrapper that adds `-fsanitize=thread`,
+which instruments the engine objects, the host and the link:
+
+```sh
+printf '#!/bin/bash\nexec g++ -fsanitize=thread "$@"\n' > /tmp/tsan-g++ && chmod +x /tmp/tsan-g++
+CXX=/tmp/tsan-g++ ./tests/enginelink.sh
+```
+
+This is the only place in the tree where the concurrent search runs under a sanitizer with no
+host pool: `sanitizers.yml` covers the shipped engine, where the pool is the host's.
+
 Two constraints on the host, both of which fail quietly if broken. It is compiled from a
 `tests/` directory beside `src/`, because it includes `../src/engine/...` exactly as it does in
 the repo -- compiled from anywhere else those relative includes resolve somewhere else. And it
@@ -902,8 +935,20 @@ is credited with an experiment it did not run. `tests/negative_control.sh`'s `fu
 the only one exercising a rig detector, and it asserts the inverse property -- that a dead rig
 reads as a rig fault and never as a finding.
 
-`tests/tbfetch.sh` fetches the 3-man set from the mirror `TB_MIRROR` names, and verifies each
-file by its **magic** rather than by HTTP status. A mirror that answers a missing file with a
+`tests/tbfetch.sh` fetches the tablebases from the mirror `TB_MIRROR` names and verifies each
+file by its **magic** rather than by HTTP status. `--men 3` fetches the 3-man stems the fuzz
+corpus uses; `--men 4` adds the 4-man ones into `tests/syzygy-34man`, which is what `golden.sh`
+plays its tablebase cases against. Both are small enough to cache in a lane and neither is
+worth carrying in git:
+
+```sh
+./tests/tbfetch.sh --men 3 && ./tests/tbfetch.sh --men 4 && du -sh tests/syzygy-3man tests/syzygy-34man
+```
+
+**Separate directories, because what a corpus CONTAINS is part of what a test using it
+records.** `MaxCardinality` reads 3 or 4 depending on which is there and the engine prints the
+file count in its own output, so a 3-man corpus under the 4-man path makes a suite expecting
+the larger one block until its timeout on a line that cannot come. A mirror that answers a missing file with a
 body -- an error page, a redirect to a landing page -- otherwise gets that body stored as a
 table, and it fails much later inside the decoder, where it reads as a corrupt table rather
 than a bad download. Without a corpus the harness **skips visibly** rather than passing. It is
@@ -915,90 +960,21 @@ own with the whole budget rather than splitting one budget several ways -- they 
 throughputs orders of magnitude apart, so a shared budget is really a budget for the fastest of
 them. A clean run means "nothing failed inside that budget", never "there is nothing to find".
 
-**`tb` is not in the nightly matrix, and that is a hole rather than a decision.** It finds the
-defect recorded below within a budget a nightly run has, and a job that reports the same known
-defect every night is read by nobody. The harness, `tbfetch.sh`, the verdict comparison and the
-`fuzz-tb`, `fuzz-rig` and `fuzz-verdict` negative-control rows all remain and run by hand -- so
-until that defect is fixed, the decoder is fuzzed only when someone remembers to:
+`tb` is in the matrix with the other three, and its corpus step is `continue-on-error`, so a
+mirror outage costs that harness its run and not the job. Without a corpus it **skips visibly**
+rather than passing.
 
 ```sh
 ./tests/tbfetch.sh && ./tests/fuzz.py --seconds 600 --harness tb
 ```
 
-**The blocking condition is now one defect and it has a rate.** The load-time bounds described
-under `malformed.sh` closed the header half: the crash below no longer reproduces, the
-`std::bad_alloc` that shared the page with it is gone, and 1728 mutation rounds -- the whole of
-a 1500-second run -- produced no other. Round 1728 produced a SIGSEGV, and it is not a header
-defect at all. What is left is stated exactly so the commit that closes it can restore the lane
-by paste rather than by rediscovery.
+**Every defect this harness has found is a `malformed.sh` fixture**, which is where a found
+defect goes: a seed reproduces a harness, a byte list reproduces a defect and survives the
+harness changing. What the fixtures cover is tabulated there.
 
-### A corrupt table crashes the engine, in the block walk
-
-**Not fixed, and no longer reachable from the header.** The reproducer this section used to
-carry -- byte 10 of `KNvK.rtbw`, the flags byte, cleared -- is now answered with `Corrupted
-table in file KNvK.rtbw` and the search's own move, and it is the sixth fixture in
-`malformed.sh`. What remains is the walk that turns a `sparseIndex[]` entry into a block:
-
-```
-while (offset < 0)                      offset += d->blockLength[--block] + 1;
-while (offset > d->blockLength[block])  offset -= d->blockLength[block++] + 1;
-```
-
-`block` comes out of the file and neither loop has a bound, so a mutation deep in the data of a
-real table still reaches unmapped memory:
-
-```
-AddressSanitizer: unknown-crash
-    #0 decompress_pairs           src/platform/syzygy/tbprobe.cpp   (the backward walk)
-    #1 do_probe_table<TBTable<DTZ>>
-    #2 Tablebases::probe_dtz  <-  root_probe  <-  rank_root_moves  <-  ThreadPool::start_thinking
-```
-
-`blockLength` and `sparseIndex` are both proven to lie inside the mapping at open, so this is
-an index defect rather than a pointer one, and it is the one site in this reader where the
-bound cannot be moved to load time: validating `sparseIndex[]` is O(file size) and would force
-a 6-man table resident, and no container can be sized at a `u32`'s domain. **It therefore needs
-a measurement on a probing workload, which no gate in this tree can take yet** -- the bench
-never probes, so every perf gate here is blind to the decode path.
-
-The historical form, kept because it fixes the shape in a reader's mind:
-
-```sh
-printf '\x00' | dd of=tests/syzygy-3man/KNvK.rtbw bs=1 seek=10 count=1 conv=notrunc
-```
-
-The engine loaded the table, answered `readyok`, and died with SIGSEGV on the first probe.
-Under valgrind the fault was a read of unmapped memory inside `decompress_pairs`
-(`src/platform/syzygy/tbprobe.cpp`), reached from `probe_dtz` by way of `rank_root_moves` and
-`Engine::go`:
-
-```
-Invalid read of size 1
-   at decompress_pairs(PairsData*, unsigned long)
-   by do_probe_table<TBTable<WDL>, WDLScore>(...)
-   by Tablebases::probe_dtz(Position&, ProbeState*)
-Address 0x6378 is not stack'd, malloc'd or (recently) free'd
-```
-
-Byte 10 is the only byte of the 80-byte `KNvK.rtbw` that aborts the engine, and it aborts on a
-clean threshold rather than at random -- **every** value below the shipped 128 crashes, and
-every value at or above it is answered normally:
-
-| byte 10 | 0 | 1 | 2 | 3 | 64 | 127 | 129 | 255 |
-|---|---|---|---|---|---|---|---|---|
-| | SEGV | SEGV | SEGV | SEGV | SEGV | SEGV | ok | ok |
-
-**The field is `flags`, and the threshold is one bit.** `TBFlag::SingleValue` is 128: the
-shipped `KNvK.rtbw` stores one value for the whole table and stops the parse after two bytes,
-and clearing that bit sends an 80-byte file down the full decode path, where every span it then
-describes lies past the mapping. That is why every value below 128 crashed and every value
-above it did not -- the table above was reading one bit through eight, which is also why byte
-11 tolerated everything: on the `SingleValue` path nothing after byte 11 is read at all.
-
-**A corrupt table should be refused, not answered and not crashed on** -- one flipped byte in a
-downloaded file kills the engine mid-game, and Syzygy files come off public mirrors. It now is
-refused, by the load-time bounds; the `std::bad_alloc` a random 8-byte mutation of the same
-file produced was the same root and is gone with it, and both are `malformed.sh` fixtures.
+The one thing this harness can reach that `malformed.sh` cannot is a field nobody has thought
+to break yet. That is the whole reason it runs on a nightly budget rather than as a merge gate,
+and the reason a round that finds nothing is not evidence of anything.
 
 ## `tests/malformed.sh`
 
@@ -1015,9 +991,13 @@ ship with. `fuzz.py` looks for input that is bad in a way nobody has described y
 nightly budget, and is explicitly not a merge gate. Between them sits the case that matters
 most for a fix: **a file refused yesterday must be refused today.**
 
-Six fixtures, five of them eight lines of Python and one a single byte of a real table. They
-are generators rather than committed blobs because the interesting thing about a fixture here
-is *which field is wrong*, and a blob hides that:
+One fixture per field the reader trusts. They are generators and byte lists rather than
+committed blobs, because the interesting thing about a fixture here is *which field is wrong*
+and a blob hides that:
+
+```sh
+./tests/malformed.sh 2>&1 | tail -1     # the count, and how many skipped for want of a corpus
+```
 
 | fixture | the field | what it reached |
 |---|---|---|
@@ -1026,7 +1006,22 @@ is *which field is wrong*, and a blob hides that:
 | `block-shift` | the block-size byte = 200 | `1ULL << 200` |
 | `base64-shift` | `minSymLen` 0 | a right-pad shift of exactly 64 |
 | `btree-past-end` | 65535 symbols declared by an 80-byte file | a `btree[]` span outside the mapping |
-| `corpus-flags` | `KNvK.rtbw` byte 10 cleared | the section above |
+| `corpus-flags` | `KNvK.rtbw` byte 10 cleared | an 80-byte file sent down the full decode path, every span past the mapping |
+| `symbol-past-end` | 8 bytes of `KQvK.rtbw` | a symbol outside the 12-bit alphabet `symlen[]` and `btree[]` are sized for |
+| `huffman-noncanon` | 8 bytes of `KRvK.rtbw`, `lowestSym[]` stops descending | a `base64[]` search over a code that is not canonical |
+| `cyclic-btree` | a pairing that closes a loop | unbounded recursion in `set_symlen` |
+| `flags-vs-material` | the `Split`/`HasPawns` bits against the material asked for | a file laid out to one plan and read to another |
+| `bitstream-walk` | a block index from the padded region of `blockLength[]` | a forward stream walk leaving the mapping at both ends |
+| `sparse-block` | the first `SparseEntry` block index = `0xFFFFFFFF` | a block far past `blockLengthSize` |
+| `alloc-failure` | 16 threads under a 128 MB allocation cap | an allocation the host refuses, rather than a corrupt file |
+
+The last is a different question from the rest -- it asks what the engine does when the
+allocator says no, which no mutated file can provoke -- and it is here because the answer has
+the same shape: report and stay up.
+
+The four preceding it were found by `fuzz.py`'s `tb` harness and are replayed as the exact byte
+edits it made. Three of them need the 3-man corpus and **skip visibly** without it; a skip is
+counted separately from a pass, because a fixture that did not run has not refused anything.
 
 **These need no synthetic mutation: the defect is the mutation.** Every one was red on the tree
 that carried the defect it covers, and the commit that closed it records that output. That is

@@ -36,7 +36,7 @@ and distinct -- an entry that stored no search must still be distinguishable fro
 slot.
 
 **The table is shared across threads with no lock.** Entries are written and read
-concurrently; a torn entry is possible and tolerated. `RelaxedAtomic` in `src/platform/misc.h` is what
+concurrently; a torn entry is possible and tolerated. `RelaxedAtomic` in `src/engine/basetypes.h` is what
 keeps that defined rather than undefined behaviour. See
 [04-multithreading.md](04-multithreading.md).
 
@@ -182,9 +182,9 @@ which a byte that is neither 0 nor 1 is undefined behaviour rather than a wrong 
 
 ## `Search::go` -- searching without a host
 
-`Search::go` (`engine/search_go.h`) runs one depth-limited, single-threaded search from a FEN
-and needs no seam registered. It exists so the defaults can be **run**, not merely linked:
-`tests/enginelink.sh` and `tests/fuzzsearch.sh` are both built on it.
+`Search::go` (`engine/search_go.h`) runs one depth-limited search from a FEN and needs no host
+registered. It exists so the defaults can be **run**, not merely linked: `tests/enginelink.sh`
+and `tests/fuzzsearch.sh` are both built on it.
 
 Each call is independent. `HeadlessRunner::run` resets the manager's cross-search state per
 call -- `ThreadPool::clear`'s reset plus `start_thinking`'s two per-`go` fields -- because
@@ -193,17 +193,43 @@ successive `go` commands on one engine and wrong for a driver that walks to an u
 position each iteration, where it costs whole seconds on a search that should take
 milliseconds.
 
-The worker is constructed with thread index 0, which makes it the main worker: only the main
-worker applies the depth cap and drives the aspiration loop, so a non-main worker here would
-search until someone stopped it and nobody would.
+Worker 0 holds the `SearchManager` and is the main worker: only the main worker applies the
+depth cap and drives the aspiration loop. The rest hold a `NullSearchManager`, exactly as the
+pool builds them.
 
 The heavy blocks are process-static and reused, so it is **not reentrant**: one search at a
-time, and two callers at once share one root position.
+time, and two callers at once share one root position. Changing the worker count rebuilds them,
+which is not cheap -- a `Worker` embeds the NNUE refresh cache -- so alternating counts per call
+is not a pattern to build on.
 
-**The limit.** The worker set is the one seam whose default is a refusal rather than a slower
-answer, and this path never asks it for a count it could refuse: there genuinely is one worker,
-and a depth-limited search never reaches time management. So `Search::go` exercises every seam
-default except the case that seam exists to prevent.
+### More than one worker
+
+It takes a worker count, and **a count it cannot honour is refused rather than attempted**.
+
+The non-main workers are dispatched through the parallel-for seam, which is where the host's
+threads already are. That seam was always two calls rather than a fork-join:
+
+```cpp
+void (*run_on)(usize thread, std::function<void()> fn);
+void (*wait_on)(usize thread);
+```
+
+so a helper can be started before the main worker searches and waited for after it has raised
+the stop flag -- which is the order `Worker::start_searching` requires. Host thread 0 is
+skipped, because the caller is running the main worker on it, exactly as
+`ThreadPool::start_searching` skips its own.
+
+The built-in parallel-for runs the job **inline**, and an inline helper never returns: the
+depth cap tests `mainThread` (`search.cpp`), a non-main worker has none, so it searches to
+`MAX_PLY` waiting for a stop the caller cannot reach the line to raise. So a count above what
+`parallel_for().num_threads()` reports comes back `std::nullopt`. Attempting it hangs rather
+than degrades, and **a hang is not a report**: it would take a gate down instead of failing it.
+
+Above one worker a `WorkerSet` over those workers is registered for the duration of the call
+and whatever was there before is put back. At one worker nothing is registered at all, which is
+the configuration `enginelink.sh` exists to exercise. `nodes` is the whole search's count --
+the main worker's alone at one worker, the sum over the set above one; reporting the main
+worker's own would describe a two-worker search as having done half its work.
 
 ## `search.cpp` -- the driver
 
