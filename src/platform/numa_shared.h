@@ -19,6 +19,7 @@
 #ifndef NUMA_SHARED_H_INCLUDED
 #define NUMA_SHARED_H_INCLUDED
 
+#include <cassert>
 #include <functional>
 #include <memory>
 #include <optional>
