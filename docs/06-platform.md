@@ -28,9 +28,14 @@ Three things the engine needs that `new` does not give:
 | `aligned_large_pages_alloc` | the same, backed by huge pages where the OS offers them |
 | `aligned_large_pages_alloc_with_hint(size, hugePageHint)` | the caller says whether huge pages are worth requesting |
 
-`HugePageSize` is `1 << 30` -- one gigabyte. `TranspositionTable::resize` passes the hint only
-when the table is at least eight huge pages per NUMA node, so a small table does not reserve
-gigabyte pages it cannot fill and cause memory oversubscription.
+`HugePageSize` is `1 << 30` -- one gigabyte -- and it is the platform's own copy of a number the
+engine also needs. `TranspositionTable::resize` passes the hint only when the table is at least
+eight huge pages per NUMA node, so a small table does not reserve gigabyte pages it cannot fill
+and cause memory oversubscription. **It reads the size from `arena().hugePageBytes`, not from
+here**: the page size is a fact about the machine and belongs to the seam, while how many pages
+per node are worth asking for is a property of the table and stays in `tt.cpp`. `Engine::
+ArenaInstallerTag` registers this constant, so a hosted engine computes what it always did and an
+unhosted one reaches the same answer from `DefaultHugePageBytes`.
 
 **The engine does not call these.** It allocates through `engine/arena.h`, a struct of three
 function pointers it declares and `Engine::ArenaInstallerTag` fills with
@@ -65,6 +70,27 @@ first search is in the `.cpp`, and what stays in the header is template-bound an
 including the namespace-scope `STARTUP_PROCESSOR_AFFINITY` initializer, whose initialisation
 order is a property of living there.
 
+**That initializer runs once per translation unit, not once per process**, and it is the most
+expensive thing this header does:
+
+```
+inline static const auto STARTUP_PROCESSOR_AFFINITY = get_process_affinity();
+```
+
+`static` at namespace scope is internal linkage and it wins over `inline`, so every TU that sees
+the header gets its own copy and its own dynamic initialiser. `get_process_affinity()` `CPU_ALLOC`s
+a 64K-CPU mask, calls `sched_getaffinity`, and loops `CPU_ISSET_S` over `MaxNumCpus = 1024 * 64`.
+Priced on the instruction axis at roughly 607,000 retired instructions per copy:
+
+```sh
+cd src && for o in *.o; do nm -C "$o" 2>/dev/null | grep -q get_process_affinity && echo "$o"; done
+./tests/perfbudget.sh --comp gcc <before> <after>   # read the startup column, not the search one
+```
+
+Dropping the `static` -- `inline const auto`, which keeps external linkage because an *inline*
+const variable does not get internal linkage from its constness -- makes it one copy per program.
+Nothing has done that yet.
+
 ### Discovering the topology
 
 `NumaConfig::from_system(policy, respectProcessAffinity)` builds the map of which CPUs belong
@@ -97,8 +123,11 @@ always binds, and **a single thread never does** -- there is nothing to distribu
 not binding is stated in the same function: unbound threads can only use the replica on the
 first node, so the engine takes the hit whenever the OS schedules elsewhere.
 
-`NumaReplicatedAccessToken` is what a worker holds to read the copy of a replicated object
-belonging to its own node.
+`NumaReplicatedAccessToken` is what a **`Thread`** holds to read the copy of a replicated object
+belonging to its own node. The `Search::Worker` it drives does not hold one and never sees the
+type: `thread.cpp` reduces the token to a `HistoryBankIndex` at construction, and
+`thread.cpp`'s own `Thread::numa_access_token()` is what reads it back for
+`ensure_network_replicated`. The engine indexes its history map; the host owns the topology.
 
 ### Replication
 
