@@ -53,3 +53,7 @@ __DEV/
 # they are notes about an environment rather than about the engine. The tool
 # tests/uci_driver.py that grew out of them is tracked; the notes are not.
 .claude/
+
+# The 3-4-man Syzygy set, fetched by tests/tbfetch.sh --men 4 and used by the
+# golden tablebase case. Same rule as tests/syzygy-3man: fetched, never committed.
+tests/syzygy-34man

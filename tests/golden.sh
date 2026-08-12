@@ -140,7 +140,27 @@ print('\n'.join(out))
 PY
 }
 
-pass=0; fail=0; compared=0
+# The one substitution a case may carry, and it exists because a `.uci` file is
+# engine input piped raw: it cannot name a path, and a tablebase case is useless
+# without one. `@SYZYGY@` is replaced with the corpus tbfetch.sh writes.
+#
+# THE 3-4-MAN SET, not the 3-man one, and the difference is recorded in the
+# golden rather than incidental to it: MaxCardinality is 4 with this corpus and
+# 3 with the other, and the engine prints its own file count, so a case swapped
+# between them mismatches on two lines that are about the corpus and not about
+# the engine. `tests/tbfetch.sh --men 4` writes it; it is 4.4 MB and the lane
+# caches it.
+#
+# A case that needs the corpus SKIPS when it is absent, and skipping is reported
+# in the summary rather than folded into the pass count. CI fetches it, so the
+# skip is for a developer who has not -- "6 of 6 match" over a corpus missing
+# the only case that loads tables is a sentence about nothing.
+SYZYGY="$ROOT/tests/syzygy-34man"
+
+pass=0; fail=0; compared=0; skipped=0
+WORK=$(mktemp -d) || exit 2
+trap 'rm -rf "$WORK"' EXIT
+
 for c in "$CASES"/*.uci; do
     [ -e "$c" ] || continue
     name=$(basename "$c" .uci)
@@ -153,7 +173,18 @@ for c in "$CASES"/*.uci; do
         die "$name: a '#' line is engine input, not a comment"
     fi
 
-    got=$(drive "$c" | filter)
+    script=$c
+    if grep -q '@SYZYGY@' "$c"; then
+        if ! ls "$SYZYGY"/*.rtbw >/dev/null 2>&1; then
+            echo "  SKIPPED  $name -- no corpus at tests/syzygy-34man; run tests/tbfetch.sh --men 4"
+            skipped=$((skipped+1))
+            continue
+        fi
+        script="$WORK/$name.uci"
+        sed "s#@SYZYGY@#$SYZYGY#g" "$c" > "$script"
+    fi
+
+    got=$(drive "$script" | filter)
     [ -n "$got" ] || die "$name: the engine printed nothing -- a dead engine, not a behaviour"
 
     golden="$CASES/$name.golden"
@@ -184,6 +215,10 @@ if [ "$UPDATE" = "1" ]; then
     echo "golden: $compared case(s) re-recorded"
     exit 0
 fi
-echo "golden: $pass of $((pass+fail)) case(s) match"
+if [ "$skipped" -gt 0 ]; then
+    echo "golden: $pass of $((pass+fail)) case(s) match, $skipped skipped"
+else
+    echo "golden: $pass of $((pass+fail)) case(s) match"
+fi
 [ "$fail" = "0" ] || exit 1
 exit 0
