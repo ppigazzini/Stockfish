@@ -404,7 +404,15 @@ Breaks the engine on purpose and requires each gate to notice.
 ```sh
 ./tests/negative_control.sh            # every row
 ./tests/negative_control.sh docslint   # one row
+./tests/negative_control.sh static     # the rows that need no build
 ```
+
+**The `static` group is what a per-push lane can afford.** The full set builds the engine once
+per row and is hours; the static rows read the tree and finish in about a minute and a half.
+Membership is a tag on the row's own declaration -- `row docslint static` -- rather than a list
+kept elsewhere, because a list kept elsewhere goes stale the first time a row is added, and a
+row that quietly leaves the group is a row the lane stops running while still reporting a pass.
+A `static` selector that names no row refuses, the same as a rotted anchor.
 
 A gate's power to detect a defect is an assumption until something breaks the code and the
 gate is watched going red. A gate that has quietly stopped being able to fail is invisible,
@@ -420,7 +428,10 @@ a gate failing to detect), a mutation that does not compile, and a selector nami
 The tree is restored from a trap, and the run ends by executing a gate green rather than by
 asserting the sources were put back.
 
-Rows that cannot run report SKIPPED and are counted separately. A skipped row proves nothing.
+Rows that cannot run report SKIPPED and are counted separately. **A skipped row proves nothing,
+and it leaves the script's exit status at 0** -- so a lane that reads only the status reports a
+pass for a run that checked nothing. The `Refish` workflow reads the skipped count as well as
+the status, and treats a count it cannot parse as a failure rather than as zero.
 
 **It reports its own coverage, script by script**, because the failure this script exists to
 prevent applies to itself: a gate with no row is simply absent from it, and absence is quiet.
@@ -1256,7 +1267,8 @@ the 64-bit configurations, after an avx2 build.
 ### Reachability
 
 A gate runs only if something can start the workflow that names it. `stockfish.yml` is the
-one entry point that fans out; `clang-format.yml` and `codeql.yml` trigger themselves, and
+**two** entry points that fan out -- `stockfish.yml` for the branches upstream builds and
+`refish.yml` for this one; `clang-format.yml` and `codeql.yml` trigger themselves, and
 `fuzz.yml` hangs off a cron. Every other workflow declares `workflow_call`, so it runs when the
 umbrella calls it and never otherwise -- `docs.yml`, `golden.yml` and `perfbudget.yml` add a
 `workflow_dispatch` on top, which `lanecheck.sh` deliberately does not count, because a lane
@@ -1265,6 +1277,7 @@ only a human can click gates no change.
 ```mermaid
 flowchart LR
     P(["push / pull_request"]) --> SF["stockfish.yml"]
+    R(["push to refish"]) --> RF["refish.yml"]
     P --> CF["clang-format.yml"]
     P --> CQ["codeql.yml"]
     SF --> T["tests.yml"]
@@ -1280,14 +1293,31 @@ flowchart LR
     FZ --> G7["fuzz.py (uci, net, shm)<br/>fuzzsearch.sh"]
     SAN --> G3["instrumented.py<br/>malformed.sh"]
     PB --> G4["perfbudget.sh<br/>textequal.sh"]
-    L(["no trigger -- by hand only"]) --> G2["negative_control.sh<br/>fingerprint.sh<br/>npsab.sh<br/>match.sh<br/>perfcounters.sh<br/>perfdecomp.sh"]
+    RF --> NC["negative_control.sh<br/>(static rows)"]
+    RF --> OTH
+    L(["no trigger -- by hand only"]) --> G2["negative_control.sh<br/>(the rows that build)<br/>fingerprint.sh<br/>npsab.sh<br/>match.sh<br/>perfcounters.sh<br/>perfdecomp.sh"]
     style G2 stroke-dasharray: 5 5
     style L stroke-dasharray: 5 5
 ```
 
 The dashed box is the point: those gates are reached by no workflow, so they run when a
 developer remembers them or not at all. `tests/lanecheck.sh` holds each to carrying an excuse
-that names what runs it instead, and the excuse list in that script is the current one.
+that names what runs it instead, and the excuse list in that script is the current one -- one
+array of name and reason, because two index-parallel arrays print a reason belonging to a
+different script the first time a name is removed without its reason, and exit 0 while doing it.
+
+**`refish.yml` exists so that this branch runs the gates it built.** It is a separate entry
+point rather than a branch name added to `stockfish.yml`: `refish` is a fork-private branch, and
+naming it in upstream's orchestrator is neither upstreamable nor removable once merged. It calls
+the same reusable lanes, so the two umbrellas cannot drift, and it adds the one gate
+`stockfish.yml` has no reason to carry -- the static half of the negative control.
+
+Three of the six by-hand gates have a reason a lane cannot fix: `npsab.sh`, `match.sh` and
+`perfcounters.sh` need an idle box or a PMU, and a hosted runner is neither. `fingerprint.sh`
+and `perfdecomp.sh` are callgrind and deterministic, so their excuse is cost rather than
+capability, and the rows of `negative_control.sh` that build the engine are the same. **Say
+which of the two it is when reading that list**, because "cannot run here" and "nobody wired
+it" look identical in a directory listing.
 
 `fuzz.yml` hangs off the cron rather than the umbrella because it is not a merge gate. A
 workflow with only a `workflow_call` trigger and no caller is in the same position -- it cannot

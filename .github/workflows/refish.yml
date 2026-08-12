@@ -1,0 +1,138 @@
+name: Refish
+# The gate set, run on the branch that built it.
+#
+# A SEPARATE ENTRY POINT rather than a branch name added to stockfish.yml.
+# `refish` is this fork's working branch and stockfish.yml is upstream's
+# orchestrator: a fork-private branch name in it is not upstreamable, and if it
+# ever were merged it would sit in upstream's configuration naming a branch that
+# does not exist there. This file is droppable in one `git rm` when the work is
+# proposed upstream, and until then it changes nothing upstream reads.
+#
+# It calls the same reusable lanes stockfish.yml calls, so the two cannot drift:
+# a lane fixed for one is fixed for both.
+#
+# WHAT IS LEFT OUT, AND WHY IT IS NOT A JUDGMENT ABOUT WHICH GATES MATTER.
+# Every testing lane is here. The release plumbing -- Prerelease, ARM_Binaries,
+# Universal_Binaries -- is not, because those publish artifacts rather than check
+# anything, and they already self-exclude on a fork through their own
+# `github.repository ==` guards. Dropping a gate for cost is the mistake this
+# file exists to avoid: a header change on this branch broke three MinGW jobs and
+# nothing on Linux, and the compilation lanes that caught it are exactly the ones
+# a cheap subset would have dropped.
+on:
+  push:
+    branches:
+      - refish
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Matrix:
+    name: Prepare matrices
+    runs-on: ubuntu-latest
+    outputs:
+      arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}
+      universal_matrix: ${{ steps.set-universal-matrix.outputs.universal_matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: set-arm-matrix
+        run: echo "ARM_MATRIX=$(jq -c '.' .github/ci/arm_matrix.json)" >> $GITHUB_OUTPUT
+      - id: set-universal-matrix
+        run: echo "UNIVERSAL_MATRIX=$(jq -c '.' .github/ci/universal_matrix.json)" >> $GITHUB_OUTPUT
+
+  IWYU:
+    name: IWYU
+    uses: ./.github/workflows/iwyu.yml
+  Sanitizers:
+    name: Sanitizers
+    if: ${{ always() }}
+    uses: ./.github/workflows/sanitizers.yml
+  Tests:
+    name: Tests
+    if: ${{ always() }}
+    uses: ./.github/workflows/tests.yml
+  Matetrack:
+    name: Matetrack
+    if: ${{ always() }}
+    uses: ./.github/workflows/matetrack.yml
+  Games:
+    name: Games
+    if: ${{ always() }}
+    uses: ./.github/workflows/games.yml
+  CompilerCheck:
+    name: Compiler check
+    if: ${{ always() }}
+    uses: ./.github/workflows/avx2_compilers.yml
+  PerfBudget:
+    name: Perf budget
+    if: ${{ always() }}
+    uses: ./.github/workflows/perfbudget.yml
+  Docs:
+    name: Docs
+    if: ${{ always() }}
+    uses: ./.github/workflows/docs.yml
+  Golden:
+    name: Golden
+    if: ${{ always() }}
+    uses: ./.github/workflows/golden.yml
+  WASMCompilation:
+    name: WASM compilation
+    if: ${{ always() }}
+    uses: ./.github/workflows/wasm_compilation.yml
+  ARMCompilation:
+    name: Android builds
+    needs: [Matrix]
+    uses: ./.github/workflows/arm_compilation.yml
+    with:
+      matrix: ${{ needs.Matrix.outputs.arm_matrix }}
+  UniversalCompilation:
+    name: Universal builds
+    needs: [Matrix]
+    uses: ./.github/workflows/universal_compilation.yml
+
+  # The gate that decides whether the others can still fail, and the only one
+  # here that is not also in stockfish.yml.
+  #
+  # THE STATIC GROUP ONLY. The full set builds the engine once per row across 37
+  # rows and is hours; the static rows read the tree and finish in about a minute
+  # and a half, which is what makes them affordable on every push. The group is
+  # derived from tags on the row declarations rather than from a list kept here,
+  # so a row cannot quietly leave it while this lane keeps reporting a pass.
+  #
+  # A SKIP IS NOT A PASS. The script's own header says a skipped row leaves the
+  # status at 0, so the step reads the skipped count and fails on any skip it did
+  # not expect. Every static row runs on a hosted runner with no extra tools, so
+  # the expected count is zero.
+  NegativeControl:
+    name: Negative control (static rows)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Break each static gate on purpose and require it to notice
+        run: |
+          set -o pipefail
+          # `|| rc=$?`, not `rc=$?` on the next line. The step runs under `bash
+          # -e`, so a failing pipeline aborts before an assignment on the
+          # following line ever executes -- and the status that reached the log
+          # would be tee's. This is the tree's own "check the exit code, never a
+          # piped fragment" arriving through the shell rather than through grep.
+          rc=0
+          ./tests/negative_control.sh static 2>&1 | tee /tmp/nc.log || rc=$?
+          skipped=$(grep -oE '[0-9]+ skipped' /tmp/nc.log | grep -oE '^[0-9]+' | tail -1)
+          echo "negative-control: exit=$rc skipped=${skipped:-unknown}"
+          [ "$rc" = 0 ] || exit 1
+          # An unparsed count is a rig fault, not a pass: default it to something
+          # that fails rather than to zero.
+          [ "${skipped:-1}" = 0 ] || {
+            echo "a static row SKIPPED, or the count could not be read."
+            echo "A skip leaves the script's status at 0, so it is not a pass."
+            exit 1
+          }
