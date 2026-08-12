@@ -22,16 +22,17 @@
 #include <exception>  // IWYU pragma: keep
 // IWYU pragma: no_include <__exception/terminate.h>
 #include <filesystem>
-#include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
+// Kept: the only members typed with it are CommandLine's argv_storage and
+// argv_utf8, which live inside the _WIN32 block below. A Linux analyze lane
+// never enters that block, so it sees an unused include; dropping it is an
+// incomplete-type error on every Windows build.
+#include <vector>  // IWYU pragma: keep
 
 #if !defined(NO_PREFETCH) && (defined(_MSC_VER) || defined(__INTEL_COMPILER))
     #include <immintrin.h>
 #endif
-
-#include "../engine/basetypes.h"
 
 
 namespace Stockfish {
@@ -44,49 +45,8 @@ std::string compiler_info();
 
 void start_logger(const std::filesystem::path& fname);
 
-std::optional<usize> str_to_size_t(const std::string& s);
-
 std::string           utf8_from_wstring(std::wstring_view s);
 std::filesystem::path path_from_utf8(const std::string& path);
-
-// Reads the file as bytes.
-// Returns std::nullopt if the file does not exist.
-std::optional<std::string> read_file_to_string(const std::string& path);
-
-
-
-inline std::vector<std::string_view> split(std::string_view s, std::string_view delimiter) {
-    std::vector<std::string_view> res;
-
-    if (s.empty())
-        return res;
-
-    usize begin = 0;
-    for (;;)
-    {
-        const usize end = s.find(delimiter, begin);
-        if (end == std::string::npos)
-            break;
-
-        res.emplace_back(s.substr(begin, end - begin));
-        begin = end + delimiter.size();
-    }
-
-    res.emplace_back(s.substr(begin));
-
-    return res;
-}
-
-void remove_whitespace(std::string& s);
-bool is_whitespace(std::string_view s);
-
-
-
-
-
-
-
-
 
 
 struct CommandLine {

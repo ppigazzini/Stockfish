@@ -41,6 +41,7 @@
 #include "../engine/types.h"
 #include "ucioption.h"
 #include "../platform/misc.h"
+#include "../platform/text.h"
 #include "console.h"
 #include "../engine/clock.h"
 #include "../engine/basetypes.h"
