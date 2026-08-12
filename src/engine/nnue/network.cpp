@@ -30,11 +30,11 @@
 #include <filesystem>
 
 #define INCBIN_SILENCE_BITCODE_WARNING
-// Kept: stringify() is a macro from platform/misc.h, used below under
+// Kept: stringify() is a macro from platform/platform.h, used below under
 // DEFAULT_NNUE_DIRECTORY -- a packager knob no CI lane defines. IWYU cannot see
 // a macro use, and no gate compiles that branch, so nothing would catch the
 // removal until a distro build broke.
-#include "../../platform/misc.h"  // IWYU pragma: keep
+#include "../../platform/platform.h"  // IWYU pragma: keep
 #include "../../incbin/incbin.h"
 
 #include "../evaluate.h"

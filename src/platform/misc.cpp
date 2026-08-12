@@ -17,7 +17,9 @@
 */
 
 #include "misc.h"
+#include "platform.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>

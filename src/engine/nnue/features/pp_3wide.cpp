@@ -28,7 +28,6 @@
 
 #include "full_threats.h"
 #include "../../bitboard.h"
-#include "../../../platform/misc.h"
 #include "../../position.h"
 #include "../../types.h"
 #include "../nnue_common.h"
