@@ -75,7 +75,8 @@ Thread::Thread(Search::SharedState&                    sharedState,
         // here, but that's minor.
         this->numaAccessToken = binder();
         this->worker          = make_unique_large_page<Search::Worker>(
-          sharedState, std::move(sm), n, idxInNuma, totalNuma, this->numaAccessToken);
+          sharedState, std::move(sm), n, idxInNuma, totalNuma,
+          this->numaAccessToken.get_numa_index());
     });
 
     wait_for_search_finished();

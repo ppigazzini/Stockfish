@@ -20,7 +20,6 @@
 
 #include <atomic>
 #include <deque>
-#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -38,7 +37,6 @@
 #include "tb_source.h"
 #include "parallel.h"
 #include "worker_set.h"
-#include "../platform/numa.h"
 
 namespace Stockfish::Search {
 
@@ -50,7 +48,7 @@ namespace {
 struct Context {
     SearchOptions                        options;
     TranspositionTable                   tt;
-    std::map<NumaIndex, SharedHistories> sharedHistories;
+    std::map<HistoryBankIndex, SharedHistories> sharedHistories;
     std::atomic<bool>                    stop{false};
     std::atomic<bool>                    increaseDepth{true};
     std::deque<StateInfo>                states;
@@ -79,7 +77,7 @@ Context* context() {
         // One NUMA node, one worker. The token defaults to index 0 and the map
         // must carry that entry: Worker's first initialiser reaches it through
         // sharedHistories.at(), which throws if the entry is absent.
-        c->sharedHistories.try_emplace(NumaIndex(0), 1);
+        c->sharedHistories.try_emplace(HistoryBankIndex(0), 1);
 
         // Exercise the arena AND the parallel-for: resize allocates through the
         // former and clears through the latter, which runs inline when no host
@@ -129,7 +127,7 @@ void build_workers(Context& c, usize n) {
     c.workers.clear();
 
     c.sharedHistories.clear();
-    c.sharedHistories.try_emplace(NumaIndex(0), next_power_of_two(n));
+    c.sharedHistories.try_emplace(HistoryBankIndex(0), next_power_of_two(n));
 
     c.shared = std::make_unique<SharedState>(c.options, c.tt, c.sharedHistories, c.stop,
                                              c.increaseDepth);
@@ -140,7 +138,7 @@ void build_workers(Context& c, usize n) {
           *c.shared,
           i == 0 ? std::unique_ptr<ISearchManager>(std::make_unique<SearchManager>(c.updates))
                  : std::unique_ptr<ISearchManager>(std::make_unique<NullSearchManager>()),
-          i, i, n, NumaReplicatedAccessToken{}));
+          i, i, n, HistoryBankIndex(0)));
 
     // Every Worker carries its own refresh cache and the new ones have none.
     c.seeded = nullptr;
