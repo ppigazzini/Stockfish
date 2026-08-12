@@ -133,7 +133,8 @@ int check_hash_domain() {
 // not a bigger assertion -- a non-main worker ignores the depth cap
 // (search.cpp:430 tests `mainThread`) and is terminated by the main worker's
 // stopFlag after it finishes, so a set whose start_searching runs one inline
-// never returns. See D2 in __DEV/00-ISSUES.md.
+// never returns. That needs a worker count on Search::go and a caller that owns
+// threads, which is a design change and not a test.
 int check_worker_set_default() {
     const WorkerSet& ws = worker_set();
 

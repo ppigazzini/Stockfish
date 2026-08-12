@@ -117,6 +117,28 @@ void prefetch(const void* addr) {
 #endif
 
 
+
+// Stringify a macro's VALUE rather than its name -- the two-step is what makes
+// the argument expand first. Here for the same reason as the attribute below:
+// it is preprocessor plumbing, and engine/nnue/network.cpp needs it for the
+// DEFAULT_NNUE_DIRECTORY knob while platform/misc.cpp needs it for the build
+// stamp. Neither wants the drawer.
+#define stringify2(x) #x
+#define stringify(x) stringify2(x)
+
+// The always-inline attribute, here rather than in misc.h because it is a
+// property of the COMPILER and this is the compiler header. It sat in the
+// drawer, and three engine/ files included a platform grab-bag for this macro
+// and nothing else.
+#if defined(__GNUC__)
+    #define sf_always_inline inline __attribute__((always_inline))
+#elif defined(_MSC_VER)
+    #define sf_always_inline __forceinline
+#else
+    // plain inline for other compilers
+    #define sf_always_inline inline
+#endif
+
 }  // namespace Stockfish
 
 #endif  // #ifndef PLATFORM_H_INCLUDED
