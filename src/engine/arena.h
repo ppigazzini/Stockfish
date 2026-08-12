@@ -45,10 +45,30 @@ namespace Stockfish {
 // by the host's implementation is heap corruption with no diagnostic, so
 // set_arena() must run before the first allocation and must never be called
 // while anything allocated from the previous arena is still live.
+
+// The huge page size the DEFAULT arena reports. A host that maps a different
+// size registers its own; this value is what the unhosted engine computes with,
+// and it matches the platform allocator's own so a hosted and an unhosted engine
+// reach the same decision.
+constexpr usize DefaultHugePageBytes = usize(1) << 30;
+
 struct Arena {
     void* (*alloc)(usize bytes);
     void* (*alloc_hinted)(usize bytes, bool hugePageHint);
     void (*free)(void* p);
+
+    // How large one huge page is, so a caller weighing alloc_hinted against
+    // oversubscription can do the arithmetic without naming a host constant.
+    // The POLICY stays with the caller -- how many pages per NUMA node are worth
+    // asking for is a property of the table, not of the machine.
+    //
+    // A DEFAULT MEMBER INITIALISER, deliberately: Arena is filled by braced
+    // aggregate initialisation at every registration site, and a field a host
+    // forgets would otherwise be zero. Zero here is not a small huge page, it is
+    // a divide-free comparison that is true for every size -- so the hint would
+    // be set on every allocation and the run would still produce a number. Never
+    // register a zero.
+    usize hugePageBytes = DefaultHugePageBytes;
 };
 
 const Arena& arena();
