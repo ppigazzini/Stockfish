@@ -30,7 +30,6 @@
 #include <vector>
 
 #include "bitboard.h"
-#include "../platform/memory.h"
 #include "../platform/syzygy/tbprobe.h"
 #include "../platform/thread.h"
 
@@ -186,7 +185,7 @@ void TranspositionTable::resize(usize mbSize) {
 
     // Request 1GB pages if we'd get at least eight per NUMA node, to avoid
     // memory oversubscription
-    bool hugePageHint = ttBytes >= parallel_for().numa_nodes() * HugePageSize * 8;
+    bool hugePageHint = ttBytes >= parallel_for().numa_nodes() * arena().hugePageBytes * 8;
 
     table = static_cast<Cluster*>(arena().alloc_hinted(ttBytes, hugePageHint));
 
