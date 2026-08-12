@@ -125,10 +125,32 @@ prepare_tree() {
     [ "$found" = "1" ] || skip "no .nnue in $SRC_ROOT/src -- run 'make net' there first"
 }
 
+# The build stamp is neutralised on BOTH sides, for the reason tests/textequal.sh
+# has documented since it was written and a868d607 fixed in perfbudget.sh and
+# npsab.sh. misc.o is compiled with -DGIT_SHA=<sha> -DGIT_DATE=<date>
+# -DGIT_DIFFINDEX=<n>, and an empty GIT_SHA selects a DIFFERENT branch of
+# engine_version_info -- so under LTO the stamp moves inlining decisions
+# elsewhere in the binary and a CALL COUNT moves with them.
+#
+# This gate reached both build paths asymmetrically and nothing here noticed.
+# `prepare_tree` builds a revision with `git worktree add`, which carries .git and
+# therefore a populated stamp, and builds `worktree` from a tar copy that
+# EXCLUDES .git, which stamps empty. Same revision down both paths produces
+# different binaries:
+#
+#   git worktree:  .build_sha.txt = <sha>
+#   tar copy:      .build_sha.txt = (empty)
+#
+# A two-revision comparison could not see it -- both sides get a populated stamp,
+# and a docs-only pair (f0b87a46 -> a16f4beb, identical src/) reports IDENTICAL.
+# Only `worktree` mode was contaminated, which is the mode a developer uses on
+# uncommitted work, and it reported partial_insertion_sort at 91487 -> 35884 calls
+# for a change that altered neither that function nor its three call sites.
 build_side() {
     local dir=$1 label=$2
-    echo "  building $label ..." >&2
-    ( cd "$dir/src" && make -j"$JOBS" build ARCH="$ARCH" COMP="$COMP" ) \
+    echo "  building $label (build stamp neutralised) ..." >&2
+    ( cd "$dir/src" && make -j"$JOBS" build ARCH="$ARCH" COMP="$COMP" \
+        GIT_SHA= GIT_DATE= GIT_DIFFINDEX= ) \
         > "$dir/build.log" 2>&1 \
         || { tail -25 "$dir/build.log" >&2; die "$label failed to build"; }
     [ -x "$dir/src/stockfish" ] || die "$label produced no binary"
