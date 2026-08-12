@@ -40,18 +40,24 @@
 // Deliberately not a test framework: it must build from the engine sources
 // alone.
 
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
 #include "../src/engine/attacks.h"
 #include "../src/engine/hashing.h"
 #include "../src/engine/nnue/network.h"
 #include "../src/engine/nnue/nnue_misc.h"
 #include "../src/engine/position.h"
+#include "../src/engine/parallel.h"
 #include "../src/engine/search_go.h"
 #include "../src/engine/worker_set.h"
 #include "../src/engine/types.h"
@@ -128,13 +134,10 @@ int check_hash_domain() {
 // guard, and that is one reading of one call site rather than a stated
 // contract.
 //
-// WHAT THIS DOES NOT COVER, stated so the next reader does not think it does: a
-// headless run with two workers ACTUALLY REGISTERED. That needs concurrency,
-// not a bigger assertion -- a non-main worker ignores the depth cap
-// (search.cpp:430 tests `mainThread`) and is terminated by the main worker's
-// stopFlag after it finishes, so a set whose start_searching runs one inline
-// never returns. That needs a worker count on Search::go and a caller that owns
-// threads, which is a design change and not a test.
+// A headless run with two workers actually registered is a separate question
+// and check_two_workers below is where it is asked. This one is about the
+// DEFAULT, and the default has to keep answering this way whatever that one
+// does.
 int check_worker_set_default() {
     const WorkerSet& ws = worker_set();
 
@@ -159,6 +162,125 @@ int check_worker_set_default() {
     ws.wait_for_search_finished(ws.ctx);
 
     std::cout << "  worker set: the default refuses, consistently, across all six accessors\n";
+    return 0;
+}
+
+
+// A parallel-for backed by REAL THREADS, which is the only thing in this file
+// that registers anything.
+//
+// It exists because the built-in one runs the job inline on the caller, and an
+// inline non-main worker never returns: the depth cap tests `mainThread`
+// (search.cpp:430) and a non-main worker has none, so it searches to MAX_PLY
+// waiting for a stop flag the caller cannot reach the line to raise. That is
+// not a defect in the default -- running the work inline is a correct
+// parallel-for -- it is the reason a two-worker search needs a host, and the
+// reason Search::go refuses the count instead of attempting it.
+//
+// A thread per dispatch rather than a pool. A pool is what the engine ships
+// with and this is not it: the thing under test is whether the seam can start a
+// helper and wait for it afterwards, and spawning is the smallest
+// implementation with that shape.
+namespace host {
+
+constexpr usize THREADS = 2;
+
+std::thread      running[THREADS];
+std::atomic<int> dispatched{0};
+std::atomic<int> completed{0};
+std::atomic<int> waited{0};
+
+usize              num_threads() { return THREADS; }
+usize              numa_nodes() { return 1; }
+std::vector<usize> thread_numa_map() { return {}; }
+
+void run_on(usize t, std::function<void()> fn) {
+    if (t >= THREADS)
+    {
+        fn();
+        return;
+    }
+    if (running[t].joinable())
+        running[t].join();
+    dispatched.fetch_add(1);
+    running[t] = std::thread([job = std::move(fn)]() {
+        job();
+        completed.fetch_add(1);
+    });
+}
+
+void wait_on(usize t) {
+    if (t >= THREADS)
+        return;
+    waited.fetch_add(1);
+    if (running[t].joinable())
+        running[t].join();
+}
+
+}  // namespace host
+
+// The half of D2 the default-set check cannot reach: a headless search with two
+// workers actually registered, running on threads the host owns.
+//
+// Two claims, and the refusal is the one that would rot silently. With no
+// thread-owning host registered, a request for two workers must come back
+// EMPTY: attempting it deadlocks rather than degrades, so a Search::go that
+// tried would hang this gate instead of failing it, and a hang is not a report.
+//
+// The dispatch counter is what makes the second claim mean something. A search
+// that returned a plausible result while quietly running one worker would
+// satisfy every assertion about the RESULT -- the position is the same and one
+// worker searches it perfectly well. Counting the calls to run_on asks whether
+// a helper was put on another thread at all, which is the actual claim.
+int check_two_workers(const Eval::NNUE::Network& net, const char* fen) {
+    // Refusal first, while nothing is registered and num_threads() is 1.
+    if (Search::go(net, fen, false, 6, 2).has_value())
+        return fail("a two-worker search was attempted with no host to run it on");
+    if (Search::go(net, fen, false, 6, 0).has_value())
+        return fail("a search with zero workers returned a result");
+
+    std::cout << "  two workers: refused with no thread-owning host registered\n";
+
+    set_parallel_for({host::num_threads, host::numa_nodes, host::thread_numa_map, host::run_on,
+                      host::wait_on});
+
+    host::dispatched.store(0);
+    host::completed.store(0);
+    host::waited.store(0);
+
+    const auto r = Search::go(net, fen, false, 6, 2);
+
+    // Unregister BEFORE reporting: the seam reaches into this file's statics and
+    // anything running after must not still be pointed at them.
+    reset_parallel_for();
+
+    if (!r.has_value())
+        return fail("a two-worker search with a registered host produced no result");
+    if (r->bestMove == Move::none() || r->nodes == 0)
+        return fail("a two-worker search produced no move or no nodes");
+    if (host::dispatched.load() < 1)
+        return fail("a two-worker search dispatched no helper onto the host's threads");
+    if (host::waited.load() < host::dispatched.load())
+        return fail("a two-worker search waited on fewer helpers than it started");
+    // The claim the whole entry turns on. A helper that never returns is the
+    // failure mode here -- it ignores the depth cap and searches to MAX_PLY --
+    // and it would show as a hang rather than as a red gate, so recording that
+    // start_searching RETURNED is the only way this leaves evidence either way.
+    if (host::completed.load() != host::dispatched.load())
+        return fail("a helper was started and did not finish");
+
+    std::cout << "  two workers: " << r->nodes << " nodes over the set, "
+              << host::dispatched.load() << " helper dispatch(es), " << host::completed.load()
+              << " finished, " << host::waited.load() << " wait(s)\n";
+
+    // Back to one, so nothing after this inherits a rebuilt set. The count
+    // change rebuilds the workers, which is the path a second count change
+    // takes too.
+    const auto back = Search::go(net, fen, false, 6);
+    if (!back.has_value() || back->nodes == 0)
+        return fail("the engine did not go back to one worker");
+
+    std::cout << "  two workers: back to one, " << back->nodes << " nodes\n";
     return 0;
 }
 
@@ -224,5 +346,9 @@ int main(int argc, char** argv) {
         return fail("repeating the same search changed the best move");
 
     std::cout << "  reuse: same best move on repeat\n";
+
+    if (const int rc = check_two_workers(*net, cases[0].fen); rc != 0)
+        return rc;
+
     return 0;
 }

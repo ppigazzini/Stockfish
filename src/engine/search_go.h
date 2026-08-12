@@ -33,7 +33,7 @@ class Network;
 
 namespace Search {
 
-// Run ONE depth-limited, single-threaded search with NO host registered.
+// Run ONE depth-limited search with NO host registered, on `workers` workers.
 //
 // In a hosted run the platform's thread pool constructs each Worker and
 // populates its root state before iterative_deepening runs, so this is the only
@@ -50,17 +50,45 @@ namespace Search {
 // answer rather than a slower one; here there genuinely is one worker, and the
 // search is depth-limited so no time management asks the set anything.
 //
-// Not reentrant: the Worker and its scaffolding are process-static and reused
-// across calls, so two callers at once share one root position. Load the net
-// before calling; the caller owns it.
+// ASKING FOR MORE THAN ONE IS A REQUEST FOR THREADS, AND IT CAN BE REFUSED.
+// The non-main workers are dispatched through the parallel-for seam, which is
+// where the host's threads already are -- `run_on` and `wait_on` are two calls,
+// not a fork-join, so a helper can be started here and waited for after the
+// main worker has finished and raised the stop flag. The BUILT-IN parallel-for
+// runs the job inline on the caller, and an inline helper never returns: the
+// depth cap tests `mainThread` and a non-main worker has none, so it searches
+// to MAX_PLY waiting for a stop the caller cannot reach the line to raise.
+//
+// So a count above what `parallel_for().num_threads()` reports returns
+// std::nullopt rather than being attempted, and a count of zero does too. Same
+// rule the worker-set default follows: fewer workers is a DIFFERENT answer, not
+// a slower one, so refuse instead of quietly searching with what is available.
+//
+// With one worker nothing is registered and every seam still runs on its
+// default, which is what tests/enginelink.sh is for. Above one, a worker set
+// over those workers is registered for the duration of the call and whatever
+// was there before is put back.
+//
+// `nodes` is the whole search's node count: the main worker's alone when there
+// is one worker, the sum over the set when there are more. Anything else would
+// report a two-worker search as having done half its work.
+//
+// Not reentrant: the Workers and their scaffolding are process-static and
+// reused across calls, so two callers at once share one root position. Changing
+// the worker count rebuilds them, which is not cheap -- a Worker embeds the
+// NNUE refresh cache -- so alternating counts per call is not a pattern to
+// build on. Load the net before calling; the caller owns it.
 struct GoResult {
     Move  bestMove;
     Value score;
     u64   nodes;
 };
 
-std::optional<GoResult>
-go(const Eval::NNUE::Network& net, std::string_view fen, bool chess960, int depth);
+std::optional<GoResult> go(const Eval::NNUE::Network& net,
+                           std::string_view           fen,
+                           bool                       chess960,
+                           int                        depth,
+                           usize                      workers = 1);
 
 }  // namespace Search
 }  // namespace Stockfish
