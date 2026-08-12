@@ -46,6 +46,12 @@ jobs:
       - name: Dependency direction, by include
         run: ./tests/depcheck.sh
 
+      # Reads the workflow files and nothing else. The three properties it gates
+      # -- SHA-pinned, version stated, one action one version -- need no network,
+      # so the lane is deterministic; the release feed half skips without gh.
+      - name: Action pins
+        run: ./tests/actionpins.sh
+
       # Ask the boundary question at the link, so this one builds: depcheck reads
       # `#include` lines, this asks whether an engine OBJECT references a symbol
       # only a shell object defines. An edge no include spells -- a template
