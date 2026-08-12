@@ -1,13 +1,19 @@
 #!/bin/bash
-# Fetch the 3-man Syzygy set, verifying each file by MAGIC rather than by status.
+# Fetch a small Syzygy set, verifying each file by MAGIC rather than by status.
 #
 # A mirror that answers a missing file with a body -- an HTML error page, a 404
 # with content, a redirect to a landing page -- passes `curl -f` and is then
 # stored as a table, failing much later inside the decoder where it reads as a
 # corrupt table rather than as a bad download. Verify the first four bytes.
 #
-# The whole 3-man set is small enough to fetch in a fuzz job rather than commit,
-# which is why it is fetched rather than committed.
+# Small enough to fetch in a CI job rather than commit, which is why it is
+# fetched: the 3-man set is 12 KB and the 3-4-man set is 4.4 MB. Neither is
+# worth carrying in git, and both are worth caching in a lane.
+#
+# `--men 4` adds the thirty 4-man stems. It is a different corpus and belongs in
+# a different directory, because what a corpus CONTAINS is part of what a test
+# that uses it records: MaxCardinality is 3 or 4 depending on this flag, and the
+# engine prints the file count in its own output.
 #
 # NOT tests/syzygy. That name belongs to tests/testing.py, whose
 # download_syzygy() skips its own fetch when the directory already exists and
@@ -21,7 +27,20 @@ set -u
 set -o pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-DEST=${1:-$ROOT/tests/syzygy-3man}
+MEN=3
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --men) MEN=$2; shift 2 ;;
+        -h|--help) echo "usage: tbfetch.sh [--men 3|4] [dest]"; exit 0 ;;
+        *) break ;;
+    esac
+done
+case "$MEN" in
+    3) DEFAULT_DEST=$ROOT/tests/syzygy-3man ;;
+    4) DEFAULT_DEST=$ROOT/tests/syzygy-34man ;;
+    *) echo "tbfetch: --men must be 3 or 4" >&2; exit 2 ;;
+esac
+DEST=${1:-$DEFAULT_DEST}
 BASE=${TB_MIRROR:-http://tablebase.sesse.net/syzygy/3-4-5}
 
 # The values the engine itself checks -- `Magics` in
@@ -35,7 +54,15 @@ mkdir -p "$DEST"
 
 fail=0
 have=0
-for stem in KQvK KRvK KPvK KNvK KBvK; do
+STEMS="KQvK KRvK KPvK KNvK KBvK"
+if [ "$MEN" = 4 ]; then
+    # Syzygy names pieces in descending value order, so KQPvK and never KPQvK.
+    STEMS="$STEMS KQQvK KQRvK KQBvK KQNvK KQPvK KRRvK KRBvK KRNvK KRPvK KBBvK"
+    STEMS="$STEMS KBNvK KBPvK KNNvK KNPvK KPPvK KQvKQ KQvKR KQvKB KQvKN KQvKP"
+    STEMS="$STEMS KRvKR KRvKB KRvKN KRvKP KBvKB KBvKN KBvKP KNvKN KNvKP KPvKP"
+fi
+
+for stem in $STEMS; do
     for ext in rtbw rtbz; do
         f="$DEST/$stem.$ext"
         want=$WDL_MAGIC; [ "$ext" = rtbz ] && want=$DTZ_MAGIC
