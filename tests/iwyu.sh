@@ -269,11 +269,20 @@ analyse() {
         fi
         # A tier that analysed nothing is not a tier with no findings, and the
         # two are indistinguishable downstream: both contribute zero lines and
-        # read as clean. IWYU prints one "The full include-list for" per file it
-        # analysed, so requiring at least one turns a make that died for a
-        # reason other than a compile error -- a net that would not download, a
-        # target that does not exist -- into a red run instead of a green one.
-        if ! grep -q '^The full include-list for' "$log"; then
+        # read as clean. So at least one file must be seen to have been analysed,
+        # which turns a make that died for a reason other than a compile error --
+        # a net that would not download, a target that does not exist -- into a
+        # red run instead of a green one.
+        #
+        # BOTH of IWYU's per-file markers count, and missing the second one made
+        # this check fire on the case it exists to bless. iwyu_output.cc prints
+        # "The full include-list for <f>:" only for a file it has something to say
+        # about, and "(<f> has correct #includes/fwd-decls)" for one it does not.
+        # A tier with no findings anywhere therefore prints no include-list line
+        # at all, and requiring one turned the first genuinely clean tier into
+        # "analysed no files (exit 0)" -- a red run for a green tree, and the one
+        # outcome this gate is meant to certify.
+        if ! grep -qE '^The full include-list for|has correct #includes/fwd-decls' "$log"; then
             tail -20 "$log" >&2
             die "$label analysed no files at $arch (exit $rc)"
         fi

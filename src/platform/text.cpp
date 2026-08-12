@@ -24,6 +24,11 @@
 #include <cstdlib>
 #include <fstream>
 #include <ios>
+// IWYU pragma: no_include <iostream>
+// read_file_to_string builds a string from two std::istreambuf_iterator<char>,
+// which <iterator> declares. IWYU's mapping attributes it to <iostream> instead,
+// and pulling the whole iostream machinery -- and its static initialisation --
+// into a text helper to get an iterator is a cost this file has no reason to pay.
 #include <iterator>
 #include <limits>
 
