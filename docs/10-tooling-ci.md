@@ -224,6 +224,26 @@ binary, which carries its stamp.
 
 A green run narrows what `perfbudget.sh` has to catch. It does not replace it.
 
+**It counts trailing alignment padding as a changed body**, which is the one way it reports a
+difference that is not codegen. Removing a function shifts what follows it against a 16-byte
+boundary, so the `nop` run at the end of an unrelated symbol changes length and the symbol is
+listed as changed. Seen on a commit that deleted five unused includes: two symbols reported
+changed, in files that commit did not touch, with three `cs nopw` becoming one `nopl` in one and
+one becoming four in the other, and no instruction different in either.
+
+So a DIFFERS verdict is worth ten minutes before it is worth an argument. `--keep` retains the
+normalised listings, and a per-symbol diff separates padding from code:
+
+```sh
+./tests/textequal.sh --comp gcc --keep <base> <head>
+cd <kept dir> && diff <(grep '^<mangled>	' base.txt | cut -f2-) \
+                      <(grep '^<mangled>	' head.txt | cut -f2-)
+```
+
+A false positive is the cheaper direction for this gate to fail in -- it has never called a real
+codegen change identical -- and it still costs its reader the time to rule out the expensive
+direction by hand.
+
 ### `tests/npsab.sh`
 
 Interleaved paired wall-clock A/B, reporting the median of the paired ratios and its spread.
@@ -313,6 +333,25 @@ It is deterministic: an A/A run reports IDENTICAL across every engine symbol, so
 count is the change and not the machine. `tests/negative_control.sh fingerprint` is that
 property going red -- it forces `Position::adjust_key50` out of line, which turns an inlined
 body into a called symbol with a count of its own.
+
+**The build stamp is neutralised on both sides**, for the reason `textequal.sh` carries the same
+line: `misc.o` is compiled with `-DGIT_SHA`, `-DGIT_DATE` and `-DGIT_DIFFINDEX`, an empty
+`GIT_SHA` selects a different branch of `engine_version_info`, and under LTO that moves inlining
+decisions elsewhere in the binary -- which moves a call count with them.
+
+**It was not, and the way that hid is worth knowing before trusting any two-path gate.** This
+script prepares a *revision* with `git worktree add`, which carries `.git` and therefore a
+populated stamp, and prepares `worktree` from a `tar` copy that excludes `.git` and stamps empty.
+Same revision down the two paths produced different binaries, so `worktree` mode -- the mode a
+developer uses on uncommitted work -- compared a stamped binary against an unstamped one and
+attributed the difference to the change under test. It reported a per-node function at 91487 to
+35884 calls for a working tree in which that function was byte-size identical with the same three
+call sites in the same caller.
+
+Neither of the two controls available could see it. An A/A run is quiet, but only in the mode it
+runs in. A null perturbation over two revisions with identical `src/` -- a docs-only commit --
+reports IDENTICAL, because both sides get a populated stamp. **A gate with two build paths needs a
+control per path**, and this one had one control and two paths.
 
 ## `tests/golden.sh`
 
