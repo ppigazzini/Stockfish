@@ -36,7 +36,7 @@
 #include "prng.h"
 #include "movegen.h"
 #include "basetypes.h"
-#include "../platform/platform.h"
+#include "compiler.h"
 
 #ifdef USE_AVX512ICL
     #include <immintrin.h>
