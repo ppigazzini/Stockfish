@@ -519,6 +519,40 @@ if selected reprosearch; then
     ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
 fi
 
+# ------------------------------------------------------------------- iwyu
+
+row iwyu
+if selected iwyu; then
+    # An include nothing in the file uses. It is the finding IWYU is most sure
+    # about, which is what a control wants: the row asks whether the GATE
+    # reports, not whether the tool is clever.
+    #
+    # A base revision is passed even though native mode does not need one,
+    # because it is the only invocation that works in both of the gate's modes.
+    # On a host with no libc++ package the absolute verdict is unavailable and
+    # the gate skips rather than answer -- correctly -- so a row written without
+    # a base would score that skip as "not detected" on exactly the hosts where
+    # the gate is behaving.
+    #
+    # One tier, not three. The mutation is in a file every tier compiles, so the
+    # other two would re-prove it at the cost of two more full analyses.
+    echo "negative-control: iwyu        -- an include the file does not use"
+    mutate src/engine/bitboard.cpp \
+        '#include "bitboard.h"' \
+        '#include "bitboard.h"
+#include <regex>'
+    ./tests/iwyu.sh --arch x86-64 HEAD >/dev/null 2>&1
+    NCRC=$?
+    if [ "$NCRC" = "2" ]; then
+        echo "  SKIPPED -- iwyu.sh could not run"; SKIP=$((SKIP+1))
+    elif [ "$NCRC" = "0" ]; then
+        echo "  NOT DETECTED -- an unused include passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- depcheck
 
 row depcheck-new

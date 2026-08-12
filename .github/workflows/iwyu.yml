@@ -64,14 +64,13 @@ jobs:
       # One job rather than a matrix: building IWYU from source is the expensive
       # step and it is paid once. `make analyze` runs objclean first, so the
       # tiers do not see each other's objects.
+      #
+      # All of it lives in tests/iwyu.sh rather than here. It used to live here,
+      # and then the only way to run the lane locally was to retype it -- which
+      # does not work on a host with no libc++ package, and produced a report
+      # claiming a green lane nobody had seen. The script owns the flags above,
+      # detects whether the host looks like this runner, and says which of its
+      # two modes produced its answer. Native mode, which is what runs here,
+      # gives the absolute verdict.
       - name: Check includes
-        run: |
-          for arch in x86-64 x86-64-avx2 x86-64-avx512icl; do
-            echo "::group::include-what-you-use $arch"
-            make analyze \
-              ARCH=$arch \
-              COMP=clang \
-              CXX=include-what-you-use \
-              EXTRACXXFLAGS="-stdlib=libc++ -Xiwyu --comment_style=long -Xiwyu --mapping='${{ github.workspace }}/Stockfish/.github/ci/libcxx17.imp' -Xiwyu --error"
-            echo "::endgroup::"
-          done
+        run: ../tests/iwyu.sh
