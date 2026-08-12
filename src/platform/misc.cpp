@@ -19,16 +19,11 @@
 #include "misc.h"
 #include "platform.h"
 
-#include <algorithm>
-#include <cctype>
-#include <cerrno>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <iterator>
-#include <limits>
 #include <sstream>
 #include <string_view>
 
@@ -42,7 +37,11 @@
 #endif
 
 #include "../engine/types.h"
-#include "../engine/basetypes.h"
+// Kept: the only use of usize left in this file is the wide-string length in
+// path_from_utf8, inside its _WIN32 branch. A Linux analyze lane never reaches
+// it, so it sees an unused include; dropping it is an unknown-type error on
+// every Windows build.
+#include "../engine/basetypes.h"  // IWYU pragma: keep
 
 namespace Stockfish {
 
@@ -360,35 +359,6 @@ CommandLine::CommandLine(int _argc, char** _argv) :
 #endif
 }
 
-
-std::optional<usize> str_to_size_t(const std::string& s) {
-    if (s.empty() || s[0] == '-')
-        return std::nullopt;
-    errno                           = 0;
-    char*                    endptr = nullptr;
-    const unsigned long long value  = std::strtoull(s.c_str(), &endptr, 10);
-    if (errno == ERANGE || (*endptr != '\0' && !std::isspace((unsigned char) *endptr))
-        || value > std::numeric_limits<usize>::max())
-        return std::nullopt;
-    return static_cast<usize>(value);
-}
-
-std::optional<std::string> read_file_to_string(const std::string& path) {
-    std::ifstream f(path, std::ios_base::binary);
-    if (!f)
-        return std::nullopt;
-    return std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
-}
-
-void remove_whitespace(std::string& s) {
-    s.erase(std::remove_if(s.begin(), s.end(),
-                           [](char c) { return std::isspace((unsigned char) c); }),
-            s.end());
-}
-
-bool is_whitespace(std::string_view s) {
-    return std::all_of(s.begin(), s.end(), [](char c) { return std::isspace((unsigned char) c); });
-}
 
 fs::path CommandLine::get_binary_directory(fs::path argv0) {
 

@@ -68,7 +68,7 @@ using GetThreadSelectedCpuSetMasks_t = BOOL (*)(HANDLE, PGROUP_AFFINITY, USHORT,
 
 #endif
 
-#include "misc.h"
+#include "text.h"
 #include <assert.h>
 #include <optional>
 #include "../engine/basetypes.h"

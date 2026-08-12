@@ -29,7 +29,7 @@
     #include <iostream>
     #include <utility>
 
-    #include "misc.h"
+    #include "../engine/basetypes.h"
 #endif
 
 namespace Stockfish {

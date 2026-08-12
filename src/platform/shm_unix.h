@@ -49,8 +49,9 @@
 
 #define SF_MAX_SEM_NAME_LEN NAME_MAX
 
+// align_ptr_up, for the 2 MiB-aligned shared mapping below. The drawer this
+// commit cuts out is misc.h; memory.h is this zone's own and is a real use.
 #include "memory.h"
-#include "misc.h"
 #include "../engine/hashing.h"
 
 #if defined(__linux__) && !defined(MADV_COLLAPSE)
