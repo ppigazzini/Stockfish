@@ -24,7 +24,6 @@
 #include <initializer_list>
 #include <utility>
 
-#include "../platform/misc.h"
 #include "types.h"
 // Kept: RESTRICT, used below under USE_DUAL_HYPERBOLA_QUINT, expands to the
 // __restrict__ KEYWORD. A macro that expands to a keyword leaves no AST node,

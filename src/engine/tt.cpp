@@ -30,7 +30,6 @@
 #include <vector>
 
 #include "../platform/memory.h"
-#include "../platform/misc.h"
 #include "../platform/syzygy/tbprobe.h"
 #include "../platform/thread.h"
 
