@@ -28,7 +28,6 @@
 #include <iostream>
 
 #include "../../bitboard.h"
-#include "../../../platform/memory.h"
 #include "../../compiler.h"
 #include "../simd.h"
 #include "../nnue_common.h"

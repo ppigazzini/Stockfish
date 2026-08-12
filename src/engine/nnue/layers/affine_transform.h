@@ -24,7 +24,6 @@
 #include <cstdint>
 #include <iostream>
 
-#include "../../../platform/memory.h"
 #include "../../compiler.h"
 #include "../nnue_common.h"
 #include "../simd.h"
