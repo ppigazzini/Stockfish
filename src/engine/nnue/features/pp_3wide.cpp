@@ -34,7 +34,7 @@
 // Kept: sf_always_inline, which expands to an ATTRIBUTE and leaves no AST node
 // for IWYU to attribute a use to -- the same reason engine/attacks.h keeps this
 // header. Dropping it reds every tier at once.
-#include "../../../platform/platform.h"  // IWYU pragma: keep
+#include "../../compiler.h"  // IWYU pragma: keep
 #include "../../basetypes.h"
 
 #ifdef USE_AVX512ICL

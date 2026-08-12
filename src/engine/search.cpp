@@ -51,7 +51,7 @@
 #include "timeman.h"
 #include "tt.h"
 #include "types.h"
-#include "../platform/platform.h"
+#include "compiler.h"
 #include "basetypes.h"
 #include "searchoptions.h"
 #include "../platform/numa.h"

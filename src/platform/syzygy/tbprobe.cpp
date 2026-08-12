@@ -47,7 +47,7 @@
 #include "../../engine/search.h"
 #include "../../engine/types.h"
 #include "../../engine/basetypes.h"
-#include "../platform.h"
+#include "../../engine/compiler.h"
 #include "../../shell/console.h"
 #include "../../engine/tb_source.h"
 #include "../../engine/searchoptions.h"
