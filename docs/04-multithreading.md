@@ -36,7 +36,7 @@ unified correction history. The transposition table is shared across the whole p
 std::atomic_bool stop, increaseDepth;
 ```
 
-and every shared counter is a `RelaxedAtomic<u64>` (`src/platform/misc.h`), summed on demand:
+and every shared counter is a `RelaxedAtomic<u64>` (`src/engine/basetypes.h`), summed on demand:
 
 ```cpp
 u64 accumulate(RelaxedAtomic<u64> Search::Worker::* member) const;
@@ -83,6 +83,35 @@ type on the path that matters. Workers read it two ways, and both are deliberate
 A reference member and not a pointer: a reference's binding is fixed at construction, so the
 compiler may hoist the address out of the node. A pointer member must be reloaded after any
 call that might alias the worker.
+
+### A multi-worker search without the pool
+
+`ThreadPool` is the host's implementation, not the only one. The engine reaches whatever is
+registered through two seams, and the split between them is the reason a second implementation
+is possible at all: `worker_set.h` carries lifecycle and dispatch, and `parallel.h` carries the
+threads.
+
+```cpp
+void (*run_on)(usize thread, std::function<void()> fn);
+void (*wait_on)(usize thread);
+```
+
+**Start and wait are two calls, not a fork-join**, which is exactly the shape
+`Worker::start_searching` needs: the main worker starts the helpers, searches itself, raises
+`stop`, and only then waits. A fork-join primitive could not express that, because the helpers
+must be running while the main worker searches.
+
+`Search::go` (`engine/search_go.h`) is the second implementation. It builds N workers over one
+`SharedState` and dispatches them through whatever parallel-for is registered, which is how
+`tests/enginelink.sh` runs a two-worker search having linked `engine/` alone. The engine spawns
+nothing; the host supplies the threads.
+
+**The built-in parallel-for runs the job inline, and that is the one case a multi-worker search
+cannot survive.** An inline helper never returns: the depth cap tests `mainThread` and a
+non-main worker has none, so it searches to `MAX_PLY` waiting for a stop the caller cannot
+reach the line to raise. Running the work inline is a correct parallel-for -- the transposition
+table still gets cleared -- so this is not a defect in the default; it is why `Search::go`
+refuses a worker count the registered parallel-for cannot supply rather than attempting it.
 
 ## Choosing the answer
 

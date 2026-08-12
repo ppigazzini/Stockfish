@@ -22,12 +22,13 @@ ls src/incbin                           # vendored, not ours
 | File | Owns |
 |---|---|
 | `engine/types.h` | the value domain: `Color`, `Square`, `Piece`, `Move`, `Value`, `Key`, `Bitboard`, `Depth` |
-| `engine/basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, `TypedKey<KeySpace>` |
+| `engine/basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, `TypedKey<KeySpace>`, `RelaxedAtomic`, `mul_hi64` |
+| `engine/prng.h` | `PRNG`: the xorshift the Zobrist keys and the magic bitboards are seeded from |
 | `engine/bitboard.h/.cpp`, `engine/attacks.h/.cpp` | square sets and the slider/leaper attack tables |
 | `engine/position.h/.cpp` | the board, `StateInfo`, `do_move`/`undo_move`, Zobrist keys, `see_ge` |
 | `engine/movegen.h/.cpp`, `engine/movepick.h/.cpp` | move generation and the staged picker |
 | `engine/search.h/.cpp` | `Search::Worker`, iterative deepening, alpha-beta, quiescence |
-| `engine/search_go.h/.cpp` | one depth-limited search from a FEN, with no seam registered |
+| `engine/search_go.h/.cpp` | a depth-limited search from a FEN with no host registered, on one worker or on several |
 | `engine/searchoptions.h` | the option snapshot a worker is built from |
 | `engine/history.h` | the history tables and their update rule |
 | `engine/tt.h/.cpp` | the transposition table |
@@ -42,7 +43,8 @@ ls src/incbin                           # vendored, not ours
 | `platform/thread.h/.cpp`, `platform/thread_native.h` | the worker pool and the native thread with a chosen stack |
 | `platform/syzygy/` | the tablebase prober |
 | `platform/platform.h` | what the machine provides: `prefetch`, `IsLittleEndian`, `RESTRICT` |
-| `platform/misc.h/.cpp` | what is left of the utility drawer: `RelaxedAtomic`, `PRNG`, the logger, `split`, `CommandLine` |
+| `platform/text.h/.cpp` | turning the host's text into values: `split`, `is_whitespace`, `remove_whitespace`, `str_to_size_t`, `read_file_to_string` |
+| `platform/misc.h/.cpp` | what only the shell asks for: the version strings, the logger, `CommandLine`, the utf-8 path conversions, the console |
 | `shell/main.cpp`, `shell/uci.h/.cpp`, `shell/ucioption.h/.cpp`, `shell/engine.h/.cpp` | the UCI transport, the option table, the session |
 | `shell/benchmark.h/.cpp`, `shell/perft.h`, `shell/tune.h/.cpp` | bench positions, perft, SPSA tuning |
 | `shell/console.h/.cpp` | `sync_cout`, `sync_endl` and the `dbg_*` counters -- the shell's own terminal |
@@ -211,7 +213,7 @@ once. `src/shell/engine.cpp` is the composition root.
 | `engine/arena.h` | `alloc`, `alloc_hinted`, `free` | plain aligned allocation | `Engine::ArenaInstallerTag`, whose position is the guarantee |
 | `engine/output_sink.h` | `line`, `debug_dump` | prints to stdout unsynchronised | `Engine::ArenaInstallerTag` |
 | `engine/tb_source.h` | `max_cardinality`, `probe_wdl`, `rank_root_moves` | no tablebases loaded | `Engine::ArenaInstallerTag` |
-| `engine/clock.h` | `now` | reads `std::chrono::steady_clock` | nothing; the default is the clock |
+| `engine/clock.h` | `now_us` | reads `std::chrono::steady_clock` in microseconds | nothing; the default is the clock |
 | `engine/parallel.h` | thread count, NUMA map, `run_on`, `wait_on` | runs the work inline | `Engine::resize_threads` |
 | `engine/worker_set.h` | `start_searching`, `wait_for_search_finished`, the counters, `count`, `at` | reports no workers | `Engine::resize_threads` |
 
@@ -224,16 +226,22 @@ A default must fail in one of three ways, and which one is a property of the ser
   number, and the number would look fine.
 - **Safe unregistered.** "No tablebases loaded" is exactly true of an engine with none.
 
-**The clock seam has one reader outside it, and the type is why.** `syzygy_extend_pv`
-(`src/engine/search.cpp`) takes `std::chrono::steady_clock` directly, because its budget is
-compared against `Move Overhead`, whose range starts at 0, and `TimePoint` counts whole
-milliseconds: at that resolution `2 * 0 > 0` is false and the abort runs a further millisecond
-past the deadline. So a host that substitutes a clock gets a deterministic search and a
-wall-clock tablebase extension. No link gate can find this class of reader -- a host clock is
-read through an inline function and leaves no undefined symbol -- so the seam is held by hand,
-and `src/engine/clock.h` carries the exception beside the declaration. Closing it means giving
-the seam a sub-millisecond reading, which changes the type all of time management is written
-in.
+**The seam hands over microseconds, and the resolution is load-bearing.** `syzygy_extend_pv`
+(`src/engine/search.cpp`) budgets itself against `Move Overhead`, whose range starts at 0. In
+whole milliseconds `2 * 0 > 0` is false, so a `TimePoint` seam lets that abort run a further
+millisecond past its deadline; the sub-millisecond reading is what makes the comparison mean
+anything at the bottom of the option's range. `TimePoint now()` truncates `now_us()`, so time
+management keeps the type it is written in.
+
+Microseconds and not nanoseconds because an `i64` of nanoseconds from a steady clock's epoch
+runs out after 292 years and an `i64` of microseconds after 292,000. Nothing in the engine
+resolves below a microsecond.
+
+**Read a clock outside this seam and no gate will tell you.** A host clock is reached through
+an inline function and leaves no undefined symbol, so `enginelink.sh` cannot see it and a
+substituted clock gives a deterministic search with one wall-clock component in it. The
+property is held by reading `grep -n 'chrono' src/engine/*.cpp`, which should name `clock.cpp`
+and nothing else.
 
 Two things are handed over without a seam struct, because both are read per node and an
 indirect call there would cost more than the boundary is worth:
@@ -292,9 +300,10 @@ The hottest files reach no seam at all. Of the rest:
 **The limit.** With `SyzygyPath` set, `probe_wdl` is a live indirect call where upstream made a
 direct one, and **`bench` cannot see it** -- the bench list never probes, so a measurement there
 measures the guard rather than the call. Every performance gate in
-[10-tooling-ci.md](10-tooling-ci.md) drives `bench`, so none of them sets a `SyzygyPath` and
-none of them costs this seam; a change to it has to bring its own probing workload or it has no
-evidence at all.
+[10-tooling-ci.md](10-tooling-ci.md) drives `bench` by default, so none of them sets a
+`SyzygyPath` and none of them costs this seam. `perfbudget.sh --syzygy DIR` is the exception
+and the answer: it measures a probing workload instead of the bench list. A change to this seam
+or to the reader behind it quotes that cell, because every other cell is blind to it.
 
 ### The include graph
 
@@ -331,12 +340,24 @@ including it. Four edges decide most of that closure:
 - **`types.h` includes `basetypes.h`, not `misc.h`.** The type vocabulary it needs -- the
   integer aliases and `ValueList` -- lives in `basetypes.h`, so the fundamental type header
   does not pull the logger or `CommandLine` into every translation unit that touches a
-  `Square`. `misc.h` includes `basetypes.h` and `platform.h` in turn, so a file that includes
-  `misc.h` still gets both. **`misc.h` is still a drawer**, and the count of files reaching for
-  it is the measure of how much:
+  `Square`. `misc.h` does not include `basetypes.h` either -- its last `usize` is behind
+  `_WIN32`, pinned with a pragma in `misc.cpp` -- so a file that wants the type vocabulary
+  names `basetypes.h` and gets nothing else.
+
+- **`engine/` includes `platform/misc.h` nowhere, and the transitive half is the half that
+  rots.** The things an engine file wants that have no OS in them are elsewhere by design:
+  `RelaxedAtomic` and `mul_hi64` in `engine/basetypes.h`, `PRNG` in `engine/prng.h`,
+  `sf_always_inline` and `stringify` in `platform/platform.h`, which is the compiler header.
+  The string helpers `platform/numa.h` needs are `platform/text.h`, and that matters because
+  `engine/search.h` includes `numa.h`: point `numa.h` at the drawer and every file including
+  `search.h` gets `CommandLine` and the logger, which no grep for a direct include reveals.
+
+  Both directions are cheap to check, and the second needs `-H` rather than grep:
 
   ```sh
-  grep -rl '"misc.h"\|/misc.h"' --include=*.cpp --include=*.h src | wc -l
+  grep -rl '"misc.h"\|/misc.h"' --include=*.cpp --include=*.h src/engine     # expect nothing
+  cd src && echo '#include "engine/search.h"' > /tmp/t.cpp \
+    && g++ -std=c++17 -I. -H -fsyntax-only /tmp/t.cpp 2>&1 | grep misc.h      # expect nothing
   ```
 
 Measure the closure rather than trusting a number here:
@@ -356,8 +377,8 @@ on that, not on how many lines the preprocessor emits.
 
 Lazy SMP: every `Worker` searches the same tree independently and they share the
 transposition table, the history tables and a stop flag. The sharing is **deliberately racy**
-and the races are typed rather than left undefined -- see `RelaxedAtomic` in `src/platform/misc.h` and
-its uses in `search.h`, `history.h`, `thread.h` and `tt.cpp`.
+and the races are typed rather than left undefined -- see `RelaxedAtomic` in
+`src/engine/basetypes.h` and its uses in `search.h`, `history.h`, `thread.h` and `tt.cpp`.
 
 `bench` is single-threaded, so every value gate in [10-tooling-ci.md](10-tooling-ci.md) stays
 green while a data race is present. The sanitizer lanes are what cover it.
