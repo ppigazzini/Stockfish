@@ -318,15 +318,17 @@ including it. Four edges decide most of that closure:
 
 - **`numa.cpp` carries the cold half of `NumaConfig`** -- topology discovery, the string forms,
   thread binding, all of it running before the first search. What stays in `numa.h` is
-  template-bound and cannot move. `search.h` includes `numa.h`, so the NUMA subsystem still
-  reaches everything that includes `search.h`, and that edge is load-bearing rather than
-  incidental: `Search::Worker` holds a `NumaReplicatedAccessToken` **by value**, so a forward
-  declaration cannot replace it.
+  template-bound and cannot move. **`search.h` no longer includes `numa.h`**, so the NUMA
+  subsystem reaches the pool and the composition root and stops there. That edge used to be
+  described here as load-bearing, on the grounds that `Search::Worker` held a
+  `NumaReplicatedAccessToken` by value; the member was written at construction and read by
+  nobody, so it was removed rather than replaced, and the constructor takes the
+  `HistoryBankIndex` the next line reduced it to anyway.
 - **Shared memory does not ride along with it.** `LazyNumaReplicatedSystemWide` is the only user
   of `shm.h` in this family, and it lives in `numa_shared.h`, which includes both `numa.h` and
   `shm.h`. `shell/engine.h` owns one by value and includes `numa_shared.h`; `platform/thread.h`
-  forward-declares it and only takes one by reference; `search.h` includes `numa.h` and never
-  names the holder at all. So the shared-memory headers reach the files that own or pass one
+  forward-declares it and only takes one by reference; `search.h` names neither the holder nor
+  `numa.h`. So the shared-memory headers reach the files that own or pass one
   rather than every consumer of `search.h`, which is two files -- re-establish it rather than
   trust it:
 
