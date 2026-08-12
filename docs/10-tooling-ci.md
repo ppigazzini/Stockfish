@@ -403,6 +403,51 @@ dispatched is reported as a stale excuse, and an excuse naming a script the tree
 fails too. A script named only in a comment does not count as dispatched, and the name match
 requires a separator on both sides so `net.sh` cannot be satisfied by `subnet.shx`.
 
+## `tests/iwyu.sh`
+
+The include lane, and the only supported way to run it.
+
+```sh
+./tests/iwyu.sh                  # is the tree clean?
+./tests/iwyu.sh HEAD~1           # what did this commit add?
+./tests/iwyu.sh --arch x86-64-avx2 HEAD~1
+```
+
+**Three tiers by default**, because the include set of a file holding `#if` is a property of
+the tier and not of the file. `attacks.cpp` needs `prng.h` in the generic build and not in the
+vector ones; a lane running one tier would have missed it, and a lane running `ARCH=native`
+would give a different answer on every runner.
+
+**It reports which of two modes produced its answer, and they do not prove the same thing.**
+
+| mode | when | verdict |
+|---|---|---|
+| `native` | clang finds libc++ on its own search path, as on a runner with `libc++-17-dev` | absolute: a finding is a finding |
+| `shim` | no libc++ package; the pinned copy under `resources/iwyu/llvm` is reached with `-nostdinc++ -isystem` | differential only |
+
+Shim mode exists because the reconstruction does not reproduce the lane. IWYU needs
+`-resource-dir` or clang rejects libc++'s own headers with *reference to unresolved using
+declaration*, and once `-nostdinc++` is in play `-stdlib=libc++` is an unused argument, so IWYU
+stops detecting libc++ and its default `libcxx.imp` has to be passed by hand. The rig then
+reports findings the lane does not. It reports the *same* ones at every revision, so comparing
+two revisions through one rig still answers "did this change add anything" -- and that is all
+shim mode will answer. **Asked for an absolute verdict it skips**, because a green that means
+nothing is worse than no run.
+
+Quote the mode with the result. A report that does not say which mode produced it is not a
+report.
+
+**What neither mode can see is a use behind another host's `#ifdef`.** Three includes on this
+tree are needed only under `_WIN32` or under a packager knob, and all three read as unused
+here: `stringify` in `network.cpp` under `DEFAULT_NNUE_DIRECTORY`, `<vector>` for
+`CommandLine`'s Windows `argv_storage`, and the last `usize` in `misc.cpp` inside
+`path_from_utf8`'s `_WIN32` branch. Each carries a `// IWYU pragma: keep` and the reason.
+Deciding a finding is one of these is done by reading, not by deleting what the tool named.
+
+The analysis runs in a copy of the tree, never in `src/`. `make analyze` depends on `objclean`,
+so running it where you build destroys the objects you had and leaves no binary for
+`signature.sh`.
+
 ## `tests/depcheck.sh`
 
 Enforces the declared dependency direction of [00-architecture.md](00-architecture.md).
