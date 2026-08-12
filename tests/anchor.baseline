@@ -1,0 +1,22 @@
+# Commit bodies carrying a line that reads as a `Bench:` footer without being one.
+#
+# EMPTY, and it stays that way. The one entry this file was created for is gone:
+# the commit that broke every architecture lane quoted a gate result as
+#
+#     bench                                                2829394
+#
+# which upstream's pre-push hook regex matches -- `[ :]\+` spans the run of
+# spaces -- so a reader scanning bodies line by line took it for the anchor. The
+# value was true when written and went stale at the rebase onto 5062aee5, whose
+# own history carries `Bench: 2884956`.
+#
+# It was baselined rather than reworded because rewording moves every SHA after
+# it, and this file said to reword if the history was ever rewritten for another
+# reason. It then was, to move the ipa-icf flag ahead of the seam thunk it
+# guards, so the line became `bench nodes ... 2829394` in the same rewrite. What
+# follows `bench` has to be spaces or colons and then a digit, and `nodes` is
+# neither, so the loose form no longer matches it.
+#
+# A new entry means a commit message that a lane can misread. Reword it instead:
+# an unpushed commit costs nothing to reword, and a pushed one costs what this
+# file already spent.
