@@ -18,6 +18,7 @@
 
 #include "arena.h"
 
+#include <cassert>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -78,7 +79,12 @@ Arena current = {default_alloc, default_alloc_hinted, default_free};
 
 const Arena& arena() { return current; }
 
-void set_arena(const Arena& a) { current = a; }
+void set_arena(const Arena& a) {
+    // Setup cadence, so the check is free. A zero would make every hugePageHint
+    // true rather than none of them, which is a wrong answer that still runs.
+    assert(a.hugePageBytes != 0);
+    current = a;
+}
 
 void arena_alloc_failed(usize bytes) {
     std::cerr << "Failed to allocate " << bytes << " bytes." << std::endl;
