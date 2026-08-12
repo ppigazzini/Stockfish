@@ -29,7 +29,7 @@
 // Kept: RESTRICT, used below by DualMagic, expands to the __restrict__ KEYWORD.
 // A macro that expands to a keyword leaves no AST node, so IWYU attributes no
 // use to it and asks for a removal that reds every build.
-#include "../platform/platform.h"  // IWYU pragma: keep
+#include "compiler.h"  // IWYU pragma: keep
 #include "bitboard.h"
 
 #if defined(USE_AVX2)

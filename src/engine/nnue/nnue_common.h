@@ -29,7 +29,7 @@
 #include <type_traits>
 
 #include "../types.h"
-#include "../../platform/platform.h"
+#include "../compiler.h"
 
 #if defined(USE_AVX2)
     #include <immintrin.h>

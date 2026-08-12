@@ -25,7 +25,7 @@
 #include <iostream>
 
 #include "../../../platform/memory.h"
-#include "../../../platform/platform.h"
+#include "../../compiler.h"
 #include "../nnue_common.h"
 #include "../simd.h"
 #include "../../hashing.h"
