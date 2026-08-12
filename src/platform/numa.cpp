@@ -20,7 +20,15 @@
 #include "text.h"
 #include "../engine/basetypes.h"
 
+// Kept: std::memset and assert, which this file used to reach through
+// platform/memory.h. That header supplied both by accident and no longer
+// includes either. IWYU asks to drop <cstring> at every tier it analyses,
+// because libc++ on the lane's host provides it transitively; MinGW's libstdc++
+// does not, and dropping it fails the Windows GCC jobs with "'memset' is not a
+// member of 'std'" while every Linux build stays green.
+#include <assert.h>
 #include <cstdlib>
+#include <cstring>  // IWYU pragma: keep
 #include <map>
 #include <set>
 #include <string>
