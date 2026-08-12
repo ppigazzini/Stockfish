@@ -96,10 +96,31 @@ PY
 }
 
 PASS=0; FAIL=0; SKIP=0
-selected() { [ "$SELECT" = "all" ] || [ "$SELECT" = "$1" ]; }
 KNOWN=""
+STATIC=""
 
-row() { KNOWN="$KNOWN $1"; }
+# `all`, one row by name, or `static` -- the rows that need no build. The static
+# group runs in about a minute and a half, which is what makes it affordable on
+# every push while the full set, which builds the engine once per row, is not.
+selected() {
+    [ "$SELECT" = all ] && return 0
+    [ "$SELECT" = "$1" ] && return 0
+    if [ "$SELECT" = static ]; then
+        case " $STATIC " in *" $1 "*) return 0 ;; esac
+    fi
+    return 1
+}
+
+# Declare a row, and tag it `static` when it reads the tree and never builds the
+# engine. The tag lives on the declaration rather than in a list kept somewhere
+# else, because a list somewhere else is what goes stale the first time a row is
+# added -- and a row that quietly leaves the group is a row the per-push lane
+# stops running while still reporting a pass.
+row() {
+    KNOWN="$KNOWN $1"
+    [ "${2:-}" = static ] && STATIC="$STATIC $1"
+    return 0
+}
 
 # --------------------------------------------------------------- signature
 
@@ -169,7 +190,7 @@ fi
 
 # --------------------------------------------------------------- docslint
 
-row docslint
+row docslint static
 if selected docslint; then
     echo "negative-control: docslint    -- a dead link in the index"
     mutate docs/README.md \
@@ -204,7 +225,7 @@ if selected golden; then
     ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
 fi
 
-row golden-empty
+row golden-empty static
 if selected golden-empty; then
     echo "negative-control: golden      -- an empty corpus must not pass"
     mv tests/cases /tmp/nc_cases_$$
@@ -218,7 +239,7 @@ if selected golden-empty; then
     mv /tmp/nc_cases_$$ tests/cases
 fi
 
-row docslint-path
+row docslint-path static
 if selected docslint-path; then
     echo "negative-control: docslint    -- a named path that is not in the tree"
     mutate docs/00-architecture.md \
@@ -234,7 +255,7 @@ if selected docslint-path; then
     restore
 fi
 
-row docslint-bench
+row docslint-bench static
 if selected docslint-bench; then
     REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
     if [ -z "$REF" ]; then
@@ -256,7 +277,7 @@ if selected docslint-bench; then
     fi
 fi
 
-row docslint-gate
+row docslint-gate static
 if selected docslint-gate; then
     echo "negative-control: docslint    -- a gate no page names"
     printf '#!/bin/bash\nexit 0\n' > tests/zzz_undocumented.sh
@@ -269,7 +290,7 @@ if selected docslint-gate; then
     rm -f tests/zzz_undocumented.sh
 fi
 
-row docslint-internal
+row docslint-internal static
 if selected docslint-internal; then
     echo "negative-control: docslint    -- a tracked file pointing into the ignored area"
     # Read the needle out of docslint.sh rather than naming it. A
@@ -313,10 +334,25 @@ fi
 
 # --------------------------------------------------------------- lanecheck
 
-row lanecheck-reach
+row lanecheck-reach static
 if selected lanecheck-reach; then
-    echo "negative-control: lanecheck   -- the budget lane unwired from the umbrella"
+    # BOTH orchestrators, and that is the point of the row rather than an
+    # inconvenience. A lane is unreachable only when NOTHING calls it, so a
+    # mutation that unwires it from one caller while another still names it
+    # proves the gate can see a case that is not there. Two umbrellas exist --
+    # stockfish.yml for the branches upstream builds and refish.yml for this one
+    # -- so cutting one leaves perfbudget.yml reachable and lanecheck stays
+    # correctly green. This row went NOT DETECTED the moment the second umbrella
+    # landed, which is the mutation reporting on itself.
+    echo "negative-control: lanecheck   -- the budget lane unwired from every umbrella"
     mutate .github/workflows/stockfish.yml \
+        '  PerfBudget:
+    name: Perf budget
+    if: ${{ always() }}
+    uses: ./.github/workflows/perfbudget.yml
+' \
+        ''
+    mutate .github/workflows/refish.yml \
         '  PerfBudget:
     name: Perf budget
     if: ${{ always() }}
@@ -331,7 +367,7 @@ if selected lanecheck-reach; then
     restore
 fi
 
-row lanecheck
+row lanecheck static
 if selected lanecheck; then
     echo "negative-control: lanecheck   -- a gate with no lane and no excuse"
     printf '#!/bin/bash\nexit 0\n' > tests/zzz_unlaned.sh
@@ -555,7 +591,7 @@ fi
 
 # --------------------------------------------------------------- depcheck
 
-row depcheck-new
+row depcheck-new static
 if selected depcheck-new; then
     echo "negative-control: depcheck    -- an engine file reaching into the shell"
     mutate src/engine/bitboard.cpp \
@@ -570,7 +606,7 @@ if selected depcheck-new; then
     restore
 fi
 
-row depcheck-stale
+row depcheck-stale static
 if selected depcheck-stale; then
     # The inverse direction. A baseline that only ever grows stops being a debt
     # register and becomes a permanent excuse, so an entry describing an edge
@@ -592,7 +628,7 @@ movegen.cpp -> uci.h'
     restore
 fi
 
-row depcheck-platform
+row depcheck-platform static
 if selected depcheck-platform; then
     # The rule linkcheck cannot replace. A header-carried dependency leaves no
     # undefined symbol, so both linkcheck baselines read empty while nineteen of
@@ -619,7 +655,7 @@ if selected depcheck-platform; then
     restore
 fi
 
-row depcheck-platform-stale
+row depcheck-platform-stale static
 if selected depcheck-platform-stale; then
     # The platform baseline expires in both directions too. It ships empty, so the
     # only way to go stale is to add an entry describing an edge that does not
@@ -639,7 +675,7 @@ fi
 
 # --------------------------------------------------------------- type design
 
-row b5-mismatch
+row b5-mismatch static
 if selected b5-mismatch; then
     # The INVERSE of every other row: this one passes when the compiler REFUSES.
     # Each accessor in SharedHistories selects the row with one key AND returns
@@ -681,7 +717,7 @@ CPP
     rm -f /tmp/nc_b5_mismatch.cpp /tmp/nc_b5_ok.cpp
 fi
 
-row b5-keyspace
+row b5-keyspace static
 if selected b5-keyspace; then
     # The other inverse row: the compiler must REFUSE a key from one space where
     # another belongs. Three shapes, because one alone would pass if the header
@@ -744,7 +780,7 @@ fi
 
 # --------------------------------------------------------------- buildcoverage
 
-row buildcoverage
+row buildcoverage static
 if selected buildcoverage; then
     # SRCS is an explicit list, so a file can be in the tree and in no build.
     # It is then not compiled, not linked, and covered by no gate -- while still
@@ -1155,7 +1191,12 @@ done
 case " $KNOWN " in
     *" $SELECT "*|*" all "*) : ;;
 esac
-if [ "$SELECT" != "all" ]; then
+if [ "$SELECT" = static ]; then
+    # A group that names no row mutated nothing and proved nothing, which is the
+    # third way this rig can be wrong about itself. Refuse rather than report a
+    # verdict, the same as a rotted anchor or a selector naming no row.
+    [ -n "$STATIC" ] || die "the static group is empty; tag rows with 'row <name> static'"
+elif [ "$SELECT" != "all" ]; then
     case " $KNOWN " in
         *" $SELECT "*) : ;;
         *) die "no row named '$SELECT'; rows are:$KNOWN" ;;
