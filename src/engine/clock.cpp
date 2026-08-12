@@ -32,13 +32,17 @@ namespace {
 // Keep this the steady clock. TimeManagement::elapsed_time subtracts two
 // readings, so a clock that can step backwards yields a negative elapsed time
 // and check_time never trips its `elapsed > tm.maximum()` deadline.
-TimePoint default_now() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
+//
+// MICROSECONDS, not milliseconds, and the width is the reason it is safe: a
+// signed 64-bit microsecond count from a steady clock's epoch runs for about
+// 292,000 years. The nanosecond form would run for 292.
+i64 default_now_us() {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
              std::chrono::steady_clock::now().time_since_epoch())
       .count();
 }
 
-Clock current = {default_now};
+Clock current = {default_now_us};
 
 }  // namespace
 
@@ -46,6 +50,13 @@ const Clock& clock_source() { return current; }
 
 void set_clock_source(const Clock& c) { current = c; }
 
-TimePoint now() { return clock_source().now(); }
+i64 now_us() { return clock_source().now_us(); }
+
+// Truncation and not rounding. now() is subtracted from an earlier now() to
+// make an elapsed time, and truncating both ends keeps that difference within
+// one millisecond of the true one in the same direction every time; rounding
+// would let a pair straddle a boundary and report a millisecond that did not
+// pass.
+TimePoint now() { return TimePoint(now_us() / 1000); }
 
 }  // namespace Stockfish
