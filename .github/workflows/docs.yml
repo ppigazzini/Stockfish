@@ -52,6 +52,12 @@ jobs:
       - name: Action pins
         run: ./tests/actionpins.sh
 
+      # Reads the commit record, so it needs the full history the checkout above
+      # already fetches. It is what says the anchor the architecture lanes read is
+      # the one AGENTS.md's rule names.
+      - name: Bench anchor
+        run: ./tests/anchor.sh
+
       # Ask the boundary question at the link, so this one builds: depcheck reads
       # `#include` lines, this asks whether an engine OBJECT references a symbol
       # only a shell object defines. An edge no include spells -- a template

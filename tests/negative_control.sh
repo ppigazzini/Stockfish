@@ -826,6 +826,57 @@ if selected actionpins-mutable; then
     restore
 fi
 
+row anchor static
+if selected anchor; then
+    # The defect that reddened every architecture lane: a body line shaped like a
+    # bench footer. Upstream's hook regex spans the run of spaces between the word
+    # and the number, so an evidence row quoting a gate result is
+    # indistinguishable from the anchor to anything scanning bodies line by line.
+    #
+    # A row mutates files and restores them, and a commit body is neither, so the
+    # body is handed to the gate through ANCHOR_EXTRA_BODY. That path can only add
+    # an offender, so a row using it cannot make the gate greener than it is.
+    echo "negative-control: anchor      -- a body line that reads as a footer"
+    printf '  bench                                                2829394\n' \
+        > "$BACKUP/anchor-body"
+    if ANCHOR_EXTRA_BODY="$BACKUP/anchor-body" ./tests/anchor.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a body line reading as a footer passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+
+    # The same line as a REAL footer must not be a finding, or the gate reports
+    # every functional commit on the branch.
+    printf 'Bench: 2884956\n' > "$BACKUP/anchor-body"
+    if ANCHOR_EXTRA_BODY="$BACKUP/anchor-body" ./tests/anchor.sh >/dev/null 2>&1; then
+        echo "  ok, green on a real footer (2)"; PASS=$((PASS+1))
+    else
+        echo "  NOT DETECTED -- a real Bench: footer read as a finding"; FAIL=$((FAIL+1))
+    fi
+    rm -f "$BACKUP/anchor-body"
+    restore
+fi
+
+row anchor-stale static
+if selected anchor-stale; then
+    # The other direction. An entry excusing a commit whose body is fine is an
+    # excuse that outlived its reason, and a baseline that only grows is a
+    # permanent exemption rather than a record.
+    echo "negative-control: anchor      -- a baseline entry that no longer happens"
+    mutate tests/anchor.baseline \
+        '# file already spent.
+' \
+        '# file already spent.
+2db500a7
+'
+    if ./tests/anchor.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a stale baseline entry passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- type design
 
 row b5-mismatch static

@@ -174,12 +174,33 @@ jobs:
       - name: Download the used network from the fishtest framework
         run: make net
 
+      # AGENTS.md's rule is "the `Bench:` in the most recent commit body that
+      # carries one", and this now reads it the way that sentence says. It used to
+      # walk `git rev-list -100` running `git show -s` per commit against
+      # `[Bb]ench[ :]\+[0-9]...` anchored with `-x`, and that was wrong twice.
+      #
+      # TOO LOOSE. `[ :]\+` matches a run of spaces, so an evidence row inside a
+      # body -- `  bench      2829394`, a gate result quoted in a commit message --
+      # is indistinguishable from a footer. One such row exists on this branch, in
+      # a commit that also says "No functional change", and it was read as the
+      # anchor. It was true when written and went stale at the rebase; the tree
+      # benches 2884956 and every architecture lane failed against 2829394.
+      #
+      # TOO SHALLOW. The real footer is 180 commits back, because this branch
+      # stacks non-functional commits on upstream and none of them carries one. A
+      # fixed depth rots with every commit added, so there is no number to raise
+      # it to -- the whole history is one `git log`, and it takes 0.1 s.
       - name: Extract the bench number from the commit history
         run: |
-          for hash in $(git rev-list -100 HEAD); do
-            benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
-          done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || { echo "No bench found in the last 100 commits -- refusing to run the anchor lanes against an empty reference"; exit 1; }
+          # A HERE-STRING, not a pipe from git log. `grep -m1` exits on the first
+          # match and closes the pipe, `git log` dies of SIGPIPE part-way through
+          # the history, and `pipefail` propagates 141 -- so the step fails
+          # BECAUSE the anchor was found. Capturing first lets the producer finish.
+          history=$(git log --format=%b)
+          benchref=$(grep -m1 -oE '^Bench: *[1-9][0-9]{5,7}$' <<< "$history" | grep -oE '[0-9]+' || true)
+          [[ -n "$benchref" ]] || { echo "No Bench: footer anywhere in the history -- refusing to run the anchor lanes against an empty reference"; exit 1; }
+          echo "benchref=$benchref" >> $GITHUB_ENV
+          echo "Reference bench: $benchref"
 
       - name: Check compiler
         run: |
