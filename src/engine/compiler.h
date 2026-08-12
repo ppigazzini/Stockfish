@@ -16,17 +16,17 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef PLATFORM_H_INCLUDED
-#define PLATFORM_H_INCLUDED
+#ifndef COMPILER_H_INCLUDED
+#define COMPILER_H_INCLUDED
 
 #include <chrono>
 
-#include "../engine/basetypes.h"
+#include "basetypes.h"
 
-// Reach TimePoint and now() through here: both are declared in engine/clock.h,
-// because comparing and storing a time is the engine's job, and this include is
-// what makes them visible to a file that includes platform.h.
-#include "../engine/clock.h"
+// Reach TimePoint and now() through here: both are declared in clock.h, because
+// comparing and storing a time is the engine's job, and this include is what
+// makes them visible to a file that includes compiler.h.
+#include "clock.h"
 
 #if !defined(NO_PREFETCH) && (defined(_MSC_VER) || defined(__INTEL_COMPILER))
     #include <immintrin.h>
@@ -34,7 +34,7 @@
 
 // Spell the compiler's no-aliasing qualifier. RESTRICT is a macro, not a
 // keyword, so include-what-you-use cannot attribute it to this header: a file
-// that writes RESTRICT must include platform.h itself. Inheriting it through
+// that writes RESTRICT must include compiler.h itself. Inheriting it through
 // another header compiles until that header stops including this one, and then
 // fails with RESTRICT read as an identifier.
 #ifdef __GNUC__
@@ -126,10 +126,8 @@ void prefetch(const void* addr) {
 #define stringify2(x) #x
 #define stringify(x) stringify2(x)
 
-// The always-inline attribute, here rather than in misc.h because it is a
-// property of the COMPILER and this is the compiler header. It sat in the
-// drawer, and three engine/ files included a platform grab-bag for this macro
-// and nothing else.
+// The always-inline attribute, here because it is a property of the COMPILER and
+// this is the compiler header.
 #if defined(__GNUC__)
     #define sf_always_inline __attribute__((always_inline))
 #elif defined(_MSC_VER)
@@ -141,4 +139,4 @@ void prefetch(const void* addr) {
 
 }  // namespace Stockfish
 
-#endif  // #ifndef PLATFORM_H_INCLUDED
+#endif  // #ifndef COMPILER_H_INCLUDED
