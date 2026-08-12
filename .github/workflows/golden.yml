@@ -15,5 +15,27 @@ jobs:
       - name: Build
         working-directory: src
         run: make -j build ARCH=x86-64-avx2
+
+      # The `tablebase` case loads real tables, because the two rows it pins --
+      # `Tablebases WDL:` and `Tablebases DTZ:` in the `d` board -- exist only
+      # when tables are loaded. Without the corpus that case SKIPS, and a lane
+      # that skips the only case exercising a feature is a lane that does not
+      # cover it.
+      #
+      # 4.4 MB for the 3-4-man set, so it is cached rather than re-fetched: the
+      # key names the script, and the script's stem list is what decides what
+      # lands in the directory, so a change to either takes a new cache.
+      #
+      # 4-man and not 3-man. MaxCardinality is 4 with this corpus, which is what
+      # lets the case pin a 4-man probe (KRvKR) beside the 3-man ones -- and a
+      # 4-man probe reaches a different ProbeState than a 3-man one does.
+      - name: Cache the 3-4-man tablebases
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: tests/syzygy-34man
+          key: syzygy-34man-${{ hashFiles('tests/tbfetch.sh') }}
+      - name: Fetch the 3-4-man tablebases
+        run: ./tests/tbfetch.sh --men 4
+
       - name: Compare the corpus
         run: ./tests/golden.sh

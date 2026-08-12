@@ -1,0 +1,10 @@
+setoption name SyzygyPath value @SYZYGY@
+isready
+position fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1
+d
+position fen 8/8/8/4k3/8/8/4P3/4K3 w - - 0 1
+d
+position fen 8/8/8/4k3/8/8/4r3/R3K3 w - - 0 1
+d
+position startpos
+d
