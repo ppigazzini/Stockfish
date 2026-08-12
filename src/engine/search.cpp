@@ -28,7 +28,6 @@
 #include <array>
 #include <atomic>
 #include <cassert>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -2275,21 +2274,22 @@ void syzygy_extend_pv(const SearchOptions&      options,
                       Value&                    v,
                       const usize               multiPV) {
 
-    // Read the steady clock directly rather than clock.h's now(): this budget is
-    // compared against `Move Overhead`, whose minimum is 0, and TimePoint counts
-    // whole milliseconds, so the seam's resolution would let the abort run a
-    // millisecond past the deadline. See the note in clock.h.
-    auto t_start      = std::chrono::steady_clock::now();
+    i64  t_start      = now_us();
     int  moveOverhead = options.moveOverhead;
     bool rule50       = options.syzygy50MoveRule;
 
-    // Do not use more than moveOverhead / 2 ms, if time management is active.
+    // Do not use more than moveOverhead / 2 time, if time management is active.
     // Under 'nodestime' the pos.do_move() calls come for free.
+    //
+    // Through the seam, in microseconds. This reader is why the seam reads
+    // microseconds at all: the budget is half of `Move Overhead`, a whole
+    // number of milliseconds whose range starts at 0 and whose smallest
+    // working value is 1, so half of it is not a quantity a whole-millisecond
+    // reading can express. Both sides are scaled to microseconds rather than
+    // the elapsed time being scaled down, which keeps the arithmetic integral.
     auto time_abort = [&t_start, &moveOverhead, &limits, &multiPV]() -> bool {
-        auto t_end = std::chrono::steady_clock::now();
         return !limits.npmsec && limits.use_time_management()
-            && 2 * multiPV * std::chrono::duration<double, std::milli>(t_end - t_start).count()
-                 >= moveOverhead;
+            && 2 * i64(multiPV) * (now_us() - t_start) >= i64(moveOverhead) * 1000;
     };
 
     if (time_abort())
