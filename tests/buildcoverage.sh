@@ -67,6 +67,30 @@ while IFS= read -r -d '' f; do
 done < <(git ls-files -z 'src/*.cpp' 'src/**/*.cpp')
 [ "$missing" = 0 ] && echo "  ok, all $count"
 
+# A second way a source ends up in the tree and not in the binary, and this one
+# passes the check above. `OBJS = $(notdir $(SRCS:.cpp=.o))` flattens every object
+# into ONE name space and VPATH is a flat search path across the zone
+# directories, so two sources sharing a basename compete for a single .o: make
+# builds one of them and the other is never compiled. Both are named by SRCS, so
+# the loop above finds both covered and reports clean.
+#
+# This is the same defect the file argues an explicit SRCS protects against --
+# present and uncompiled -- arriving from the direction an explicit list does not
+# help with.
+echo
+echo "== source basenames that collide =="
+dupes=$(git ls-files 'src/*.cpp' 'src/**/*.cpp' \
+        | while IFS= read -r f; do basename "$f"; done | sort | uniq -d)
+if [ -n "$dupes" ]; then
+    while IFS= read -r d; do
+        echo "  COLLIDES   $d"
+        git ls-files "src/*/$d" "src/*/*/$d" "src/*/*/*/$d" | sed 's/^/               /'
+    done <<< "$dupes"
+    missing=$((missing + 1))
+else
+    echo "  ok"
+fi
+
 echo
 if [ "$missing" != 0 ]; then
     echo "buildcoverage: $missing source(s) in the tree and not in the build"
