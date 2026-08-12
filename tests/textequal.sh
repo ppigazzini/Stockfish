@@ -182,10 +182,26 @@ build_nolto() {
 #     the operand, and drop the annotation, which is an absolute address;
 #   - rewrite an absolute branch/call target to its symbol alone, so a callee
 #     that moved does not diff every one of its call sites;
+#   - drop the TRAILING run of alignment padding in each symbol;
 #   - key each instruction by its enclosing symbol and its position within that
 #     symbol, then sort by that key. Order WITHIN a function is preserved and
 #     compared; order BETWEEN functions is not, because a link-order change is
 #     not a codegen change.
+#
+# TRAILING padding only, and the word is load-bearing. objdump attributes the
+# nops that align the NEXT function to the end of the current one, so removing or
+# adding a function anywhere shifts what follows it against a 16-byte boundary and
+# changes the length of that run in symbols the change never touched. A commit
+# that deleted five unused includes reported two changed bodies that way -- three
+# `cs nopw` becoming one `nopl` in one symbol, one becoming four in another, with
+# no instruction different in either -- and a gate whose whole value is having no
+# noise floor cannot afford to report a difference that is not codegen.
+#
+# A nop in the MIDDLE of a body is not padding: it is branch-target alignment
+# inside a loop, and it is emitted because the compiler decided to. Dropping those
+# would hide a real codegen change, which is the expensive direction for this gate
+# to fail in, so the run is peeled from the end and stops at the first instruction
+# that is not padding.
 # Symbols are NOT demangled. A demangled C++ name contains spaces, commas and
 # angle brackets, which breaks both the field split below and the sort key --
 # and two template instantiations can demangle to the same string while being
@@ -199,10 +215,28 @@ normalise() {
     local bin=$1 out=$2
     objdump -d --no-show-raw-insn "$bin" \
     | awk '
+        # An alignment filler, after any segment or repeat prefix objdump prints
+        # in front of it. gcc and clang emit `nop`, `nopw`, `nopl`, `cs nopw ...`
+        # and `xchg %ax,%ax` for this.
+        function is_pad(line,   t) {
+            t = line
+            while (t ~ /^(cs|ds|es|ss|fs|gs|data16|rep|repz|repnz)[ \t]+/)
+                sub(/^[a-z0-9]+[ \t]+/, "", t)
+            if (t ~ /^nop[a-z]?([ \t]|$)/) return 1
+            if (t ~ /^xchg[ \t]+%ax,%ax$/) return 1
+            return 0
+        }
+        # Emit the buffered body of the previous symbol, minus its trailing pad.
+        function flush(   i) {
+            while (n > 0 && is_pad(buf[n - 1])) n--
+            for (i = 0; i < n; i++) printf "%s\t%08d\t%s\n", sym, i, buf[i]
+            n = 0
+        }
         /^[0-9a-f]+ </ {
+            flush()
             s = index($0, "<")
             sym = substr($0, s + 1, length($0) - s - 2)   # drop "<" and ">:"
-            n = 0; next
+            next
         }
         /^[ \t]*[0-9a-f]+:/ {
             sub(/^[ \t]*[0-9a-f]+:[ \t]*/, "")      # leading address
@@ -229,8 +263,9 @@ normalise() {
             gsub(/\+0x[0-9a-f]+>/, ">")             # symbol+offset -> symbol
             sub(/[ \t]+$/, "")
             if (length($0) == 0) next
-            printf "%s\t%08d\t%s\n", sym, n++, $0
+            buf[n++] = $0
         }
+        END { flush() }
     ' | LC_ALL=C sort -t"$(printf '\t')" -k1,1 -k2,2 > "$out"
     [ -s "$out" ] || die "objdump produced no instructions for $bin"
 }
