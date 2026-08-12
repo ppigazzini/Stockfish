@@ -27,10 +27,12 @@
 # an answer. It also catches an include written with no zone prefix at all, which a
 # path rule cannot.
 #
-# Its one limit is not depth but ambiguity: zone_of takes the FIRST match for a
-# stem, so two same-named files in two zones would classify as whichever git lists
-# first. No stem is ambiguous today, and the flat `OBJS = $(notdir ...)` in
-# src/Makefile means such a pair would break the build before it reached this gate.
+# Its one limit is not depth but ambiguity, and that is checked here rather than
+# left as a note. zone_of refuses a stem that names files in more than one zone,
+# returning `ambiguous`; every caller compares against a zone name, so an
+# ambiguous stem would match none of them and be SILENTLY EXEMPT. Ambiguity is a
+# property of the tree rather than of one lookup, so it is asserted once, below,
+# and the other callers can then never meet one on a green tree.
 #
 # A zone is a DIRECTORY under src/ (tests/zones.sh). A file added outside all
 # three joins no zone, so the unassigned-file check below has to fail on it: a
@@ -67,6 +69,25 @@ FILES=$(git ls-files 'src/*.h' 'src/*.cpp' 'src/**/*.h' 'src/**/*.cpp')
 # Read the list NUL-separated. A path with a space in it is exactly the shape
 # that gets dropped in by accident, and word-splitting reports it under three
 # names none of which exist.
+# One stem, one zone. Two same-named sources also break the BUILD, and more
+# quietly: `OBJS = $(notdir $(SRCS:.cpp=.o))` flattens every object into one name
+# space and VPATH is a flat search path, so the pair competes for one object and
+# one of them is never compiled. tests/buildcoverage.sh asserts that half; this
+# one is about classification, and the two are separate because a header pair
+# breaks classification without breaking the build.
+echo "== stems that name more than one zone =="
+ambiguous=0
+while IFS= read -r stem; do
+    if [ "$(zone_of "$stem")" = ambiguous ]; then
+        echo "  AMBIGUOUS   $stem -- named in more than one zone"
+        ambiguous=$((ambiguous+1))
+    fi
+done < <(git ls-files 'src/*/*.cpp' 'src/*/*.h' 'src/*/*/*.cpp' 'src/*/*/*.h' \
+                      'src/*/*/*/*.cpp' 'src/*/*/*/*.h' \
+         | while IFS= read -r f; do b=$(basename "$f"); echo "${b%.*}"; done | sort -u)
+[ "$ambiguous" = 0 ] && echo "  ok"
+
+echo
 echo "== files with no zone =="
 unassigned=0
 while IFS= read -r -d '' f; do
@@ -144,5 +165,6 @@ check_rule platform platform "$BASELINE_PLATFORM"
 
 echo
 [ "$unassigned" = 0 ] || { echo "depcheck: $unassigned file(s) in no zone -- move them into a zone directory"; rc=1; }
+[ "$ambiguous" = 0 ] || { echo "depcheck: $ambiguous stem(s) in more than one zone -- rename one, or every zone gate classifies it by whichever git lists first"; rc=1; }
 [ "$rc" = 0 ] && echo "depcheck: clean" || echo "depcheck: FINDINGS"
 exit "$rc"
