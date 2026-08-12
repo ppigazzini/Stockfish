@@ -127,7 +127,7 @@ Engine::ArenaInstallerTag::ArenaInstallerTag() {
     set_output_sink({host_line, dbg_print});
     Tablebases::set_tb_source({nullptr, tb_max_cardinality, tb_probe_wdl, tb_rank_root});
     set_arena({aligned_large_pages_alloc, aligned_large_pages_alloc_with_hint,
-               aligned_large_pages_free});
+               aligned_large_pages_free, HugePageSize});
 }
 
 Engine::Engine(std::optional<std::filesystem::path> path) :
