@@ -213,6 +213,14 @@ struct ContinuationHistoryBlock {
     ContinuationHistory table[2][2];
 };
 
+// Which shared-history bank a worker draws from.
+//
+// The HOST decides the grouping -- today one bank per NUMA node -- and the
+// engine only has to name the group it was put in. So this is an index into the
+// engine's own map, not a handle on the host's topology: a worker never asks
+// what a NUMA node is, and nothing here can be used to find out.
+using HistoryBankIndex = usize;
+
 // Set of histories shared between groups of threads. To avoid excessive
 // cross-node data transfer, histories are shared only between threads
 // on a given NUMA node. The passed thread count must be a power of two: both
