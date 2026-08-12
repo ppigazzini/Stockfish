@@ -397,6 +397,43 @@ grows; there is no other mechanism.
 broken build makes the break the expected output. Update only from a tree whose signature
 matches the commit record, and put the diff in the commit body.
 
+## `tests/anchor.sh`
+
+Holds the commit record to a shape the architecture lanes can read.
+
+```sh
+./tests/anchor.sh
+```
+
+`AGENTS.md` states the rule as *"the `Bench:` in the most recent commit body that carries one"*.
+Two things must hold for that sentence to be operable, and neither was checked.
+
+**There must be one, and it can be far back.** A branch that stacks non-functional commits on
+upstream puts the newest footer arbitrarily deep -- 180 commits, at the time this was written --
+so a reader with a fixed walk depth eventually finds nothing.
+
+**Nothing else may look like one.** The regex upstream's pre-push hook uses,
+`[Bb]ench[ :]+[0-9]{6,8}`, matches a run of spaces between the word and the number. So an
+**evidence row** inside a body -- `  bench      2829394`, a gate result quoted in a commit
+message -- is indistinguishable from a footer to anything scanning line by line. The lanes read
+one such row as the anchor and every architecture job failed against a value that was true when
+written and went stale at a rebase, while the engine benched correctly throughout.
+
+The reader in `tests.yml`, `arm_compilation.yml`, `wasm_compilation.yml` and
+`universal_compilation.yml` is now one `git log --format=%b` with `^Bench: <n>$` anchored --
+what the rule says, what AGENTS.md's own command does, and 0.1 s over the whole history rather
+than a depth that rots with every commit added.
+
+`tests/anchor.baseline` carries the bodies that predate the check, with the reason. It expires in
+both directions and currently ships EMPTY: the one body that read as a footer was reworded when
+this history was rewritten to move the ipa-icf flag, so nothing needs excusing. An unpushed commit
+costs nothing to reword, so a new entry is a finding rather than an exemption.
+
+The offender half cannot be driven from the tree -- `tests/negative_control.sh` mutates files and
+restores them, and a commit body is neither -- so `ANCHOR_EXTRA_BODY` names a file the body scan
+reads as one more commit. It can only ADD an offender, never drop one, so it cannot be used to
+quiet the gate.
+
 ## `tests/actionpins.sh`
 
 Holds every third-party GitHub Action to a commit, a stated version, and one version.
