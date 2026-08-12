@@ -53,6 +53,7 @@
 #include "../src/engine/nnue/nnue_misc.h"
 #include "../src/engine/position.h"
 #include "../src/engine/search_go.h"
+#include "../src/engine/worker_set.h"
 #include "../src/engine/types.h"
 
 using namespace Stockfish;
@@ -108,6 +109,58 @@ int check_hash_domain() {
     return 0;
 }
 
+// The one seam default that cannot honestly degrade, asked what it does when
+// something requests two.
+//
+// Every other default here answers the same question more slowly: the arena
+// falls back to plain aligned allocation, the parallel-for runs the work
+// inline, the clock reads std::chrono. The worker set cannot. FEWER WORKERS IS
+// A DIFFERENT ANSWER, not a slower one, so its default must REFUSE rather than
+// pretend -- report no workers and let the caller cope, instead of reporting
+// one it does not have.
+//
+// That refusal has to be consistent across all six accessors, because the
+// search reads them in combination: it takes count() and then indexes at() up
+// to it, and sums nodes_searched() and tb_hits() over the same set. A default
+// that reported one worker and handed back nullptr, or zero workers and a
+// non-zero node count, would be a different kind of wrong at each call site.
+// Only `count() == 0` is checked anywhere today, at search.cpp's best_worker
+// guard, and that is one reading of one call site rather than a stated
+// contract.
+//
+// WHAT THIS DOES NOT COVER, stated so the next reader does not think it does: a
+// headless run with two workers ACTUALLY REGISTERED. That needs concurrency,
+// not a bigger assertion -- a non-main worker ignores the depth cap
+// (search.cpp:430 tests `mainThread`) and is terminated by the main worker's
+// stopFlag after it finishes, so a set whose start_searching runs one inline
+// never returns. See D2 in __DEV/00-ISSUES.md.
+int check_worker_set_default() {
+    const WorkerSet& ws = worker_set();
+
+    if (ws.count(ws.ctx) != 0)
+        return fail("the default worker set reports " + std::to_string(ws.count(ws.ctx))
+                    + " workers it does not have");
+
+    // Indexed past a count of zero on purpose: the search only indexes below
+    // count(), so this asks whether the default refuses OUT of contract too,
+    // which is what a host getting the registration wrong would do.
+    for (usize i = 0; i < 4; ++i)
+        if (ws.at(ws.ctx, i) != nullptr)
+            return fail("the default worker set handed back a worker at index "
+                        + std::to_string(i));
+
+    if (ws.nodes_searched(ws.ctx) != 0 || ws.tb_hits(ws.ctx) != 0)
+        return fail("the default worker set counted nodes or tb hits for workers it has none of");
+
+    // The two that must be reachable and do nothing. A default that faulted
+    // here would take down every headless caller.
+    ws.start_searching(ws.ctx);
+    ws.wait_for_search_finished(ws.ctx);
+
+    std::cout << "  worker set: the default refuses, consistently, across all six accessors\n";
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -119,6 +172,9 @@ int main(int argc, char** argv) {
         return fail("no such directory: " + netDir.string());
 
     if (const int rc = check_hash_domain(); rc != 0)
+        return rc;
+
+    if (const int rc = check_worker_set_default(); rc != 0)
         return rc;
 
     // Startup, engine-side only. shell/main.cpp calls exactly these two before
