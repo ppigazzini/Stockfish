@@ -33,7 +33,6 @@
 
 #include "bitboard.h"
 #include "history.h"
-#include "../platform/misc.h"
 #include "movegen.h"
 #include "basetypes.h"
 #include "../platform/platform.h"

@@ -20,6 +20,7 @@
 #define BASETYPES_H_INCLUDED
 
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -240,6 +241,99 @@ using PawnKey     = TypedKey<KeySpace::Pawn>;
 using MinorKey    = TypedKey<KeySpace::MinorPiece>;
 using MaterialKey = TypedKey<KeySpace::Material>;
 using NonPawnKey  = TypedKey<KeySpace::NonPawn>;
+
+
+// Wrapper around std::atomic<T> which uses relaxed accesses or plain
+// accesses, depending on the config. Intended use is e.g. wasm where
+// the overhead of atomic instructions can be significant, and we only
+// require non-tearing for the updates, while ensuring we use relaxed
+// accesses otherwise.
+template<typename T>
+class RelaxedAtomic {
+    static constexpr bool UseAtomic =
+#ifdef USE_SLOPPY_ATOMICS
+      !std::atomic<T>::is_always_lock_free || sizeof(T) > sizeof(usize);
+#else
+      true;
+#endif
+
+   public:
+    RelaxedAtomic() = default;
+    RelaxedAtomic(T val) :
+        inner(val) {}
+    RelaxedAtomic(const RelaxedAtomic& a) :
+        inner(static_cast<T>(a)) {}
+
+    T operator=(T val) {
+        this->store(val, std::memory_order_relaxed);
+        return val;
+    }
+
+    RelaxedAtomic& operator=(const RelaxedAtomic& a) {
+        this->store(static_cast<T>(a), std::memory_order_relaxed);
+        return *this;
+    }
+
+    operator T() const { return this->load(std::memory_order_relaxed); }
+
+    RelaxedAtomic& operator+=(T val) {
+        this->store(this->load(std::memory_order_relaxed) + val, std::memory_order_relaxed);
+        return *this;
+    }
+
+    RelaxedAtomic& operator++() { return *this += 1; }
+
+    RelaxedAtomic& operator--() { return *this -= 1; }
+
+    T operator++(int) {
+        T val = this->load(std::memory_order_relaxed);
+        this->store(val + 1, std::memory_order_relaxed);
+        return val;
+    }
+
+    T operator--(int) {
+        T val = this->load(std::memory_order_relaxed);
+        this->store(val - 1, std::memory_order_relaxed);
+        return val;
+    }
+
+    RelaxedAtomic& operator-=(T val) {
+        this->store(this->load(std::memory_order_relaxed) - val, std::memory_order_relaxed);
+        return *this;
+    }
+
+    T load(std::memory_order order) const {
+        assert(order == std::memory_order_relaxed);
+        if constexpr (UseAtomic)
+            return inner.load(order);
+        else
+            return inner;
+    }
+
+    void store(T val, std::memory_order order) {
+        assert(order == std::memory_order_relaxed);
+        if constexpr (UseAtomic)
+            inner.store(val, order);
+        else
+            inner = val;
+    }
+
+   private:
+    std::conditional_t<UseAtomic, std::atomic<T>, T> inner;
+};
+
+inline usize mul_hi64(u64 a, usize b) {
+#if defined(__GNUC__) && defined(IS_64BIT) && !defined(__wasm__)
+    return (u128(a) * u128(b)) >> 64;
+#else
+    u64 aL = u32(a), aH = a >> 32;
+    u64 bL = u32(b), bH = u64(b) >> 32;
+    u64 c1 = (aL * bL) >> 32;
+    u64 c2 = aH * bL + c1;
+    u64 c3 = aL * bH + u32(c2);
+    return aH * bH + (c2 >> 32) + (c3 >> 32);
+#endif
+}
 
 }  // namespace Stockfish
 

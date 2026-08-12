@@ -24,7 +24,6 @@
 #include <initializer_list>
 #include <utility>
 
-#include "../platform/misc.h"
 #include "basetypes.h"  // DualMagic's rankAttacksLookup is a u8*
 #include "types.h"
 // Kept: RESTRICT, used below by DualMagic, expands to the __restrict__ KEYWORD.

@@ -27,7 +27,6 @@
     #include "../../basetypes.h"
     #include "../../bitboard.h"
 #endif
-#include "../../../platform/misc.h"
 #include "../../position.h"
 #include "../../types.h"
 #include "../nnue_common.h"
