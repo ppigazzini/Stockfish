@@ -41,9 +41,37 @@ jobs:
       - name: Check include-what-you-use
         run: include-what-you-use --version
 
+      # EXTRACXXFLAGS, NOT CXXFLAGS, and a NAMED ARCH.
+      #
+      # A `CXXFLAGS=` on the make command line REPLACES the Makefile's own
+      # assignment, and that assignment is where every architecture define
+      # lives. Passing the IWYU flags that way produced compile lines carrying
+      # no -DUSE_AVX2, no -DUSE_AVX512ICL, no -DIS_64BIT and no -DARCH: the lane
+      # checked a configuration nobody builds, and every `#if defined(USE_...)`
+      # block in the tree -- the AVX-512 move splat, the feature transformer's
+      # SIMD paths, the accumulator -- sat inside an `#if` it never entered.
+      # Ten files had findings the moment the defines came back.
+      #
+      # EXTRACXXFLAGS is interpolated INTO CXXFLAGS instead, so the arch flags
+      # survive. The Makefile appends -flto after it, which IWYU ignores.
+      #
+      # THREE TIERS, because the include set of a file with `#if` in it is a
+      # property of the tier and not of the file. Three is what it takes to
+      # reach every branch this tree has: the generic scalar path, the SSE/AVX2
+      # path, and the AVX-512 one. `ARCH=native` would name none of them and
+      # would make the lane's answer depend on the runner it landed on.
+      #
+      # One job rather than a matrix: building IWYU from source is the expensive
+      # step and it is paid once. `make analyze` runs objclean first, so the
+      # tiers do not see each other's objects.
       - name: Check includes
-        run: >
-          make analyze
-          COMP=clang
-          CXX=include-what-you-use
-          CXXFLAGS="-stdlib=libc++ -Xiwyu --comment_style=long -Xiwyu --mapping='${{ github.workspace }}/Stockfish/.github/ci/libcxx17.imp' -Xiwyu --error"
+        run: |
+          for arch in x86-64 x86-64-avx2 x86-64-avx512icl; do
+            echo "::group::include-what-you-use $arch"
+            make analyze \
+              ARCH=$arch \
+              COMP=clang \
+              CXX=include-what-you-use \
+              EXTRACXXFLAGS="-stdlib=libc++ -Xiwyu --comment_style=long -Xiwyu --mapping='${{ github.workspace }}/Stockfish/.github/ci/libcxx17.imp' -Xiwyu --error"
+            echo "::endgroup::"
+          done
