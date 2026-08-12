@@ -397,6 +397,35 @@ grows; there is no other mechanism.
 broken build makes the break the expected output. Update only from a tree whose signature
 matches the commit record, and put the diff in the commit body.
 
+## `tests/actionpins.sh`
+
+Holds every third-party GitHub Action to a commit, a stated version, and one version.
+
+```sh
+./tests/actionpins.sh            # the three gated properties
+./tests/actionpins.sh --latest   # and report which pins are behind a release
+```
+
+Three properties, and only the last needs the network:
+
+- **pinned to a SHA**, not a tag or a branch. A tag is mutable by whoever owns the action, so
+  `@v4` means "run whatever they publish next" on a runner holding this repository's token;
+- **carrying its version** in a trailing comment. A bare 40-hex string is unreadable, so nobody
+  can see a pin has gone stale;
+- **one action, one version** across the tree. This is the one that needs no network and no
+  release feed, and it is the one that was missing: `actions/cache` sat at v4.2.0 in one workflow
+  and v6.1.0 in two others, and the tree said nothing. It surfaced as a Node 20 deprecation
+  warning on a runner -- a message from GitHub about their schedule rather than a check of ours.
+
+**Being the latest release is deliberately not gated.** It is true until the action's next
+release and false afterwards through no change here, so gating it reddens the lane on someone
+else's schedule. `--latest` reports it for a human to act on. Nothing in this repository keeps
+pins current automatically; there is no dependabot configuration, and adding one is a decision
+about repository-wide automation rather than about a gate.
+
+The network half -- that a pin's SHA really is the release its comment claims -- skips loudly
+without an authenticated `gh`, and says so rather than folding into the pass.
+
 ## `tests/optiondefaults.sh`
 
 Asserts that the engine's own option defaults equal the UCI ones the shell registers.
