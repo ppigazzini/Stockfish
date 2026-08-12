@@ -46,8 +46,6 @@
 #include "nnue/network.h"
 #include "nnue/nnue_accumulator.h"
 #include "position.h"
-#include "../platform/syzygy/tbprobe.h"
-#include "../platform/thread.h"
 #include "timeman.h"
 #include "tt.h"
 #include "types.h"
