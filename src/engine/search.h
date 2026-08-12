@@ -32,7 +32,6 @@
 #include <cstring>
 
 #include "history.h"
-#include "../platform/misc.h"
 #include "nnue/nnue_accumulator.h"
 #include "../platform/numa.h"
 #include "position.h"

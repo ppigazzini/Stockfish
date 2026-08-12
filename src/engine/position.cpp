@@ -33,7 +33,7 @@
 
 #include "bitboard.h"
 #include "history.h"
-#include "../platform/misc.h"
+#include "prng.h"
 #include "movegen.h"
 #include "tt.h"
 #include "basetypes.h"

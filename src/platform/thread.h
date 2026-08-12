@@ -27,7 +27,6 @@
 #include <vector>
 
 #include "memory.h"
-#include "misc.h"
 #include "numa.h"
 #include "../engine/position.h"
 #include "../engine/search.h"
