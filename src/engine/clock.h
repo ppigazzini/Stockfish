@@ -39,15 +39,23 @@ static_assert(sizeof(TimePoint) == sizeof(i64), "TimePoint should be 64 bits");
 // tests/linkcheck.sh nor tests/enginelink.sh can see an engine file that reads
 // one directly. Keep the readers pointed at now() below by hand.
 //
-// One reader is deliberately outside, and this type is why. TimePoint counts
-// whole milliseconds, while syzygy_extend_pv's time_abort compares against
-// `Move Overhead`, whose range starts at 0: at millisecond resolution
-// `2 * 0 > 0` is false, so the budget would run a further millisecond past the
-// deadline it exists to enforce. That reader takes std::chrono::steady_clock
-// directly and so ignores a substituted clock -- a replay harness gets a
-// deterministic search and a wall-clock tablebase extension. Closing it means
-// giving this seam a sub-millisecond reading, which changes the type the whole
-// of time management is written in.
+// THE SEAM READS MICROSECONDS AND now() IS A QUOTIENT OF IT. Every reader used
+// to go through a whole-millisecond now(), except one that could not:
+// syzygy_extend_pv's time_abort compares against `Move Overhead`, whose range
+// starts at 0, and at millisecond resolution `2 * 0 > 0` is false -- so the
+// budget ran a further millisecond past the deadline it exists to enforce.
+// That reader took std::chrono::steady_clock directly and ignored a
+// substituted clock, which gave a replay harness a deterministic search and a
+// wall-clock tablebase extension.
+//
+// Widening TimePoint would have been the other way to close it, and it is a
+// functional change to every constant time management owns. This is not: the
+// fine reading is the source of truth and the coarse one is derived from it, so
+// TimePoint keeps its meaning, every existing caller keeps its behaviour, and
+// the two clocks stop being unrelated quantities that happen to agree.
+//
+// A host substitutes ONE function and both views move together. That is the
+// property the old shape could not offer at any price.
 //
 // The cadence is what makes an indirect call affordable, and NO READER IS ON
 // THE PER-NODE PATH. The hottest is TimeManagement::elapsed_time, reached from
@@ -64,12 +72,18 @@ static_assert(sizeof(TimePoint) == sizeof(i64), "TimePoint should be 64 bits");
 // every search believe no time had passed, which is a wrong answer dressed as a
 // working one.
 struct Clock {
-    TimePoint (*now)();
+    i64 (*now_us)();
 };
 
 const Clock& clock_source();
 void         set_clock_source(const Clock& c);
 
+// Microseconds since the steady clock's epoch. The only reader that needs this
+// is the tablebase PV extension, whose budget is a fraction of `Move Overhead`.
+i64 now_us();
+
+// Milliseconds, the type time management is written in. A truncation of the
+// above, so a substituted clock reaches both.
 TimePoint now();
 
 }  // namespace Stockfish
