@@ -721,6 +721,74 @@ if selected buildcoverage-collision; then
     rm -f src/platform/score.cpp
 fi
 
+row optiondefaults
+if selected optiondefaults; then
+    # The failure the header of searchoptions.h names and nothing held: a default
+    # that drifts makes an unhosted search run with different parameters from the
+    # UCI engine, and BOTH still produce a plausible number. The bench runs
+    # hosted so it reads the UCI side; enginelink runs unhosted so it reads the
+    # struct, and asserts only that the node count is non-zero.
+    echo "negative-control: optiondef   -- Move Overhead drifted from its option"
+    mutate src/engine/searchoptions.h \
+        'int         moveOverhead     = 10;' \
+        'int         moveOverhead     = 11;'
+    if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
+        if ./tests/optiondefaults.sh >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- a drifted default passed"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+        # And the inverse, which is the whole argument for the gate: every other
+        # check stays GREEN on the same tree. The bench reads the UCI side, so the
+        # signature does not move.
+        REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+        if [ -n "$REF" ] && ( cd src && ../tests/signature.sh "$REF" ) >/dev/null 2>&1; then
+            echo "  signature green on the same tree, as expected -- the bench runs hosted"
+        else
+            echo "  NOTE: the signature moved too; this mutation is not purely unhosted"
+        fi
+    else
+        restore; die "the optiondefaults mutant did not compile"
+    fi
+    restore
+fi
+
+row optiondefaults-unmapped static
+if selected optiondefaults-unmapped; then
+    # A field no option fills. The engine reads it and no host ever sets it, so it
+    # is the same drift arriving before either side has a value to disagree about.
+    # No rebuild: the check reads the header, and the running engine is only asked
+    # about options that ARE mapped.
+    echo "negative-control: optiondef   -- a SearchOptions field no option fills"
+    mutate src/engine/searchoptions.h \
+        '    bool        ponder           = false;' \
+        '    bool        ponder           = false;
+    int         nc_unfilled      = 7;'
+    if ./tests/optiondefaults.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- an unmapped field passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
+row optiondefaults-rig static
+if selected optiondefaults-rig; then
+    # The rig's own third failure: a parser that stops matching compares nothing
+    # and reports clean. Rename the mapping function so the sed finds no
+    # assignments; the gate must REFUSE rather than pass an empty comparison.
+    echo "negative-control: optiondef   -- the mapping the gate reads, made unreadable"
+    mutate src/shell/engine.cpp \
+        'SearchOptions Engine::search_options() const {' \
+        'SearchOptions Engine::search_options_renamed_by_negative_control() const {'
+    if ./tests/optiondefaults.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the gate passed having compared nothing"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- type design
 
 row b5-mismatch static
