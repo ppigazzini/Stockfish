@@ -154,7 +154,8 @@ loading its own -- relevant when a test harness runs many engines at once. The h
 it, `LazyNumaReplicatedSystemWide`, is in `src/platform/numa_shared.h` rather than `numa.h`.
 `thread.h` forward-declares it and takes one by reference; only a file that owns one by value
 includes `numa_shared.h`. Put it in `numa.h` instead and shared memory would reach everything
-that includes `search.h`, which includes `numa.h` for `NumaReplicatedAccessToken`.
+that includes `search.h` -- which no longer includes `numa.h` at all, so that hazard is now one
+step further away rather than one step closer.
 
 **This is the largest platform-specific surface in the tree** and the least covered by the
 gates: the topology paths differ per OS, and `bench` exercises one thread on one node.
