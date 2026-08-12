@@ -55,6 +55,36 @@
 
 namespace Stockfish::Eval::NNUE {
 
+// Read a T out of a byte buffer. A static_assert, an alignment check and a
+// memcpy: no OS in it, so it is the engine's own primitive and not the host's.
+//
+// The alignment branch is load-bearing and is NOT a bounds check. A misaligned
+// buffer asserts and then hits __builtin_unreachable(), so an NDEBUG build
+// treats alignment as a PROMISE rather than testing it -- the network parser
+// aligns its buffers by construction. Removing the assert leaves the promise
+// with no diagnostic in a debug build either.
+//
+// Scoped to NNUE because every caller is: the three of them read weights and an
+// nnz bitset out of the network file.
+template<typename T, typename ByteT>
+T load_as(const ByteT* buffer) {
+    static_assert(std::is_trivially_copyable<T>::value, "Type must be trivially copyable");
+    static_assert(sizeof(ByteT) == 1);
+
+    if (reinterpret_cast<uintptr_t>(buffer) % alignof(T) != 0)
+    {
+        assert(false);
+#ifdef __GNUC__
+        __builtin_unreachable();
+#endif
+    }
+
+    T value;
+    std::memcpy(&value, buffer, sizeof(T));
+
+    return value;
+}
+
 using BiasType         = i16;
 using ThreatWeightType = i8;
 using WeightType       = i16;
