@@ -28,7 +28,6 @@
 #include <iostream>
 #include <type_traits>
 
-#include "../../platform/misc.h"
 #include "../../platform/platform.h"
 
 #if defined(USE_AVX2)

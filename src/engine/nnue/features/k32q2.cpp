@@ -23,7 +23,6 @@
 #include <array>
 #include <initializer_list>
 
-#include "../../../platform/misc.h"
 #include "../../types.h"
 #include "../nnue_common.h"
 
