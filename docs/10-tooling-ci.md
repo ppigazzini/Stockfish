@@ -466,15 +466,29 @@ A zone is a **directory** under `src/` (`tests/zones.sh`), so a file joins one b
 put. That is why the gate also reports **files in no zone**: a file added outside all three
 matches no rule, and without that check it would be silently exempt rather than caught.
 
-Only the engine-includes-shell edge is checked, because only that one is a defect rather than a
-choice. Platform depending on engine is the intended direction, and shell depending on both is
-what a process does.
+Both edges **out of** the engine are checked, because both are defects rather than choices: an
+engine file that includes a shell header, and one that includes a platform header. Platform
+depending on engine is the intended direction, and shell depending on both is what a process
+does, so neither of those is asked about.
 
-`tests/depcheck.baseline` carries the edges that exist, one per line, with the reason
-each is there. It **expires in both directions**: an edge missing from it fails as new, and an
-entry in it that no longer happens fails as stale. A baseline that only grows is not a debt
-register, it is a permanent excuse, and the second direction is what keeps it from becoming
-one.
+The platform rule exists because `linkcheck.sh` cannot see that class. It reasons about symbols
+an object leaves undefined, and a dependency a header carries leaves none -- an inline function,
+a class used only as a member, a `constexpr` that folds. Both `linkcheck` baselines were empty
+while nineteen engine-to-platform includes existed, and the three dependencies that mattered
+inside them were all found by reading.
+
+The include target is resolved by **basename**, through `zone_of`, and not by matching the
+include path: `zone_of` asks git which zone directory holds that stem, so it is indifferent to
+how many `../` the include carries. Files under `engine/nnue/features/` reach the same headers
+through `../../../`, and a rule anchored on `../platform/` would report two thirds of the edges
+and read as an answer. Its limit is ambiguity rather than depth -- `zone_of` takes the first
+match for a stem -- and no stem is ambiguous today.
+
+`tests/depcheck.baseline` and `tests/depcheck-platform.baseline` carry the edges that exist, one
+per line, with the reason each is there. Both **expire in both directions**: an edge missing from
+its baseline fails as new, and an entry that no longer happens fails as stale. A baseline that
+only grows is not a debt register, it is a permanent excuse, and the second direction is what
+keeps it from becoming one. The platform baseline ships empty and is meant to stay that way.
 
 One entry is not debt. `types.h -> tune.h` is deliberate -- the include sits after `types.h`'s
 own `#endif` so the SPSA macros reach anywhere `types.h` does, and removing it would make every
