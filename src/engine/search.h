@@ -36,7 +36,6 @@
 #include "../platform/numa.h"
 #include "position.h"
 #include "score.h"
-#include "../platform/syzygy/tbprobe.h"
 #include "timeman.h"
 #include "types.h"
 #include "basetypes.h"

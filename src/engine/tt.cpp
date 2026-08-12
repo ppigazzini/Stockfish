@@ -29,8 +29,6 @@
 #include <numeric>
 #include <vector>
 
-#include "../platform/syzygy/tbprobe.h"
-#include "../platform/thread.h"
 
 namespace Stockfish {
 
