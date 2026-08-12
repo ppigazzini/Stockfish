@@ -224,25 +224,29 @@ binary, which carries its stamp.
 
 A green run narrows what `perfbudget.sh` has to catch. It does not replace it.
 
-**It counts trailing alignment padding as a changed body**, which is the one way it reports a
-difference that is not codegen. Removing a function shifts what follows it against a 16-byte
-boundary, so the `nop` run at the end of an unrelated symbol changes length and the symbol is
-listed as changed. Seen on a commit that deleted five unused includes: two symbols reported
-changed, in files that commit did not touch, with three `cs nopw` becoming one `nopl` in one and
-one becoming four in the other, and no instruction different in either.
+**The trailing run of alignment padding is dropped from each symbol**, and the word trailing is
+load-bearing. objdump attributes the nops that align the NEXT function to the end of the current
+one, so adding or removing a function anywhere shifts what follows it against a 16-byte boundary
+and changes that run's length in symbols the change never touched. Without this the gate reported
+two changed bodies for a commit that deleted five unused includes -- three `cs nopw` becoming one
+`nopl` in one symbol, one becoming four in another, no instruction different in either, and
+neither file touched.
 
-So a DIFFERS verdict is worth ten minutes before it is worth an argument. `--keep` retains the
-normalised listings, and a per-symbol diff separates padding from code:
+A nop in the MIDDLE of a body is not padding: it is branch-target alignment the compiler chose to
+emit, and dropping those would hide a real codegen change. So the run is peeled from the end and
+stops at the first instruction that is not a filler.
+
+The instruction totals this gate prints therefore exclude padding, and are a few thousand lower
+than a raw disassembly count for that reason.
+
+When a verdict still says DIFFERS, `--keep` retains the normalised listings and a per-symbol diff
+says which symbol and which instruction:
 
 ```sh
 ./tests/textequal.sh --comp gcc --keep <base> <head>
 cd <kept dir> && diff <(grep '^<mangled>	' base.txt | cut -f2-) \
                       <(grep '^<mangled>	' head.txt | cut -f2-)
 ```
-
-A false positive is the cheaper direction for this gate to fail in -- it has never called a real
-codegen change identical -- and it still costs its reader the time to rule out the expensive
-direction by hand.
 
 ### `tests/npsab.sh`
 
