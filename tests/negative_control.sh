@@ -673,6 +673,54 @@ search.h -> numa.h'
     restore
 fi
 
+row zone-ambiguous static
+if selected zone-ambiguous; then
+    # A stem in two zones. zone_of resolves a basename, so it would classify the
+    # pair by whichever git lists first and every zone gate would then agree on
+    # the wrong answer -- which is what the one-definition rule in zones.sh exists
+    # to prevent, arriving through the resolver rather than through a second copy.
+    #
+    # A HEADER pair, deliberately: it breaks classification without breaking the
+    # build, so this row and the buildcoverage one below are not the same check
+    # wearing two names.
+    echo "negative-control: depcheck    -- one stem naming two zones"
+    # `git add -N`, because every check here iterates `git ls-files`: an
+    # untracked copy is invisible to the gate and the row would report NOT
+    # DETECTED for a mutation that never reached it.
+    cp src/engine/score.h src/platform/score.h
+    git add -N src/platform/score.h >/dev/null 2>&1
+    out=$(./tests/depcheck.sh 2>&1); drc=$?
+    if [ "$drc" = 0 ]; then
+        echo "  NOT DETECTED -- an ambiguous stem passed"; FAIL=$((FAIL+1))
+    elif ! printf '%s' "$out" | grep -q 'AMBIGUOUS   score'; then
+        echo "  NOT DETECTED -- red, but not for the ambiguity"; FAIL=$((FAIL+1))
+    elif ./tests/buildcoverage.sh >/dev/null 2>&1; then
+        echo "  ok, red (1) on depcheck, buildcoverage green -- a header, so no object collides"
+        PASS=$((PASS+1))
+    else
+        echo "  NOT DETECTED -- buildcoverage also reddened; the two checks are one"; FAIL=$((FAIL+1))
+    fi
+    git rm -q --cached src/platform/score.h >/dev/null 2>&1
+    rm -f src/platform/score.h
+fi
+
+row buildcoverage-collision static
+if selected buildcoverage-collision; then
+    # The other half. Two SOURCES with one basename compete for one object,
+    # because OBJS flattens with notdir, so one of them is never compiled -- and
+    # the covered-by-the-build loop finds both named by SRCS and reports clean.
+    echo "negative-control: buildcoverage -- two sources competing for one object"
+    cp src/engine/score.cpp src/platform/score.cpp
+    git add -N src/platform/score.cpp >/dev/null 2>&1
+    if ./tests/buildcoverage.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a colliding object name passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    git rm -q --cached src/platform/score.cpp >/dev/null 2>&1
+    rm -f src/platform/score.cpp
+fi
+
 # --------------------------------------------------------------- type design
 
 row b5-mismatch static

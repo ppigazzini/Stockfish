@@ -535,8 +535,21 @@ The include target is resolved by **basename**, through `zone_of`, and not by ma
 include path: `zone_of` asks git which zone directory holds that stem, so it is indifferent to
 how many `../` the include carries. Files under `engine/nnue/features/` reach the same headers
 through `../../../`, and a rule anchored on `../platform/` would report two thirds of the edges
-and read as an answer. Its limit is ambiguity rather than depth -- `zone_of` takes the first
-match for a stem -- and no stem is ambiguous today.
+and read as an answer.
+
+**A stem naming two zones is refused, not resolved.** `zone_of` returns `ambiguous`, and every
+caller compares against a zone name -- so an ambiguous stem matches none of them and would be
+silently exempt. That is a property of the tree rather than of one lookup, so the gate asserts it
+once for every tracked source and header, and the other three callers can then never meet one on
+a green tree.
+
+`tests/buildcoverage.sh` asserts the other half, and the two are separate because they fail
+differently. Two same-named **sources** also break the build: `OBJS = $(notdir $(SRCS:.cpp=.o))`
+flattens every object into one name space and `VPATH` is flat, so the pair competes for one `.o`
+and one of them is never compiled -- while the covered-by-the-build loop finds both named by
+`SRCS` and reports clean. Two same-named **headers** break classification and not the build.
+`negative_control.sh zone-ambiguous` plants a header pair and asserts `depcheck` red with
+`buildcoverage` green, which is what makes them two checks rather than one restated.
 
 `tests/depcheck.baseline` and `tests/depcheck-platform.baseline` carry the edges that exist, one
 per line, with the reason each is there. Both **expire in both directions**: an edge missing from
