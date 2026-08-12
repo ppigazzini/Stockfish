@@ -47,8 +47,9 @@
 #include <unistd.h>
 #include <limits.h>
 
+// align_ptr_up, for the 2 MiB-aligned shared mapping below. The drawer this
+// commit cuts out is misc.h; memory.h is this zone's own and is a real use.
 #include "memory.h"
-#include "misc.h"
 #include "thread_native.h"
 #include "../engine/hashing.h"
 

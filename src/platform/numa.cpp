@@ -17,7 +17,7 @@
 */
 
 #include "numa.h"
-#include "misc.h"
+#include "text.h"
 #include "../engine/basetypes.h"
 
 #include <cstdlib>
