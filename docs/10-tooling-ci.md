@@ -397,6 +397,40 @@ grows; there is no other mechanism.
 broken build makes the break the expected output. Update only from a tree whose signature
 matches the commit record, and put the diff in the commit body.
 
+## `tests/optiondefaults.sh`
+
+Asserts that the engine's own option defaults equal the UCI ones the shell registers.
+
+```sh
+./tests/optiondefaults.sh            # or: ./tests/optiondefaults.sh path/to/stockfish
+```
+
+`engine/searchoptions.h` is a **value** the shell fills before a search, which is what lets the
+engine be driven with no option model behind it. Its header states the invariant and names the
+failure: a default that drifts makes an unhosted search run with different parameters from the
+UCI engine, **and both still produce a plausible number**.
+
+Nothing held them there, and that is the expensive class -- no other gate sees it. The bench runs
+hosted, so it reads the UCI side; `enginelink.sh` runs unhosted, so it reads the struct, and it
+asserts only that the node count is non-zero and never a value, because a node count is
+`signature.sh`'s claim. So a drifted default moves the numbers a gate prints while every gate
+stays green. `negative_control.sh optiondefaults` demonstrates exactly that: the mutation reddens
+this gate and leaves the bench signature where it was.
+
+**The mapping is not restated here.** `Engine::search_options()` already assigns each field from
+its option, so the gate reads the mapping out of that function. A copy in a third place is a copy
+of a fact two files already disagree about.
+
+**The UCI side comes from the running engine**, not from parsing `options.add()`. Those calls take
+four different `Option` shapes and one default is a named constant, so a parser would have to
+resolve C++ to answer; the engine prints what it registered, which is the fact in question.
+
+Three ways it refuses rather than reporting a pass: a field in `SearchOptions` that no option
+fills, a mapping it cannot read out of the shell, and a comparison that compared nothing. It does
+not check options the engine has no field for -- `Hash`, `EvalFile`, `SyzygyPath`,
+`UCI_Chess960`, `Debug Log File` -- because those are the shell's alone and have no second copy
+to drift against.
+
 ## `tests/negative_control.sh`
 
 Breaks the engine on purpose and requires each gate to notice.

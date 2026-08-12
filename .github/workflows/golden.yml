@@ -16,6 +16,13 @@ jobs:
         working-directory: src
         run: make -j build ARCH=x86-64-avx2
 
+      # Here because it needs a built engine and this lane already has one. It
+      # asks the engine what defaults it registered rather than parsing the four
+      # Option shapes options.add() is written in, one of whose defaults is a
+      # named constant -- so a parser would have to resolve C++ to answer.
+      - name: Engine and UCI option defaults agree
+        run: ./tests/optiondefaults.sh
+
       # The `tablebase` case loads real tables, because the two rows it pins --
       # `Tablebases WDL:` and `Tablebases DTZ:` in the `d` board -- exist only
       # when tables are loaded. Without the corpus that case SKIPS, and a lane
