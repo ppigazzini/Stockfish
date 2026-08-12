@@ -30,8 +30,6 @@
 #include <vector>
 
 #include "bitboard.h"
-#include "../platform/syzygy/tbprobe.h"
-#include "../platform/thread.h"
 
 namespace Stockfish {
 

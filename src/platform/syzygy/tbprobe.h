@@ -21,21 +21,25 @@
 
 #include <functional>
 #include <string>
-#include <vector>
 
 
 #include "../../engine/tb_source.h"
+
+// engine/search.h, not a forward declaration of Search::RootMove. The prototypes
+// below take Search::RootMoves&, and the include lane reports the declaration as
+// insufficient at all three tiers.
+//
+// It is a heavier include than a forward declaration and it is now a legal one.
+// search.h used to include this header, so the two could not point at each other;
+// that edge is gone, so platform may reach engine here the way the stack says it
+// may. The three files that include tbprobe.h all include search.h already.
+#include "../../engine/search.h"
 
 namespace Stockfish {
 class Position;
 struct SearchOptions;
 
 using Depth = int;
-
-namespace Search {
-struct RootMove;
-using RootMoves = std::vector<RootMove>;
-}
 }
 
 namespace Stockfish::Tablebases {
