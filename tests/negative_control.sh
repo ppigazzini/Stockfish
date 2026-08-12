@@ -789,6 +789,43 @@ if selected optiondefaults-rig; then
     restore
 fi
 
+row actionpins static
+if selected actionpins; then
+    # The defect this gate was written for, replayed: actions/cache pinned at
+    # v4.2.0 in one workflow and v6.1.0 in two others. Nothing in the tree said
+    # so, and it surfaced as a Node 20 deprecation warning on a runner -- which
+    # is a message from GitHub about their schedule, not a check of ours.
+    #
+    # No network needed for this row. The split is visible in the files.
+    echo "negative-control: actionpins  -- one action pinned at two versions"
+    mutate .github/workflows/golden.yml \
+        'uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0' \
+        'uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0'
+    if ./tests/actionpins.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a split pin passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
+row actionpins-mutable static
+if selected actionpins-mutable; then
+    # A tag rather than a commit. `@v7` is "run whatever they publish next" on a
+    # runner holding this repository's token, so this is the supply-chain half
+    # rather than the freshness half.
+    echo "negative-control: actionpins  -- an action pinned to a mutable tag"
+    mutate .github/workflows/golden.yml \
+        'uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' \
+        'uses: actions/checkout@v7'
+    if ./tests/actionpins.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a tag pin passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- type design
 
 row b5-mismatch static
