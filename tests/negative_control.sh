@@ -592,6 +592,51 @@ movegen.cpp -> uci.h'
     restore
 fi
 
+row depcheck-platform
+if selected depcheck-platform; then
+    # The rule linkcheck cannot replace. A header-carried dependency leaves no
+    # undefined symbol, so both linkcheck baselines read empty while nineteen of
+    # these edges existed. Mutate at THREE levels deep: a rule anchored on
+    # `../platform/` rather than resolving the stem would pass this.
+    echo "negative-control: depcheck    -- an engine file reaching into the platform"
+    mutate src/engine/nnue/nnue_common.h \
+        '#include "../compiler.h"' \
+        '#include "../compiler.h"
+#include "../../platform/memory.h"'
+    out=$(./tests/depcheck.sh 2>&1); drc=$?
+    if [ "$drc" = 0 ]; then
+        echo "  NOT DETECTED -- a new engine -> platform edge passed"; FAIL=$((FAIL+1))
+    elif ! printf '%s' "$out" | grep -q 'NEW      nnue_common.h -> memory.h'; then
+        echo "  NOT DETECTED -- red, but the platform rule did not name the edge"; FAIL=$((FAIL+1))
+    elif printf '%s' "$out" | sed -n '/new shell violations/,/^$/p' | grep -q 'NEW'; then
+        # Both halves, the way the buildcoverage row does it. A single rule that
+        # reddens for either zone is one check wearing two names, and it would
+        # report a platform edge as a shell edge.
+        echo "  NOT DETECTED -- the SHELL rule also reddened; the two rules are one"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1) on the platform rule, shell rule still green"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
+row depcheck-platform-stale
+if selected depcheck-platform-stale; then
+    # The platform baseline expires in both directions too. It ships empty, so the
+    # only way to go stale is to add an entry describing an edge that does not
+    # happen -- which is exactly how an empty baseline would start growing.
+    echo "negative-control: depcheck    -- a platform baseline entry that no longer happens"
+    mutate tests/depcheck-platform.baseline \
+        '# rather than joining a list.' \
+        '# rather than joining a list.
+search.h -> numa.h'
+    if ./tests/depcheck.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a stale platform baseline entry passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- type design
 
 row b5-mismatch
