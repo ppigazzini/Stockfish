@@ -135,14 +135,20 @@ A file's zone is **its directory**, so a new file joins a zone by where it is pu
 a directory the mapping does not name resolves to `unassigned` -- reported by both checks
 rather than silently exempt. `tests/zones.sh` holds the mapping and both checks read it.
 
-**At the include level one edge is checked, because only one is a defect rather than a choice**:
-an engine file that includes a shell header. `./tests/depcheck.sh` reads includes and
-`tests/depcheck.baseline` lists what exists -- one entry, `types.h -> tune.h`, which is
-deliberate rather than debt. `./tests/linkcheck.sh` asks the same question of symbols, and it
-asks it twice: `tests/linkcheck.baseline` for the engine-to-shell edge and
-`tests/linkcheck-platform.baseline` for the engine-to-platform one. A baseline expires in both
-directions -- an entry describing an edge that no longer happens fails too, so a fixed edge
-cannot quietly stay listed as debt.
+**Both edges out of the engine are checked at the include and again at the symbol**, and the
+four baselines are read together. `./tests/depcheck.sh` reads `#include` lines against
+`tests/depcheck.baseline` for the engine-to-shell edge -- one entry, `types.h -> tune.h`, which
+is deliberate rather than debt -- and `tests/depcheck-platform.baseline` for the
+engine-to-platform one, which is empty. `./tests/linkcheck.sh` asks the same two questions of
+symbols, against `tests/linkcheck.baseline` and `tests/linkcheck-platform.baseline`, both empty.
+A baseline expires in both directions -- an entry describing an edge that no longer happens fails
+too, so a fixed edge cannot quietly stay listed as debt.
+
+**The include check is not a weaker restatement of the link check.** `linkcheck` reasons about
+symbols an object leaves undefined, and a dependency a header carries leaves none: an inline
+function, a class used only as a member, a `constexpr` that folds. Three of those were found by
+reading rather than by a gate -- the clock, `HugePageSize`, and the worker's NUMA token -- while
+both `linkcheck` baselines read empty. `depcheck`'s platform rule is what reports that class.
 
 **Both symbol baselines are empty**, so no engine object references a shell-defined or a
 platform-defined symbol. That is a weaker statement than it sounds: `linkcheck.sh` intersects

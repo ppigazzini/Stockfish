@@ -35,5 +35,6 @@ reading -- [12-writing.md](12-writing.md) is how that half is bought.
 **The zone boundary is checked, not described.** `src/` is `engine/`, `platform/` and `shell/`,
 the engine depends on neither of the others, and four gates hold that: `tests/depcheck.sh` at
 the include, `tests/linkcheck.sh` at the symbol, `tests/enginelink.sh` at the link, and
-`tests/fuzzsearch.sh` by running the engine with no host at all. Both symbol baselines are
-empty and are meant to stay that way.
+`tests/fuzzsearch.sh` by running the engine with no host at all. Each of the first two asks about
+both edges out of the engine, so there are four baselines; three are empty and meant to stay that
+way, and the fourth is `types.h -> tune.h`.
