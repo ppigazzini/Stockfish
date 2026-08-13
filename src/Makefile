@@ -684,6 +684,30 @@ ifeq ($(COMP),gcc)
 	endif
 else ifeq ($(COMP),mingw)
 	CXXFLAGS += -fno-ipa-cp-clone
+
+### 32-bit mingw only: ipa-icf folds a function whose address ESCAPES into one
+### whose calling convention LTO rewrote, and the callers then disagree with the
+### callee about where the argument is.
+###
+### The next commit gives shell/engine.cpp a ws_count(void*) that forwards to
+### ThreadPool::worker_count(), and platform/thread.cpp's
+### ThreadPool::num_threads() is already the same body, `return threads.size()`.
+### num_threads has one caller, so LTO gives it a local convention that takes
+### the pointer in %ecx; ws_count's address is stored in the WorkerSet seam, so
+### its callers must use the stack ABI. Folding the second into the first keeps
+### the %ecx body while the call site pushes the context on the stack, and
+### `bench` reads threads.size() through a null this.
+###
+### x86-64 passes the first argument in a register under both conventions and
+### 32-bit Linux passes `this` on the stack under both, so the two bodies are
+### ABI-identical everywhere else and folding them is sound -- this is the one
+### target where it is not. Without LTO the two live in different translation
+### units and ipa-icf never sees the pair.
+###
+### -fno-ipa-icf-variables does not help; only the function half matters.
+	ifeq ($(bits),32)
+		CXXFLAGS += -fno-ipa-icf-functions
+	endif
 endif
 
 # On Android Bionic's C library comes with its own pthread implementation bundled in
