@@ -38,7 +38,13 @@ set -o pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT" || exit 2
-source "$(dirname "${BASH_SOURCE[0]}")/zones.sh"
+# Through $ROOT, and NOT through $(dirname "${BASH_SOURCE[0]}"). The cd above
+# has already run, so a relative invocation path no longer resolves: AGENTS.md
+# says to run the gates from src/ as ../tests/<gate>.sh, and that spells
+# ../tests/zones.sh, which from the repository root is one directory too high.
+# The source then fails and every zone lookup in this file is an undefined
+# command that expands to nothing.
+source "$ROOT/tests/zones.sh" || exit 2
 
 BASELINE=tests/linkcheck.baseline
 BASELINE_PLATFORM=tests/linkcheck-platform.baseline
