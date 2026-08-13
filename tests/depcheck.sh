@@ -52,7 +52,13 @@ cd "$ROOT" || exit 2
 BASELINE=tests/depcheck.baseline
 BASELINE_PLATFORM=tests/depcheck-platform.baseline
 
-source "$(dirname "${BASH_SOURCE[0]}")/zones.sh"
+# Through $ROOT, and NOT through $(dirname "${BASH_SOURCE[0]}"). The cd above
+# has already run, so a relative invocation path no longer resolves: AGENTS.md
+# says to run the gates from src/ as ../tests/<gate>.sh, and that spells
+# ../tests/zones.sh, which from the repository root is one directory too high.
+# The source then fails and every zone lookup in this file is an undefined
+# command that expands to nothing.
+source "$ROOT/tests/zones.sh" || exit 2
 
 command -v git >/dev/null || { echo "depcheck: SKIPPED -- no git" >&2; exit 2; }
 
