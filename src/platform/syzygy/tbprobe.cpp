@@ -47,7 +47,14 @@
 #include "../../engine/search.h"
 #include "../../engine/types.h"
 #include "../../engine/basetypes.h"
-#include "../../engine/compiler.h"
+// Kept: IsLittleEndian, read by reversed() below only where the compiler defines
+// neither __BYTE_ORDER__ nor _MSC_VER. Every tier tests/iwyu.sh compiles defines
+// __BYTE_ORDER__, so that arm is preprocessed away before IWYU sees it and the
+// include reads as unused at all three. A deletion compiles anyway -- attacks.h
+// drags compiler.h in behind a pragma of its own, kept for RESTRICT -- so the
+// name would vanish from the fall-back arm on the day that pragma goes, and no
+// lane builds a compiler that reaches the arm to report it.
+#include "../../engine/compiler.h"  // IWYU pragma: keep
 #include "../../shell/console.h"
 #include "../../engine/tb_source.h"
 #include "../../engine/searchoptions.h"
@@ -150,28 +157,87 @@ int  off_A1H8(Square sq) { return int(rank_of(sq)) - file_of(sq); }
 constexpr Value WDL_to_value[] = {-VALUE_MATE + MAX_PLY + 1, VALUE_DRAW - 2, VALUE_DRAW,
                                   VALUE_DRAW + 2, VALUE_MATE - MAX_PLY - 1};
 
-template<typename T, int Half = sizeof(T) / 2, int End = sizeof(T) - 1>
-inline void swap_endian(T& x) {
-    static_assert(std::is_unsigned_v<T>, "Argument of swap_endian not unsigned");
+// Reverse a value's bytes. The shift-and-mask spelling is not a hand-rolled
+// bswap: both compilers recognise all three widths and emit `bswap` (`rolw` for
+// the u16), and it is constexpr and needs no builtin, so no #ifdef decides which
+// compiler gets the fast one.
+//
+// The previous spelling swapped IN PLACE through `u8* c = (u8*) &x`, and taking
+// a local's address is three costs at once in decompress_pairs' refill: gcc
+// vectorises the two-iteration u32 case into vmovd/vpshufb/vmovd and pins the
+// shuffle mask in a register for the loop, leaves the four-iteration u64 case a
+// byte-at-a-time loop over a stack slot, and turns the stack protector on for
+// the hottest function a probing search has.
+template<typename T>
+constexpr T byteswap(T v) {
+    static_assert(std::is_unsigned_v<T>, "Argument of byteswap not unsigned");
 
-    u8 tmp, *c = (u8*) &x;
-    for (int i = 0; i < Half; ++i)
-        tmp = c[i], c[i] = c[End - i], c[End - i] = tmp;
+    if constexpr (sizeof(T) == 1)
+        return v;
+    else if constexpr (sizeof(T) == 2)
+        return T(u16(v) >> 8 | u16(v) << 8);
+    else if constexpr (sizeof(T) == 4)
+        return T(u32(v) >> 24 | (u32(v) >> 8 & 0xFF00u) | (u32(v) << 8 & 0xFF0000u)
+                 | u32(v) << 24);
+    else
+    {
+        static_assert(sizeof(T) == 8, "byteswap handles 1, 2, 4 and 8 bytes");
+
+        const u64 x = u64(v);
+        const u64 a = (x & 0x00FF00FF00FF00FFull) << 8 | (x >> 8 & 0x00FF00FF00FF00FFull);
+        const u64 b = (a & 0x0000FFFF0000FFFFull) << 16 | (a >> 16 & 0x0000FFFF0000FFFFull);
+        return T(b << 32 | b >> 32);
+    }
 }
-template<>
-inline void swap_endian<u8>(u8&) {}
 
+// True when a value stored in LE order has to be reversed to be read here.
+//
+// AT COMPILE TIME WHERE THE COMPILER SAYS SO. compiler.h's IsLittleEndian reads
+// Le's first byte at run time, and the decode loop below cannot afford what that
+// costs it: a register held live across the whole loop, a test and a branch
+// inside it, and the byte-reversing arm it can never take emitted anyway -- for
+// the u32 refill, through xmm, with the shuffle mask pinned in a register too.
+//
+// __BYTE_ORDER__ names the TARGET's order, which is the property the run-time
+// read was reaching for, and every compiler this tree builds with defines it or
+// is MSVC, which has no big-endian target. One that does neither keeps the
+// run-time read, so the `if` below stays an `if`: it is a compile-time constant
+// in the two branches that matter and folds there.
+//
+// NOT IN compiler.h. Making the shared flag constexpr also folds
+// nnue_common.h's four uses, which is worth 3.4 M startup instructions -- and it
+// moved a history-array fill gcc's profile had laid out around the global by
+// +1,966,080 Ir, which is +0.083% of the BENCH list, a workload holding no
+// tablebase at all. Scoped here the same folding is worth -5.04% of a probing
+// search and +49 Ir in 1.42e9 of the bench.
+// Not `constexpr`: the fall-back branch reads a run-time value, and a constexpr
+// function no argument can constant-evaluate is ill-formed.
+template<int LE>
+inline bool reversed() {
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
+    return LE != (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__);
+#elif defined(_MSC_VER)
+    return LE != 1;
+#else
+    return LE != IsLittleEndian;
+#endif
+}
+
+// Read a T out of the mapping in the file's byte order.
+//
+// ONE memcpy AND NO ALIGNMENT TEST. The test picked between `memcpy` and
+// `*(T*) addr`, and on every target this engine builds for the two compile to
+// the same unaligned load -- so the branch chose between a load and the same
+// load. It also chose the arm that is undefined: nothing in the mapping is a T,
+// so `*(T*) addr` reads an object that does not exist there, whatever its
+// address is divisible by.
 template<typename T, int LE>
 T number(void* addr) {
     T v;
 
-    if (uintptr_t(addr) & (alignof(T) - 1))  // Unaligned pointer (very rare)
-        std::memcpy(&v, addr, sizeof(T));
-    else
-        v = *((T*) addr);
-
-    if (LE != IsLittleEndian)
-        swap_endian(v);
+    std::memcpy(&v, addr, sizeof(T));
+    if (reversed<LE>())
+        v = byteswap(v);
     return v;
 }
 
