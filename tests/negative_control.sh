@@ -495,6 +495,36 @@ if selected malformed; then
     fi
 fi
 
+# --------------------------------------------------------------- leb128
+
+# STATIC, and it is the only row in that group that compiles anything. The group
+# is defined as rows that never build the ENGINE, not rows that never invoke a
+# compiler: this gate builds one translation unit against a header, which is
+# seconds, and leaving it out of the per-push lane would leave the network
+# reader controlled only by a lane nobody runs on a push.
+#
+# The shift step is the mutation because it is the reader's arithmetic rather
+# than one of its refusals: a decoder that advances the exponent by six bits
+# reads every multi-group value wrong and still accepts every stream, so nothing
+# but a value comparison can see it. It takes 7 of the gate's 12 cases with it.
+row leb128 static
+if selected leb128; then
+    echo "negative-control: leb128      -- the LEB128 shift step, 7 bits to 6"
+    mutate src/engine/nnue/nnue_common.h \
+        'shift += 7;' \
+        'shift += 6;'
+    ./tests/leb128.sh --iter 5 --no-sanitize >/dev/null 2>&1; NCRC=$?
+    restore
+    if [ "$NCRC" = "2" ]; then
+        echo "  SKIPPED -- leb128.sh could not compile or run"; SKIP=$((SKIP+1))
+    elif [ "$NCRC" = "0" ]; then
+        echo "  NOT DETECTED -- a reader that decodes every multi-group value wrong passed"
+        FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+fi
+
 # --------------------------------------------------------------- uci_driver
 
 row uci_driver
