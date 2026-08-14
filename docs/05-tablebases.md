@@ -80,6 +80,45 @@ is stored with a Huffman-style scheme and a pairs table, so a probe walks a comp
 rather than reading an entry directly. That is why the code is dense -- it is a decompressor,
 not a lookup.
 
+## What a probe costs, and which axis can see it
+
+`decompress_pairs` is the hottest symbol a probing search has, ahead of `Network::evaluate`.
+Nothing on the bench list reaches it, so measure it on the position list written for it:
+
+```sh
+./tests/perfbudget.sh --syzygy tests/syzygy-34man --comp gcc --pgo <base-rev>
+valgrind --tool=callgrind --dump-instr=yes ./stockfish bench 16 1 14 <bench-file> depth
+```
+
+The second is what makes the cost attributable per instruction rather than per function, and it
+is the reason to reach for it before optimising: **the loop's shape is not what its source
+suggests.** Decoding one symbol needs its length, and finding that length by walking `base64[]`
+cost more than everything else in the function put together.
+
+The length now comes from one load. A code no longer than K bits owns a whole number of buckets
+of the bitstream word's top K bits, because `base64[]` is right-padded to 64 bits -- so
+`lenTab[]` maps those bits straight to a length, exactly rather than approximately. K is the
+table's own `maxSymLen` under a cap, and the lengths past the cap keep the walk and say so.
+Everything else the loop needs per symbol is a function of that length alone and is held per
+length, inline in `PairsData`.
+
+**Inline is a register decision, not a style one.** The loop holds fifteen registers with
+nothing spare, so a table behind a pointer costs it one and a spill costs more than the table
+saves; reached off `d` each folds into its own load's addressing. Treat any change here as an
+experiment and measure it: a per-length table that reads as free costs 5% when the compiler
+materialises the address instead of folding it, and freeing a register gets it spent elsewhere
+rather than banked.
+
+**Neither cache-aware gate can probe, and that is a gap rather than a decision.**
+`tests/perfcounters.sh` and `tests/perfdecomp.sh` both drive the bench list, so the two axes
+that see a cache miss or a mispredict have no lane on the workload that reaches this code --
+the hole `perfbudget.sh --syzygy` closed for instructions, still open one axis over. A change
+here that trades footprint for instructions has to be measured by hand until a lane exists:
+
+```sh
+valgrind --tool=callgrind --cache-sim=yes --branch-sim=yes ./stockfish bench 16 1 14 <f> depth
+```
+
 **A tablebase answer is exact, so "close" is meaningless.** An index computed one off does not
 return an approximately right verdict; it returns a confident wrong one, and the search will
 believe it. That property makes this the highest-consequence code in the tree per line.
@@ -90,10 +129,25 @@ without doing anything wrong.
 
 **Every field the reader takes from the file is bounded before it is used**, and one flipped
 byte in a downloaded table is a case the reader has to answer rather than crash on. The header
-is checked at load; the block walk and both bitstream reads are clamped; a symbol index is
-masked into its alphabet; a `base64[]` table that is not a canonical Huffman code, a pairing
-that closes a loop, and a flags byte contradicting the material are all refused.
+is checked at load; the block walk and both bitstream reads are clamped; and a `base64[]` table
+that is not a canonical Huffman code, a pairing that closes a loop, a flags byte contradicting
+the material, a declared symbol count larger than the domain that indexes it, an empty
+`blockLength[]` and a block narrower than the bitstream word are all refused.
 `tests/malformed.sh` is what holds that, one fixture per field.
+
+**Prefer a refusal at load to a test in a loop, and the alphabet is the example.** A symbol is
+built from `base64[]` and `lowestSym[]`, both file data, so it can name an entry past
+`symlen[]`. `set_sizes` derives the largest symbol each length can reach -- the walk stops at
+the first length whose base the word clears, which bounds the word, and both tables are in hand
+-- and refuses a table that could leave the domain. The decode loop then indexes with the value
+straight from the file and tests nothing. **The two refusals above it exist for the same
+reason and one of them is why the clamp is safe**: `blockLength[]`'s size is `blocksNum +
+padding`, two file bytes, so a reader that clamps with `size - 1` on an unsigned needs the zero
+refused rather than assumed.
+
+An assert cannot carry any of this. `-DNDEBUG` deletes it from every shipped binary, so the
+configuration that checks is the debug one and the configuration that walks off the end is the
+one players run.
 
 **The bounds are O(1) in the file's size, and that is a constraint rather than an
 optimisation.** The tables are mmapped and paged in on demand, so a pass that walked
