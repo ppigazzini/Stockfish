@@ -409,8 +409,16 @@ Holds the commit record to a shape the architecture lanes can read.
 Two things must hold for that sentence to be operable, and neither was checked.
 
 **There must be one, and it can be far back.** A branch that stacks non-functional commits on
-upstream puts the newest footer arbitrarily deep -- 180 commits, at the time this was written --
-so a reader with a fixed walk depth eventually finds nothing.
+upstream puts the newest footer arbitrarily deep, because none of its own may carry one:
+
+```sh
+git rev-list --count "$(git log -1 --format=%H -E --grep='^Bench: [1-9][0-9]{5,7}$')..HEAD"
+```
+
+So **never bound the walk.** A reader with a fixed depth finds nothing once the branch outgrows
+it, and the depth that suffices today is the depth that stops sufficing at the next commit.
+`git log --format=%b` over the whole history costs 0.1 s, which is cheaper than a number that
+rots.
 
 **Nothing else may look like one.** The regex upstream's pre-push hook uses,
 `[Bb]ench[ :]+[0-9]{6,8}`, matches a run of spaces between the word and the number. So an
@@ -419,10 +427,20 @@ message -- is indistinguishable from a footer to anything scanning line by line.
 one such row as the anchor and every architecture job failed against a value that was true when
 written and went stale at a rebase, while the engine benched correctly throughout.
 
+So **anchor the regex to the whole line**: `^Bench: <n>$`, which no prose mention and no gate
+row can satisfy. An unanchored `Bench: *[0-9]+` is not the safer-looking half of that choice --
+it finds a body sentence *carrying* `Bench: <n>` in backticks, and this branch has one, in the
+commit that introduced this very gate. Such a reader returns the right value exactly as long as
+the prose it landed on happens to quote the current anchor.
+
 The reader in `tests.yml`, `arm_compilation.yml`, `wasm_compilation.yml` and
-`universal_compilation.yml` is now one `git log --format=%b` with `^Bench: <n>$` anchored --
-what the rule says, what AGENTS.md's own command does, and 0.1 s over the whole history rather
-than a depth that rots with every commit added.
+`universal_compilation.yml` is one `git log --format=%b` with `^Bench: <n>$` anchored, which is
+what the rule says and what `AGENTS.md`'s own command does. Check the second half rather than
+assume it -- prose describing a regex is not the regex:
+
+```sh
+grep -n "grep -m1 -oE" AGENTS.md .github/workflows/*.yml
+```
 
 `tests/anchor.baseline` carries the bodies that predate the check, with the reason. It expires in
 both directions and currently ships EMPTY: the one body that read as a footer was reworded when
