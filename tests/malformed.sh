@@ -162,6 +162,21 @@ def btree_past_end():
     return b
 
 
+def symlen_past_domain():
+    """More symbols than a twelve-bit Sym can name, in a file with ROOM for them.
+
+    btree_past_end above declares 65535 in 80 bytes, and the space check refuses
+    it before the copy: 65535 * 3 does not fit. That is why the count was never
+    compared against the domain it indexes, and why no table in the corpus can
+    show it -- they are all too small. This one is 19,216 bytes (st_size % 64 is
+    still 16) so 5000 * 3 fits, and btreeBuf[] holds 4096.
+    """
+    b = base()
+    b.extend(bytearray(64 * 300 - 64))
+    b[22] = 0x88; b[23] = 0x13                 # 5000 symbols
+    return b
+
+
 dest = sys.argv[2]
 os.makedirs(dest, exist_ok=True)
 with open(os.path.join(dest, "KQvK.rtbw"), "wb") as fh:
@@ -178,6 +193,7 @@ FIXTURES=(
   "block-shift    |block_shift"
   "base64-shift   |base64_shift"
   "btree-past-end |btree_past_end"
+  "symlen-past-domain|symlen_past_domain"
 )
 
 PASS=0; FAIL=0; SKIP=0
