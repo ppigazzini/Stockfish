@@ -51,7 +51,17 @@ carries one. **Read it from `git log`, never from memory or a doc** -- it moves 
 functional commit.
 
 ```sh
-cd src && ../tests/signature.sh $(git log --format=%b | grep -m1 -oE 'Bench: *[0-9]+' | grep -oE '[0-9]+')
+cd src && ../tests/signature.sh \
+  "$(git log --format=%b | grep -m1 -oE '^Bench: [1-9][0-9]{5,7}$' | grep -oE '[0-9]+')"
+```
+
+**Anchor the regex to the whole line and never bound the walk.** Both halves are load-bearing,
+and `tests/anchor.sh` is what holds them: a body that quotes the footer in prose or as a gate
+result is what an unanchored `Bench: *[0-9]+` finds first, and the newest footer sits as far
+back as the non-functional commits stacked on top of it.
+
+```sh
+git rev-list --count "$(git log -1 --format=%H -E --grep='^Bench: [1-9][0-9]{5,7}$')..HEAD"
 ```
 
 **A byte-changing edit is not done until a gate says so.**
