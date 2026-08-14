@@ -499,6 +499,13 @@ struct PairsData {
     std::vector<LR> btreeBuf;  // btree[] copied out of the mapping, sized at SymCount
     std::vector<u8> lenTab;         // the stream's top bits -> a symbol length
     u8              lenTabShift;    // 64 minus how many of them lenTab[] indexes
+    // One entry per symbol LENGTH, which is what the decode loop indexes by.
+    // Inline rather than behind a pointer: three more pointers is three more
+    // registers in a loop that had none to spare, and off `d` each of these
+    // folds into the load's own addressing.
+    u8  shiftOf[64];    // 64 - len - minSymLen
+    u16 symBaseOf[64];  // lowestSym[len] - (base64[len] >> shiftOf[len]), mod 2^16
+    u8  lengthOf[64];   // len + minSymLen, the real bit length
 };
 
 // struct TBTable contains indexing information to access the corresponding TBFile.
@@ -861,19 +868,20 @@ int decompress_pairs(PairsData* d, u64 idx) {
         // for every length lenTab[] can index, which on a table whose longest
         // code fits under the cap is all of them.
         //
-        int len = lenTab[buf64 >> d->lenTabShift];
+        // `len` is UNSIGNED because it indexes four arrays, and as an int every
+        // one of them wants a movslq the movzbl above has already made
+        // unnecessary.
+        usize len = lenTab[buf64 >> d->lenTabShift];
 
         if (len == NoFastLen)
             for (len = 0; buf64 < d->base64[len]; ++len)
             {}
 
         // All the symbols of a given length are consecutive integers (numerical
-        // sequence property), so we can compute the offset of our symbol of
-        // length len, stored at the beginning of buf64.
-        sym = Sym((buf64 - d->base64[len]) >> (64 - len - d->minSymLen));
-
-        // Now add the value of the lowest symbol of length len to get our symbol
-        sym += number<Sym, LittleEndian>(&d->lowestSym[len]);
+        // sequence property), so the symbol is its distance from the lowest CODE
+        // of its length added to the lowest SYMBOL of its length -- and both of
+        // those are per-length values set_sizes() has folded into one.
+        sym = Sym(d->symBaseOf[len] + Sym(buf64 >> d->shiftOf[len]));
 
         // `sym` IS INSIDE THE ALPHABET AND NOTHING HERE HAS TO SAY SO. Both
         // terms above are file data, so this used to be masked with
@@ -896,9 +904,10 @@ int decompress_pairs(PairsData* d, u64 idx) {
 
         // ...otherwise update the offset and continue to iterate
         offset -= d->symlen[sym] + 1;
-        len += d->minSymLen;  // Get the real length
-        buf64 <<= len;        // Consume the just processed symbol
-        buf64Size -= len;
+        const int realLen = d->lengthOf[len];
+
+        buf64 <<= realLen;  // Consume the just processed symbol
+        buf64Size -= realLen;
 
         if (buf64Size <= 32)
         {  // Refill the buffer
@@ -1497,6 +1506,22 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     u64 top = ~u64(0);  // the largest bitstream word that can reach length i
     for (int i = 0; i < base64_size; ++i)
     {
+        d->shiftOf[i]  = u8(64 - i - d->minSymLen);
+        d->lengthOf[i] = u8(i + d->minSymLen);
+
+        // FOLD THE SUBTRACTION THE DECODE LOOP WAS DOING PER SYMBOL. base64[i]
+        // is right-padded to 64 bits, so its low shiftOf[i] bits are zero, and
+        // the scan only stops at a length with buf64 >= base64[i] -- which
+        // together make (buf64 - base64[i]) >> shift exactly
+        // (buf64 >> shift) - (base64[i] >> shift), with no borrow to lose. The
+        // second term is known here, and so is the lowest symbol it is added to.
+        //
+        // Both are taken mod 2^16, which is exact: their difference is the
+        // symbol, and the loop above has already refused a table whose symbols
+        // could reach SymCount.
+        d->symBaseOf[i] = u16(number<Sym, LittleEndian>(&d->lowestSym[i])
+                              - u16(d->base64[i] >> d->shiftOf[i]));
+
         if (i + d->minSymLen <= lenTabBits && top >= d->base64[i])
             for (u64 b = d->base64[i] >> d->lenTabShift; b <= top >> d->lenTabShift; ++b)
                 d->lenTab[b] = u8(i);
