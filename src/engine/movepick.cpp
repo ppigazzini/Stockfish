@@ -214,6 +214,13 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     }
 
     ExtMove* it = cur;
+    // clang vectorises the capture arm at AVX-512 and pays a masked
+    // `vpgatherdd` for PieceValue[piece_on(to)]. A gather is 16 scattered
+    // loads issued as one instruction, and the loop it replaces is a handful
+    // of moves; guarded because gcc warns on an unknown pragma under -Werror.
+#if defined(__clang__)
+    #pragma clang loop vectorize(disable)
+#endif
     for (auto move : ml)
     {
         ExtMove& m = *it++;
