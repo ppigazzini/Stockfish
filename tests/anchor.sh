@@ -53,11 +53,20 @@ if [ -z "$REF" ]; then
 fi
 echo "  $REF"
 
-# ---- 2. no body line can be mistaken for a footer
+# ---- 2. no body text can be mistaken for a footer
 #
-# The loose form is upstream's hook regex. A line matching it that is NOT the
+# The loose form is upstream's hook regex. Text matching it that is NOT the
 # strict footer is the trap: it reads as the anchor to anything scanning bodies
 # line by line.
+#
+# MATCH IT ANYWHERE IN THE LINE. Requiring the whole line to be footer-shaped is
+# the narrower rule and it misses the shape that actually costs: a value quoted
+# INSIDE a sentence -- "carries `Bench: <n>`" -- or padded into a table column
+# next to a `|`. An unanchored reader finds those first and reports a number
+# rather than an error, which is what makes them worse than a bare line.
+#
+# Reword rather than baseline. `<bench_value>` in place of the digits says the
+# same thing to a human, survives a rebase, and can never be read as a value.
 # `master` is a local branch here and NOT on a CI checkout, which fetches the
 # pushed ref alone. Fall back to the remote-tracking ref, then to a bounded walk:
 # the body scan is about this branch's own commits, and a run that cannot name the
@@ -79,7 +88,7 @@ echo "== commit bodies whose text reads as a footer ($SCOPE) =="
 offenders=$(
 git log --format='%H' $RANGE | while read -r f; do
     hit=$(git show -s --format='%b' "$f" \
-          | grep -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' || true)
+          | grep -o '\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b' || true)
     hit=$(printf '%s\n' "$hit" | sed -n '1p')
     [ -n "$hit" ] || continue
     # A real footer is fine. Anything else with that shape is not.
@@ -98,7 +107,7 @@ done
 # can quiet this gate -- and nothing outside that one row sets it.
 if [ -n "${ANCHOR_EXTRA_BODY:-}" ] && [ -f "$ANCHOR_EXTRA_BODY" ]; then
     fixture=$(cat "$ANCHOR_EXTRA_BODY")
-    if grep -q -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' <<< "$fixture" \
+    if grep -q '\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b' <<< "$fixture" \
        && ! grep -qE '^Bench: *[1-9][0-9]{5,7}$' <<< "$fixture"; then
         offenders=$(printf '%s\nfixture\n' "$offenders" | grep -v '^$')
     fi
@@ -120,9 +129,19 @@ if [ -z "$offenders" ]; then
 else
     while IFS= read -r c; do
         [ -n "$c" ] || continue
-        printf '  %-10s %s\n' "$c" "$(git log -1 --format='%s' "$c" | cut -c1-58)"
-        git show -s --format='%b' "$c" \
-          | grep -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' \
+        # `fixture` is the row ANCHOR_EXTRA_BODY hands in, and it is not a
+        # revision: asking git to resolve it prints `fatal: ambiguous argument`
+        # into a gate's own report, which reads as the gate breaking rather than
+        # as the finding it is.
+        if [ "$c" = "fixture" ]; then
+            subject="the body named by ANCHOR_EXTRA_BODY"
+            body=$(cat "$ANCHOR_EXTRA_BODY")
+        else
+            subject=$(git log -1 --format='%s' "$c" | cut -c1-58)
+            body=$(git show -s --format='%b' "$c")
+        fi
+        printf '  %-10s %s\n' "$c" "$subject"
+        grep -o '\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b' <<< "$body" \
           | sed 's/^/               [/; s/$/]/'
     done <<< "$offenders"
 fi
