@@ -442,10 +442,15 @@ assume it -- prose describing a regex is not the regex:
 grep -n "grep -m1 -oE" AGENTS.md .github/workflows/*.yml
 ```
 
+**The scan matches anywhere in a line, not only a line that is nothing else.** The narrow rule
+misses the shape that costs most -- a value quoted inside a sentence, or padded into a table
+column beside a `|` -- and those are the ones an unanchored reader reaches first. Write
+`<bench_value>` where a body must name the anchor at all: it says the same to a reader, it
+survives a rebase, and no regex can take it for a number.
+
 `tests/anchor.baseline` carries the bodies that predate the check, with the reason. It expires in
-both directions and currently ships EMPTY: the one body that read as a footer was reworded when
-this history was rewritten to move the ipa-icf flag, so nothing needs excusing. An unpushed commit
-costs nothing to reword, so a new entry is a finding rather than an exemption.
+both directions and currently ships EMPTY, which is the state to keep it in: rewording an
+unpushed commit costs nothing, so a new entry is a finding rather than an exemption.
 
 The offender half cannot be driven from the tree -- `tests/negative_control.sh` mutates files and
 restores them, and a commit body is neither -- so `ANCHOR_EXTRA_BODY` names a file the body scan
