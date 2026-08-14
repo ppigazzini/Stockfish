@@ -1193,19 +1193,25 @@ constexpr bool can_slider_threat(Piece pc, Piece slider) {
     return type_of(pc) != QUEEN || type_of(slider) == QUEEN;
 }
 
-template<bool ComputeRay>
+template<bool ComputeRay, bool PutPiece>
 void Position::update_piece_threats(Piece               pc,
-                                    bool                putPiece,
                                     Square              s,
                                     DirtyThreats* const dts,
                                     // Silence spurious warning on GCC 10
                                     [[maybe_unused]] Bitboard noRaysContaining) const {
-    const Bitboard occupied         = pieces();
-    const auto [bAttacks, rAttacks] = both_attacks_bb(s, occupied);
-    const Bitboard  sliderAttacks   = bAttacks | rAttacks;
-    const Bitboard  occupiedNoK     = occupied ^ pieces(KING);
-    const PieceType pt              = type_of(pc);
-    const Bitboard  sliders = (pieces(BISHOP, QUEEN) & bAttacks) | (pieces(ROOK, QUEEN) & rAttacks);
+    constexpr bool putPiece = PutPiece;
+
+    const Bitboard  occupied      = pieces();
+    const Bitboard  rookQueens    = pieces(ROOK, QUEEN);
+    const Bitboard  bishopQueens  = pieces(BISHOP, QUEEN);
+    const auto      attacks       = both_attacks_bb(s, occupied);
+    const Bitboard  bAttacks      = attacks.first;
+    const Bitboard  rAttacks      = attacks.second;
+    const Bitboard  sliderAttacks = bAttacks | rAttacks;
+    const Bitboard  occupiedNoK   = occupied ^ pieces(KING);
+    const PieceType pt            = type_of(pc);
+
+    Bitboard sliders = (rookQueens & rAttacks) | (bishopQueens & bAttacks);
 
     auto process_sliders = [&](bool addDirectAttacks) {
         Bitboard b = sliders;
