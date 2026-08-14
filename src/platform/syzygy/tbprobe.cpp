@@ -844,23 +844,19 @@ int decompress_pairs(PairsData* d, u64 idx) {
         // Now add the value of the lowest symbol of length len to get our symbol
         sym += number<Sym, LittleEndian>(&d->lowestSym[len]);
 
-        // MASK IT INTO THE ALPHABET. Both terms above are file data -- buf64 is
-        // the compressed stream, base64[] and lowestSym[] are read out of the
-        // table -- so `sym` is a full u16 here, while symlen[] and btree[] are
-        // SymCount entries because a Sym stored in btree[] is twelve bits. On a
-        // WELL-FORMED table the mask is a no-op: a table whose btree cannot
-        // address a symbol cannot contain one, so a valid alphabet is 12-bit by
-        // construction and this value is already inside it. On a crafted one it
-        // is the difference between a wrong verdict and an out-of-bounds read
-        // through the whole expansion below, which indexes symlen[] and
-        // btree[] with it again.
+        // `sym` IS INSIDE THE ALPHABET AND NOTHING HERE HAS TO SAY SO. Both
+        // terms above are file data, so this used to be masked with
+        // SymCount - 1 per symbol decoded; set_sizes() now refuses a table
+        // whose base64[]/lowestSym[] pair could name a symbol outside
+        // symlen[]'s domain, which is the same guarantee derived once per
+        // table opened instead of once per symbol.
         //
-        // A mask and not a test, for the reason SymCount exists at all: one
-        // `and` in the hottest loop this file has, no branch to predict, and
-        // nothing for a corrupt table to steer.
-        static_assert((SymCount & (SymCount - 1)) == 0);
-        sym &= SymCount - 1;
-
+        // The mask was one `and`, and it cost 3 instructions in this loop and
+        // one more per iteration besides: gcc needed the value both masked to
+        // 32 bits for symlen[] and masked to 16 for the expansion below, and
+        // the pair of them pushed the loop past the register file, spilling
+        // lowestSym[]. Removed with the refill's second pointer, gcc PGO, avx2,
+        // probing: decompress_pairs 2,357,949,520 -> 2,096,122,229 Ir.
 
         // If our offset is within the number of values represented by symbol sym,
         // we are done.
@@ -1423,6 +1419,38 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     // and right-padded to 64 bits holds d->base64[i-1] >= s64 >= d->base64[i].
     for (int i = 0; i < base64_size; ++i)
         d->base64[i] <<= 64 - i - d->minSymLen;  // Right-padding to 64 bits
+
+    // PROVE THE ALPHABET HERE, so decompress_pairs does not mask per symbol.
+    //
+    // It computes
+    //
+    //     sym = lowestSym[len] + ((buf64 - base64[len]) >> (64 - len - minSymLen))
+    //
+    // having stopped its length scan at the FIRST len with buf64 >= base64[len].
+    // So buf64 <= base64[len - 1] - 1 for every len it can reach, and buf64 <=
+    // ~0 at len 0 -- and both of those bounds are known right here, which makes
+    // the largest symbol each length can name known right here too. A table
+    // whose largest is outside symlen[]'s domain is refused, the way a
+    // non-canonical base64[] above it already is.
+    //
+    // The scan STOPS at the first length whose base it reaches, so a length
+    // whose base equals its predecessor's is never reached and is not bounded:
+    // UPPER is the largest buf64 that can arrive at length i, and a base of 0
+    // catches everything, which is why the loop ends there.
+    u64 upper = ~u64(0);
+    for (int i = 0; i < base64_size; ++i)
+    {
+        if (upper >= d->base64[i]
+            && number<Sym, LittleEndian>(&d->lowestSym[i])
+                   + ((upper - d->base64[i]) >> (64 - i - d->minSymLen))
+                 >= SymCount)
+            return nullptr;
+
+        if (d->base64[i] == 0)
+            break;
+
+        upper = d->base64[i] - 1;
+    }
 
     data += base64_size * sizeof(Sym);
 
