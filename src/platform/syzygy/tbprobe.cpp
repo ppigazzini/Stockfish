@@ -1351,6 +1351,30 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     if (!fits(data, symlenSize, sizeof(LR), end))
         return nullptr;
 
+    // AND BOUND IT BY THE DOMAIN IT IS INDEXED IN, not only by the file's size.
+    // symlenSize is a u16, so 0 to 65535, while btreeBuf[], symlen[] and
+    // colour[] below are SymCount entries because a Sym stored in btree[] is
+    // twelve bits. `fits` above compares the count against the space LEFT IN
+    // THE FILE, which a table large enough to hold the bytes it declares
+    // passes -- and the memcpy below then writes symlenSize * 3 bytes into
+    // 4096 * 3, and the loop after it indexes colour[] and writes symlen[] up
+    // to symlenSize.
+    //
+    //   AddressSanitizer: heap-buffer-overflow
+    //     WRITE of size 15000 at 0x...
+    //     #2 set_sizes    tbprobe.cpp:1369
+    //     #7 probe_dtz    tbprobe.cpp:1908
+    //
+    // on a 19,216-byte KQvK.rtbw declaring 5000 symbols. The 80-byte fixture
+    // malformed.sh already had for this field could not reach it: at that size
+    // `fits` refuses first, which is why every table in the corpus is too small
+    // to expose the write and a 6-man one is not.
+    //
+    // A refusal rather than a clamp: a table whose own tree cannot address the
+    // symbols it declares is not a table with a recoverable value in it.
+    if (symlenSize > SymCount)
+        return nullptr;
+
     // COPY btree[] out of the mapping, into a buffer sized at the symbol's own
     // domain rather than at the count the file declared.
     //
