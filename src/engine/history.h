@@ -75,6 +75,19 @@ struct StatsEntry {
     std::conditional_t<Shared, RelaxedAtomic<T>, T> entry;
 
    public:
+    // The scalar this entry's storage is layout-compatible with, which is what
+    // lets MultiArray::fill write a run instead of an entry.
+    //
+    // IT IS THE FILL THAT IS UNSHARED, NOT THE ENTRY. Every access during a
+    // search stays a relaxed atomic one; a relaxed store may not be merged with
+    // its neighbours, so filling the shared 8 MiB continuation history entry by
+    // entry emits 4.2 M two-byte stores the compiler is forbidden to widen --
+    // 37.7 M instructions and 549 K mispredicts of every clear(). The caller
+    // owes the invariant that no other thread can observe the range while it is
+    // written: `clear()` runs before the search that reads it, and
+    // `clear_range()` hands each worker a disjoint slice of the block.
+    using bulk_fill_type = T;
+
     void operator=(const T& v) { entry = v; }
 
     operator T() const { return entry; }
