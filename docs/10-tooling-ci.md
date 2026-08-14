@@ -1244,6 +1244,75 @@ for. **A gate for refusals has to be stricter than the binary it protects**, or 
 reads it cannot see. `corpus-flags` SKIPS loudly without `tbfetch.sh`'s corpus rather than
 passing.
 
+## `tests/leb128.sh`
+
+Decide the NNUE weight reader against the **format**, not against the network file.
+
+```sh
+./tests/leb128.sh                       # gcc, x86-64-avx2, then again sanitized
+./tests/leb128.sh --arch x86-64 --comp clang++ --iter 2000
+```
+
+`malformed.sh` above asks the same question of the tablebase reader, and the two exist for the
+same reason: an anchor is green with a parser defect live. The difference is what the anchor
+covers here. **`signature.sh` proves 23 M weights decoded the way they did before, from one file
+whose every value is 16-bit and minimally encoded.** The reader is specified for more -- 32-bit
+values, five-group payloads, a redundant encoding a hostile file may carry, a value split across
+a refill, a stream that stops inside one -- and none of that is in any net in the tree. A decoder
+that got all five wrong still prints the anchor.
+
+The reference is `write_leb_128`, which sits in the same header and which no optimisation of the
+reader touches, so round-tripping decides the pair. What the writer will never emit is
+hand-built.
+
+| case | what it holds |
+|---|---|
+| net-shaped weights | eleven counts around the 8192-byte refill, values in a net's range |
+| every i16 | all 65536, which a retrained net can reach and the shipped one does not |
+| i32 group boundaries | 63/64, 8191/8192, ... 2^31-1: every place a group is added |
+| random i32 | full range, counts sweeping the refill |
+| redundant encodings | 0 in three groups and in four; legal LEB128, never written |
+| i32 over-long encoding | six groups, where the reader's own `shift % 32` wrap is the answer |
+| value longer than the window | ten groups, which fills the eight-byte window with continuations |
+| refill straddle | a three-group value placed so its groups span two refills, four offsets |
+| truncated stream | a dangling group must set failbit, not invent a weight |
+| over-declared length | a byte count larger than the body |
+| unread trailing bytes | the closing balance |
+| wrong magic | refused before a single output is touched |
+
+**The hand-built cases are embedded 4096 values deep, and that is not decoration.** A reader may
+decode a long run differently from a short one -- buffered, unrolled, or a word at a time with a
+byte-at-a-time tail -- and a stream of eight bytes then exercises the tail while the fixture
+reports it as coverage. Written the short way, that is what these cases did.
+
+**Every case here has been seen red**, which is the same rule `malformed.sh` states for its
+fixtures. Mutating the reader is how, since the defects these cover are hypothetical rather than
+historical:
+
+| mutation | cases failed of 12 |
+|---|---|
+| the shift step, 7 -> 6 | 7 |
+| the sign bit, `0x40` -> `0x20` | 4 |
+| the sign guard, `shift >= 32` -> `>= 28` | 2 |
+| the balance not decremented | 8 |
+| the payload mask, 7 bits -> 6 | 8 |
+| the short read not detected | **1** |
+| the closing balance inverted | 9 |
+
+**The short-read row is the one that shaped a case.** A reader that misses a short read still
+sets failbit, because the closing balance catches it one step later -- so a fixture that checks
+only `stream.fail()` passes. What it cannot pass is the OUTPUT check: the truncated case requires
+that nothing past the truncation was written, which is exactly the release build this reader's
+header describes, 8 KiB of uninitialised stack loaded as weights with nothing said. Without that
+half the mutation scores 0 of 12.
+
+It builds one translation unit and no engine, so it needs no net and no network. It needs a
+tier's **defines** all the same -- the header it compiles carries the NNUE intrinsic set -- and
+takes them from `make config-sanity` rather than restating them, so a second copy cannot drift
+from `src/Makefile`. The second run is sanitized because a wrong window read is a read of memory
+the fixture owns: it produces a right answer far more often than a wrong one, and ASan is what
+turns that into a report.
+
 ### setoption during an unbounded search deadlocks the engine
 
 **Not fixed.** Four lines against a stock binary:
