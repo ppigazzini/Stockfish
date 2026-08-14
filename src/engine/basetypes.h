@@ -19,6 +19,7 @@
 #ifndef BASETYPES_H_INCLUDED
 #define BASETYPES_H_INCLUDED
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cassert>
@@ -101,6 +102,14 @@ template<typename To, typename From>
 constexpr bool is_strictly_assignable_v =
   std::is_assignable_v<To&, From> && (std::is_same_v<To, From> || !std::is_convertible_v<From, To>);
 
+// An element type that can be filled a run at a time rather than one at a
+// time announces it by naming the scalar its storage is layout-compatible
+// with. See RelaxedAtomic for why a run matters and what the caller owes.
+template<typename T, typename = void>
+constexpr bool has_bulk_fill_v = false;
+template<typename T>
+constexpr bool has_bulk_fill_v<T, std::void_t<typename T::bulk_fill_type>> = true;
+
 }
 
 // MultiArray is a generic N-dimensional array.
@@ -166,13 +175,27 @@ class MultiArray {
     void fill(const U& v) {
         static_assert(Detail::is_strictly_assignable_v<T, U>,
                       "Cannot assign fill value to entry type");
-        for (auto& ele : data_)
+
+        // A run at a time where the element type says its storage allows it.
+        // The assignment below is a RELAXED ATOMIC STORE for the shared
+        // histories, and the compiler may not merge those with their
+        // neighbours: filling the 8 MiB continuation history entry by entry is
+        // 4.2 M two-byte stores it is forbidden to widen.
+        if constexpr (sizeof...(Sizes) == 0 && Detail::has_bulk_fill_v<T>)
         {
-            if constexpr (sizeof...(Sizes) == 0)
-                ele = v;
-            else
-                ele.fill(v);
+            using S = typename T::bulk_fill_type;
+            static_assert(sizeof(T) == sizeof(S) && alignof(T) == alignof(S),
+                          "The element must be layout-compatible with its bulk type");
+            std::fill_n(reinterpret_cast<S*>(data_.data()), Size, S(v));
         }
+        else
+            for (auto& ele : data_)
+            {
+                if constexpr (sizeof...(Sizes) == 0)
+                    ele = v;
+                else
+                    ele.fill(v);
+            }
     }
 
     constexpr void swap(MultiArray<T, Size, Sizes...>& other) noexcept { data_.swap(other.data_); }
