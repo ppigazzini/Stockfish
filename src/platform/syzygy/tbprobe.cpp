@@ -714,8 +714,10 @@ int decompress_pairs(PairsData* d, u64 idx) {
     // loses for the same reason from the other side: the call clobbers what the
     // decoder was holding.
     //
-    // blockLengthSize is never 0 here: set_sizes zeroes it only under
-    // TBFlag::SingleValue, and the early return above already took that flag.
+    // blockLengthSize is never 0 here, and it is set_sizes() that refuses the
+    // zero rather than this assert that documents it: `blocksNum + padding` is
+    // two file bytes added together, so a table can name zero and the clamp
+    // below then underflows to 0xFFFFFFFF.
     assert(d->blockLengthSize > 0);
 
     if (block >= d->blockLengthSize)
@@ -1281,6 +1283,23 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     data += sizeof(u32);
     d->blockLengthSize = d->blocksNum + padding;  // Padded to ensure SparseIndex[]
                                                   // does not point out of range.
+
+    // AN EMPTY blockLength[] IS THE CLAMP'S OWN UNDERFLOW. Both terms above come
+    // from the file, so both can be zero, and decompress_pairs then computes
+    // `block = d->blockLengthSize - 1` on an unsigned zero and indexes
+    // blockLength[] with 0xFFFFFFFF -- eight gibibytes past the array the clamp
+    // was added to keep it inside. It states the opposite as an assert, which
+    // -DNDEBUG deletes, so the configuration with the check is the debug one and
+    // the configuration that walks off the end is the one players run:
+    //
+    //   debug     Assertion `d->blockLengthSize > 0' failed   tbprobe.cpp:720
+    //   shipped   exit 139, core dumped
+    //
+    // on tests/syzygy-3man/KQvK.rtbw with bytes 16..19 -- the second side's
+    // blocksNum -- zeroed, its padding byte already being 0.
+    if (d->blockLengthSize == 0)
+        return nullptr;
+
     d->maxSymLen = *data++;
     d->minSymLen = *data++;
 
