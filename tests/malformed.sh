@@ -122,6 +122,11 @@ def base():
     b[0:4] = bytes([0x71, 0xE8, 0x23, 0x5D])   # WDL magic
     b[4] = 0x01                                # Split = 1, HasPawns = 0
     b[11] = 6; b[12] = 6                       # sizeofBlock = span = 64
+    # blockLengthSize is blocksNum + padding and set_sizes refuses zero, since
+    # decompress_pairs' clamp computes blockLengthSize - 1 on an unsigned. One
+    # padding entry with no blocks keeps that refusal off the path so each
+    # fixture below is still refused for ITS OWN reason and not for this one.
+    b[13] = 1                                  # padding = 1
     b[18] = 1; b[19] = 1                       # maxSymLen = minSymLen = 1
     b[22] = 1                                  # one Huffman symbol declared
     return b
@@ -467,6 +472,25 @@ if [ -f "$CORPUS/KQvK.rtbw" ]; then
     check_survives "sparse-block   " "$dir" "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
 else
     echo "malformed: sparse-block    SKIPPED -- no 3-man corpus; run tests/tbfetch.sh"
+    SKIP=$((SKIP+1))
+fi
+
+if [ -f "$CORPUS/KQvK.rtbw" ]; then
+    dir="$WORK/fx/empty-blocklength"
+    mkdir -p "$dir"
+    cp "$CORPUS"/*.rtb? "$dir/"
+    # Bytes 16..19 are blocksNum for the non-single-value side -- the same side
+    # sparse-block above reaches at offset 90 -- and its padding byte at 15 is
+    # already 0 in the shipped table. Zeroing the four makes blockLengthSize 0,
+    # and the block clamp then computes 0 - 1 on an unsigned and indexes
+    # blockLength[] eight gibibytes past its end. Unlike the fixtures above this
+    # one is refused with a diagnostic, because an empty block-length array is
+    # visible at load time; before the refusal it was `exit 139, core dumped`.
+    printf '\x00\x00\x00\x00' \
+      | dd of="$dir/KQvK.rtbw" bs=1 seek=16 count=4 conv=notrunc 2>/dev/null
+    check "empty-blocklength" "$dir" "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
+else
+    echo "malformed: empty-blocklength SKIPPED -- no 3-man corpus; run tests/tbfetch.sh"
     SKIP=$((SKIP+1))
 fi
 
