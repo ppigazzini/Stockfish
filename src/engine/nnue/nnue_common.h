@@ -53,6 +53,14 @@
     #include <arm_neon.h>
 #endif
 
+// _BitScanForward64 for the word decoder below, on the one compiler that spells
+// it that way. Kept out of the tier block above: it is a property of the
+// compiler and not of the vector width, and every other arm of the decoder's
+// selection is preprocessed away before an include lane sees it.
+#if defined(_MSC_VER) && defined(_WIN64) && !defined(__clang__)
+    #include <intrin.h>
+#endif
+
 namespace Stockfish::Eval::NNUE {
 
 // Read a T out of a byte buffer. A static_assert, an alignment check and a
@@ -224,6 +232,33 @@ inline void write_little_endian(std::ostream& stream, const IntType* values, usi
             write_little_endian<IntType>(stream, values[i]);
 }
 
+// The word decoder below reads eight stream bytes as one integer and needs a
+// count-trailing-zeros. Both are properties of the compiler rather than of the
+// format, so where either is missing the decoder is compiled out entirely and
+// the byte loop -- which is still present, and still what handles every tail --
+// decodes the whole file. Neither arm changes a single decoded value.
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && defined(__GNUC__)
+constexpr bool LebWordDecode = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
+inline u32     leb_ctz64(u64 b) { return u32(__builtin_ctzll(b)); }
+#elif defined(_MSC_VER) && defined(_WIN64) && !defined(__clang__)
+constexpr bool LebWordDecode = true;
+inline u32     leb_ctz64(u64 b) {
+    unsigned long idx;
+    _BitScanForward64(&idx, b);
+    return u32(idx);
+}
+#else
+constexpr bool LebWordDecode = false;
+inline u32     leb_ctz64(u64) { return 0; }
+#endif
+
+// How far left a payload of n+1 groups must be shifted to put its top bit in
+// bit 31, so that one arithmetic shift back both discards the groups the window
+// picked up from the NEXT value and sign-extends this one. Index 4 is zero
+// because 35 bits of payload leave nothing above the truncation to 32 to extend
+// into, which is the `shift >= 32` arm of the byte loop.
+constexpr u32 LebShift[5] = {25, 18, 11, 4, 0};
+
 // Read N signed integers from the stream s, putting them in the array out.
 // The stream is assumed to be compressed using the signed LEB128 format.
 // See https://en.wikipedia.org/wiki/LEB128 for a description of the compression scheme.
@@ -252,6 +287,7 @@ inline void read_leb_128_detail(std::istream& stream,
 
     static_assert(std::is_signed_v<IntType>, "Not implemented for unsigned types");
     static_assert(sizeof(IntType) <= 4, "Not implemented for types larger than 32 bit");
+    static_assert((i32(-1) >> 1) == i32(-1), "Right shift of a negative must be arithmetic");
 
     // THE CURSOR IS HELD IN LOCALS and written back on the way out. All three
     // of these are reference parameters -- the caller's fold expression carries
@@ -270,6 +306,72 @@ inline void read_leb_128_detail(std::istream& stream,
     usize shift = 0, i = 0;
     while (i < Count)
     {
+        // A whole value out of one 8-byte window, with no branch on the
+        // continuation bit. Entered only at a value boundary and only with 8
+        // bytes buffered, so it can neither straddle a refill nor read past
+        // `end`; everything it declines is left to the byte loop below.
+        if (LebWordDecode && shift == 0)
+        {
+            // A 16-bit output cannot need more than three groups, so its
+            // compaction is two terms shorter and its window three bytes
+            // narrower. That is 94% of a network file by weight count.
+            constexpr u32 Groups = sizeof(IntType) <= 2 ? 3 : 5;
+            static_assert(Groups <= sizeof(LebShift) / sizeof(LebShift[0]),
+                          "the refusal bounds the table index");
+
+            // ONE loop test, not three. A value consumes at most `Groups`
+            // bytes, so from a cursor with a full window behind it the next
+            // (end - 8 - pos) / Groups + 1 values are all in bounds; the test
+            // for the window and the test for `left` both come out of the loop
+            // and the byte budget is spent as a value budget. The buffer is
+            // 8 KiB and the bound is conservative by a factor of `Groups`, so
+            // this is re-entered two or three times per refill.
+            const u32   pos0  = pos;
+            const usize limit = end - pos < 8
+                                ? i
+                                : std::min(Count, i + usize((end - 8 - pos) / Groups) + 1);
+
+            while (i < limit)
+            {
+                u64 word;
+                std::memcpy(&word, &buf[pos], 8);
+
+                // Byte 7's continuation bit is REPLACED by a set sentinel, so a
+                // window of eight continuation bytes reports length 8 rather
+                // than a zero the count-trailing-zeros could not be asked
+                // about. Any length past `Groups` leaves the value to the byte
+                // loop, which decodes a redundant or malformed encoding
+                // correctly and slowly.
+                const u64 term = (~word & 0x0080808080808080ull) | 0x8000000000000000ull;
+                const u32 last = leb_ctz64(term) >> 3;  // index of the final byte
+                if (last >= Groups)
+                    break;
+
+                // Each mask selects one 7-bit group already shifted into place,
+                // so the continuation bits need no separate clearing.
+                u32 value = u32(word) & 0x7Fu;
+                value |= u32(word >> 1) & 0x3F80u;
+                if constexpr (Groups > 2)
+                    value |= u32(word >> 2) & 0x1FC000u;
+                if constexpr (Groups > 3)
+                    value |= u32(word >> 3) & 0xFE00000u;
+                if constexpr (Groups > 4)
+                    value |= u32(word >> 4) & 0xF0000000u;
+
+                const u32 sh = LebShift[last];
+                out[i++]     = IntType(i32(value << sh) >> sh);
+                pos += last + 1;
+            }
+
+            // `left` is the balance the closing check reads, so it is exact --
+            // but it is a function of the cursor, and paying for it once per
+            // value is paying twice for the same subtraction.
+            left -= pos - pos0;
+
+            if (i == Count)
+                break;
+        }
+
         if (pos == end)
         {
             stream.read(reinterpret_cast<char*>(buf.data()), std::min(usize(left), buf.size()));
