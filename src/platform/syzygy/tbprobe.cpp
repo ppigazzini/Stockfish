@@ -293,9 +293,9 @@ static_assert(sizeof(LR) == 3, "LR tree entry must be 3 bytes");
 // set_symlen() and decompress_pairs() index them with a value straight from the
 // file and still stay inside the buffer -- with no test in either loop.
 constexpr usize SymCount = 4096;
-static_assert((SymCount & (SymCount - 1)) == 0,
-              "decompress_pairs masks a Sym with SymCount - 1; a non-power-of-two would let "
-              "an index past the end through");
+static_assert(SymCount == usize(1) << 12,
+              "SymCount is the domain of a twelve-bit Sym, and set_sizes() refuses a table "
+              "whose alphabet could leave it");
 
 // True when COUNT items of STRIDE bytes each still fit between P and the end of
 // the mapping.
