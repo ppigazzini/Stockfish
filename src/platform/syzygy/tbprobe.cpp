@@ -297,6 +297,17 @@ static_assert(SymCount == usize(1) << 12,
               "SymCount is the domain of a twelve-bit Sym, and set_sizes() refuses a table "
               "whose alphabet could leave it");
 
+// A code no longer than K bits owns a WHOLE NUMBER of buckets of the top K bits
+// of the bitstream, because base64[] is right-padded to 64 bits -- so one load
+// indexed by those bits answers what the scan up base64[] was walking for. K is
+// the table's own maxSymLen, capped here: uncapped it wants 2^63 entries, and
+// under the cap the lengths past it keep the scan and say so with NoFastLen.
+//
+// NoFastLen cannot collide with a length, which is base64[]'s own index and so
+// below 64: maxSymLen is refused at 64 or above.
+constexpr int LenTabMaxBits = 12;
+constexpr u8  NoFastLen     = 0xFF;
+
 // True when COUNT items of STRIDE bytes each still fit between P and the end of
 // the mapping.
 //
@@ -487,6 +498,8 @@ struct PairsData {
     int groupLen[TBPIECES + 1];        // Number of pieces in a given group: KRKN -> (3, 1)
     u16 map_idx[4];            // WDLWin, WDLLoss, WDLCursedWin, WDLBlessedLoss (used in DTZ)
     std::vector<LR> btreeBuf;  // btree[] copied out of the mapping, sized at SymCount
+    std::vector<u8> lenTab;         // the stream's top bits -> a symbol length
+    u8              lenTabShift;    // 64 minus how many of them lenTab[] indexes
 };
 
 // struct TBTable contains indexing information to access the corresponding TBFile.
@@ -837,18 +850,23 @@ int decompress_pairs(PairsData* d, u64 idx) {
     // table with a block in it, and d->data is itself dozens of bytes into the
     // mapping for one without.
     const u8* const limit     = d->dataEnd - sizeof(u32);
+    const u8* const lenTab    = d->lenTab.data();
     int             buf64Size = 64;
     Sym             sym;
 
     while (true)
     {
-        int len = 0;  // This is the symbol length - d->min_sym_len
+        // THE SYMBOL LENGTH, minus d->minSymLen. For any symbol s64 of length l
+        // right-padded to 64 bits we know that d->base64[l-1] >= s64 >=
+        // d->base64[l], so a walk up base64[] finds it -- and one load finds it
+        // for every length lenTab[] can index, which on a table whose longest
+        // code fits under the cap is all of them.
+        //
+        int len = lenTab[buf64 >> d->lenTabShift];
 
-        // Now get the symbol length. For any symbol s64 of length l right-padded
-        // to 64 bits we know that d->base64[l-1] >= s64 >= d->base64[l] so we
-        // can find the symbol length iterating through base64[].
-        while (buf64 < d->base64[len])
-            ++len;
+        if (len == NoFastLen)
+            for (len = 0; buf64 < d->base64[len]; ++len)
+            {}
 
         // All the symbols of a given length are consecutive integers (numerical
         // sequence property), so we can compute the offset of our symbol of
@@ -1466,6 +1484,28 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
             break;
 
         upper = d->base64[i] - 1;
+    }
+
+    // The span a length owns runs from its own base to one below its
+    // predecessor's, and both ends land on a bucket boundary while the length
+    // fits in the index -- so the fill is exact, not approximate. The first
+    // length past the cap divides a bucket, so it and everything below it stay
+    // NoFastLen and reach the scan.
+    const int lenTabBits = std::min(int(d->maxSymLen), LenTabMaxBits);
+    d->lenTabShift       = u8(64 - lenTabBits);
+    d->lenTab.assign(usize(1) << lenTabBits, NoFastLen);
+
+    u64 top = ~u64(0);  // the largest bitstream word that can reach length i
+    for (int i = 0; i < base64_size; ++i)
+    {
+        if (i + d->minSymLen <= lenTabBits && top >= d->base64[i])
+            for (u64 b = d->base64[i] >> d->lenTabShift; b <= top >> d->lenTabShift; ++b)
+                d->lenTab[b] = u8(i);
+
+        if (d->base64[i] == 0)
+            break;  // every word reaches this length, so no longer one is used
+
+        top = d->base64[i] - 1;
     }
 
     data += base64_size * sizeof(Sym);
