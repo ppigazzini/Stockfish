@@ -450,21 +450,64 @@ def net_eval(out):
     return None
 
 
-def harness_net(rng, deadline, findings):
-    nets = sorted(
-        (os.path.getsize(os.path.join(ROOT, "src", f)), f)
-        for f in os.listdir(os.path.join(ROOT, "src"))
-        if f.endswith(".nnue")
-    )
-    if not nets:
-        return None
-    smallest = nets[0][1]
+def net_default_name():
+    """The net the engine evaluates with, read from the engine's own header.
 
-    # The reference evaluation, from the SHIPPED net. The property here is not
-    # "did it crash" -- it is that a corrupt net must be REFUSED rather than
-    # loaded into an evaluation that looks plausible. Without a reference there
-    # is no way to tell a refused net from an accepted one that lies, because
-    # both print a number.
+    NOT the smallest .nnue lying in src/. That directory accumulates untracked
+    nets across branches exactly as src/stockfish* accumulates binaries, and an
+    older one is refused at the door by the architecture hash on EVERY
+    iteration, whatever byte was mutated -- so the lane runs green and empty.
+    Measured on this tree with five nets present: every iteration of a local run
+    was refused before a mutated byte reached the decoder. CI passed only
+    because a fresh runner downloads exactly one net.
+    """
+    with open(os.path.join(ROOT, "src", "engine", "evaluate.h")) as fh:
+        for line in fh:
+            if line.startswith("#define EvalFileDefaultName"):
+                return line.split('"')[1]
+    return None
+
+
+# The file is a 12-byte header -- version, architecture hash, description length
+# -- then that description, then weights. Only those 12 bytes carry a field the
+# format DEFINES as checkable, and they are 12 bytes of a 95 MB file: an
+# unaimed mutation reaches them about once in eight million iterations.
+NET_HEADER_BYTES = 12
+
+
+def harness_net(rng, deadline, findings):
+    """A mutated network file through EvalFile, with the claim split by WHERE it landed.
+
+    THE CLAIM IS NOT THAT THE EVALUATION IS UNCHANGED, and the difference is the
+    whole soundness of this harness. NNUE weights carry no integrity field: a
+    mutated int8 is a legal int8, so a corrupt net that the reader decodes
+    PERFECTLY is simply a different network, and a different evaluation is the
+    right answer rather than a defect. Asserting otherwise makes the harness red
+    on its own stimulus -- and it was, on the shipped net, at iteration 721 of a
+    nightly run: four weight bytes moved, the evaluation went 0.03 to 0.04, and
+    the engine had done nothing wrong. harness_tb carries the same reasoning
+    about Syzygy, which has the same hole for the same reason.
+
+    What the format does define is the header, and the engine must refuse a file
+    whose header contradicts it. Measured here: a flipped bit anywhere in those
+    12 bytes gives 5 ERROR lines, exit 1, and no evaluation, while a flipped bit
+    in the description -- free text the reader keeps but never checks -- is
+    accepted with the evaluation unmoved.
+
+    So the mutation is aimed at the header half the time and the claim is chosen
+    by where the bytes ACTUALLY landed. Past the header what is left is
+    liveness, and it is stated rather than dressed up as more: nothing here can
+    tell a correctly-read corrupt net from an incorrectly-read one, because with
+    no integrity field over the weights nothing can.
+    """
+    name = net_default_name()
+    if name is None:
+        return None
+    source = os.path.join(ROOT, "src", name)
+    if not os.path.isfile(source):
+        return None
+
+    # The reference evaluation, from the net the engine loads by default.
     rc, out = run(["position startpos", "eval"])
     ref = net_eval(out)
     if rc != 0 or ref is None:
@@ -473,14 +516,42 @@ def harness_net(rng, deadline, findings):
     n = 0
     with tempfile.TemporaryDirectory() as d:
         victim = os.path.join(d, "fuzz.nnue")
+        shutil.copy(source, victim)
+        size = os.path.getsize(victim)
+
+        # RIG CHECK, on the UNMUTATED copy. It proves two things no iteration
+        # below can prove for itself: that the fixture really is the net the
+        # engine evaluates with, and that EvalFile at this path reloads at all.
+        # Without it a harness whose fixture is refused, or whose setoption is
+        # ignored, spends its whole budget measuring nothing and reports the
+        # iteration count of a lane that never ran an experiment.
+        rc, out = run(
+            [f"setoption name EvalFile value {victim}", "isready", "position startpos", "eval"]
+        )
+        if rc != 0 or net_eval(out) != ref:
+            raise SystemExit(
+                f"fuzz: RIG FAULT -- the intact {name} did not reload at the fuzz path"
+            )
+
         while time.time() < deadline:
             n += 1
-            shutil.copy(os.path.join(ROOT, "src", smallest), victim)
-            size = os.path.getsize(victim)
+            shutil.copy(source, victim)
+            # Aimed at the header half the time, because 12 bytes in 95 MB is
+            # not a region an unaimed mutation ever reaches -- and it carries
+            # the only claim the format supports. XOR with a NON-ZERO byte: a
+            # random replacement can land on the value already there, and a
+            # header iteration that mutated nothing would be reported as the
+            # engine accepting a header it was never given.
+            aimed = rng.random() < 0.5
+            offsets = []
             with open(victim, "r+b") as fh:
                 for _ in range(rng.randint(1, 6)):
-                    fh.seek(rng.randrange(size))
-                    fh.write(bytes([rng.randrange(256)]))
+                    off = rng.randrange(NET_HEADER_BYTES if aimed else size)
+                    offsets.append(off)
+                    fh.seek(off)
+                    old = fh.read(1)[0]
+                    fh.seek(off)
+                    fh.write(bytes([old ^ (1 + rng.randrange(255))]))
             rc, out = run(
                 [
                     f"setoption name EvalFile value {victim}",
@@ -497,21 +568,34 @@ def harness_net(rng, deadline, findings):
                 findings.append(("net", f"killed by signal {-rc}", victim))
                 return n
 
-            # Three outcomes are fine and one is not. Refusing the file is fine.
-            # Failing to load it and keeping the old net is fine. Loading it and
-            # reporting the same evaluation is fine -- the mutated bytes did not
-            # reach this position. Loading it, saying nothing, and reporting a
-            # DIFFERENT evaluation is the engine passing off a corrupt network
-            # as an opinion.
             got = net_eval(out)
-            if got is not None and got != ref and "ERROR" not in out:
-                findings.append(
-                    (
-                        "net",
-                        f"corrupt net accepted silently: eval {got}, shipped net says {ref}",
-                        victim,
+
+            # A refusal must be TOTAL. read_parameters reads straight into the
+            # live network, so a read that fails partway leaves the feature
+            # transformer holding the new file's bytes and the layer stacks the
+            # old net's. Announcing the refusal and then evaluating anyway would
+            # be an opinion from that mixture.
+            if "ERROR" in out and got is not None:
+                findings.append(("net", "an evaluation from a net the engine refused", victim))
+                return n
+
+            # Not by `aimed` but by where the bytes landed: an unaimed mutation
+            # can reach the header too, and then it carries the header's claim.
+            if any(off < NET_HEADER_BYTES for off in offsets):
+                if got is not None:
+                    hit = sorted(o for o in offsets if o < NET_HEADER_BYTES)
+                    findings.append(
+                        ("net", f"a net with a corrupt header was accepted: byte(s) {hit}", victim)
                     )
-                )
+                    return n
+                continue
+
+            # Past the header the NUMBER carries no claim -- see the docstring.
+            # What does is that an engine which accepted the net can still be
+            # used: one that evaluates and then cannot produce a move has been
+            # left in a state the corrupt weights put it in.
+            if got is not None and "bestmove" not in out:
+                findings.append(("net", "no bestmove after a corrupt net was accepted", victim))
                 return n
     return n
 
