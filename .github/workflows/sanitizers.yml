@@ -126,3 +126,32 @@ jobs:
 
       - name: Refuse every known-bad fixture
         run: ./tests/malformed.sh
+
+  # The reader above it is the tablebase's; this is the network's, and the reason
+  # it is a lane of its own is that no other lane can fail on it. Every gate that
+  # touches the net decides on a bench signature, which proves 23 M weights
+  # decoded the same way -- from ONE file, whose every value is 16-bit and
+  # minimally encoded. The 32-bit values, the five-group payloads, the redundant
+  # encodings and the truncated streams the reader is specified for appear in no
+  # net in the tree, so a decoder that got all of them wrong still prints the
+  # anchor. Cheap: one translation unit, no engine build, no network.
+  #
+  # It builds no engine, so it needs no net and no ARCH tier is measured -- but
+  # it does need a tier's DEFINES, because the header it compiles carries the
+  # NNUE intrinsic set. The gate takes them from the Makefile itself.
+  Leb128-reader:
+    name: Decode the network format, not the network file
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same workaround as the matrix above: since Linux 6.5 the runner's ASLR
+      # entropy makes ASan report false positives, and this gate's second run is
+      # sanitized.
+      - name: Lower ALSR entropy
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+
+      - name: Round-trip and hand-built streams
+        run: ./tests/leb128.sh
