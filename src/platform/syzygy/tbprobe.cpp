@@ -824,8 +824,21 @@ int decompress_pairs(PairsData* d, u64 idx) {
     // is at the beginning of this 64-bit sequence.
     u64 buf64 = (u8*) (ptr + 2) <= d->dataEnd ? number<u64, BigEndian>(ptr) : 0;
     ptr += 2;
-    int buf64Size = 64;
-    Sym sym;
+
+    // ONE LIVE POINTER, NOT TWO. The refill below used to bound `ptr + 1`
+    // against d->dataEnd, which needs the current pointer AND the next one live
+    // together across the whole decoder -- gcc kept both and copied between
+    // them every iteration. Naming the last address a 4-byte read may start at
+    // bounds the same span with one, and `limit` is loop-invariant where
+    // `ptr + 1` is not.
+    //
+    // The subtraction cannot leave the mapping: set_sizes() refuses a
+    // sizeofBlock below 4, so dataEnd is at least one u32 above d->data for any
+    // table with a block in it, and d->data is itself dozens of bytes into the
+    // mapping for one without.
+    const u8* const limit     = d->dataEnd - sizeof(u32);
+    int             buf64Size = 64;
+    Sym             sym;
 
     while (true)
     {
@@ -873,11 +886,7 @@ int decompress_pairs(PairsData* d, u64 idx) {
         if (buf64Size <= 32)
         {  // Refill the buffer
             buf64Size += 32;
-            // dataEnd is re-read from the struct rather than hoisted into a
-            // local, for the reason M1b measured on this same function: a local
-            // held across this loop costs the symbol decoder a register and
-            // twelve times the bound it buys.
-            if ((u8*) (ptr + 1) <= d->dataEnd)
+            if ((u8*) ptr <= limit)
                 buf64 |= u64(number<u32, BigEndian>(ptr)) << (64 - buf64Size);
             ++ptr;
         }
@@ -1360,7 +1369,13 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     //
     // on tests/syzygy-3man/KQvK.rtbw with bytes 16..19 -- the second side's
     // blocksNum -- zeroed, its padding byte already being 0.
-    if (d->blockLengthSize == 0)
+    //
+    // A block narrower than the bitstream word the decoder refills from names no
+    // real table either: WDL blocks are 32 or 64 bytes and DTZ blocks up to
+    // 1024. What that one buys is that d->dataEnd - sizeof(u32), which
+    // decompress_pairs forms once per call, cannot land before d->data for any
+    // table with a block in it.
+    if (d->blockLengthSize == 0 || d->sizeofBlock < sizeof(u32))
         return nullptr;
 
     d->maxSymLen = *data++;
