@@ -155,3 +155,39 @@ jobs:
 
       - name: Round-trip and hand-built streams
         run: ./tests/leb128.sh
+
+  # A third reader, and the only one whose input is the ENGINE'S OWN OUTPUT: the
+  # PV that syzygy_extend_pv builds. It belongs beside the two above because what
+  # it catches is the same class -- a write past a fixed array whose only guard
+  # is an assert -DNDEBUG removes -- and because no other lane can fail on it.
+  # `bench` probes no tablebases, so the anchor, both perf gates and every
+  # sanitizer row in the matrix stay green with the overflow present.
+  #
+  # 23 MB of tables, nearly all of it one stem, so it is cached on the script
+  # that decides the stem list. The corpus is the fixture: tbfetch.sh says why it
+  # is five stems and not the 3-4-man set, and the gate SKIPS loudly rather than
+  # passing if it is handed a different one. A mirror outage therefore skips the
+  # lane instead of failing it.
+  Tablebase-PV:
+    name: Bound the tablebase PV
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build
+        working-directory: src
+        run: make -j build ARCH=x86-64-avx2
+
+      - name: Cache the KNNvKP corpus
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: resources/syzygy-5man
+          key: syzygy-5man-${{ hashFiles('tests/tbfetch.sh') }}
+      - name: Fetch the KNNvKP corpus
+        continue-on-error: true
+        run: ./tests/tbfetch.sh --men 5
+
+      - name: Walk the extension against the array
+        run: python3 tests/tbpv.py
