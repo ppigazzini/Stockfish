@@ -51,6 +51,14 @@ enum NodeType {
 };
 
 class TranspositionTable;
+// Forward-declared, not included: every use of Host in this header is a
+// `const Host&` member, and a reference needs only the name. host.h pulls in all
+// seven seam headers, and this one is included by most of the engine -- so the
+// include would carry Position, RootMoves and std::function into translation
+// units that want none of them. The .cpp files that DEREFERENCE a Host include
+// it themselves.
+struct Host;
+
 class ThreadPool;
 struct SearchOptions;
 
@@ -206,16 +214,24 @@ struct SharedState {
                 TranspositionTable&                   transpositionTable,
                 std::map<HistoryBankIndex, SharedHistories>& sharedHists,
                 std::atomic<bool>&                    stopFlagRef,
-                std::atomic<bool>&                    increaseDepthFlagRef) :
+                std::atomic<bool>&                    increaseDepthFlagRef,
+                const Host&                           hostRef) :
         options(opts),
         tt(transpositionTable),
         sharedHistories(sharedHists),
+        host(hostRef),
         stopFlag(stopFlagRef),
         increaseDepthFlag(increaseDepthFlagRef) {}
 
     const SearchOptions&                  options;
     TranspositionTable&                   tt;
     std::map<HistoryBankIndex, SharedHistories>& sharedHistories;
+
+    // The seams this engine was built against, owned by whoever built it. A
+    // SharedState is copied BY VALUE into ThreadPool::set and dropped there, so
+    // the referent has to outlive the Workers rather than the pool -- the same
+    // rule shell/engine.h states for the option snapshot, for the same reason.
+    const Host&                           host;
 
     // The two flags every worker shares. Plain std::atomic rather than a host
     // handle, so the engine names no platform type to reach them: the host owns
@@ -446,6 +462,13 @@ class Worker {
 
     const SearchOptions&                                     options;
     TranspositionTable&                                      tt;
+
+    // The seams, unpacked from SharedState the way the flags below are and for
+    // the same reason. A REFERENCE: its binding is fixed at construction, so the
+    // compiler may hoist the load of the handle's address out of the node, which
+    // is what keeps the per-node tablebase probe at one added offset rather than
+    // a reload after every call that might alias `this`.
+    const Host&                                              host;
 
     // The two flags every worker shares. stopFlag is the one on the hot path:
     // search() reads it at the top of every non-root node and again after every
