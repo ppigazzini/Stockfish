@@ -76,7 +76,7 @@ BINDIR = $(PREFIX)/bin
 PGOBENCH = $(RUN_PREFIX) ./$(EXE) bench
 
 ### Source and object files
-SRCS = platform/text.cpp engine/arena.cpp engine/clock.cpp engine/search_go.cpp engine/output_sink.cpp engine/parallel.cpp engine/worker_set.cpp engine/tb_source.cpp engine/attacks.cpp shell/benchmark.cpp shell/console.cpp engine/bitboard.cpp engine/evaluate.cpp shell/main.cpp \
+SRCS = platform/text.cpp engine/arena.cpp engine/clock.cpp engine/fatal.cpp engine/search_go.cpp engine/output_sink.cpp engine/parallel.cpp engine/worker_set.cpp engine/tb_source.cpp engine/attacks.cpp shell/benchmark.cpp shell/console.cpp engine/bitboard.cpp engine/evaluate.cpp shell/main.cpp \
 	platform/misc.cpp engine/movegen.cpp engine/movepick.cpp engine/position.cpp \
 	engine/search.cpp platform/thread.cpp platform/numa.cpp engine/timeman.cpp engine/tt.cpp shell/uci.cpp shell/ucioption.cpp shell/tune.cpp platform/syzygy/tbprobe.cpp \
 	engine/nnue/nnue_accumulator.cpp engine/nnue/nnue_misc.cpp engine/nnue/network.cpp \
