@@ -39,23 +39,21 @@ static_assert(sizeof(TimePoint) == sizeof(i64), "TimePoint should be 64 bits");
 // tests/linkcheck.sh nor tests/enginelink.sh can see an engine file that reads
 // one directly. Keep the readers pointed at now() below by hand.
 //
-// THE SEAM READS MICROSECONDS AND now() IS A QUOTIENT OF IT. Every reader used
-// to go through a whole-millisecond now(), except one that could not:
-// syzygy_extend_pv's time_abort compares against `Move Overhead`, whose range
-// starts at 0, and at millisecond resolution `2 * 0 > 0` is false -- so the
-// budget ran a further millisecond past the deadline it exists to enforce.
-// That reader took std::chrono::steady_clock directly and ignored a
-// substituted clock, which gave a replay harness a deterministic search and a
-// wall-clock tablebase extension.
+// THE SEAM READS MICROSECONDS AND now() IS A QUOTIENT OF IT. Keep the fine
+// reading the source of truth and the coarse one derived from it, so a host
+// substitutes ONE function and both views move together.
 //
-// Widening TimePoint would have been the other way to close it, and it is a
-// functional change to every constant time management owns. This is not: the
-// fine reading is the source of truth and the coarse one is derived from it, so
-// TimePoint keeps its meaning, every existing caller keeps its behaviour, and
-// the two clocks stop being unrelated quantities that happen to agree.
+// The resolution is load-bearing at one reader. syzygy_extend_pv's time_abort
+// budgets itself against `Move Overhead`, whose range starts at 0, and at
+// whole-millisecond resolution `2 * 0 > 0` is false -- so a millisecond seam
+// lets that abort run a further millisecond past the deadline it exists to
+// enforce. Give this seam a TimePoint and that reader has to read a host clock
+// directly to stay correct, which no gate can see and which hands a replay
+// harness a deterministic search with one wall-clock component in it.
 //
-// A host substitutes ONE function and both views move together. That is the
-// property the old shape could not offer at any price.
+// Do not close it by widening TimePoint instead: TimePoint is the type every
+// constant time management owns is written in, so changing it is a functional
+// change to all of them.
 //
 // The cadence is what makes an indirect call affordable, and NO READER IS ON
 // THE PER-NODE PATH. The hottest is TimeManagement::elapsed_time, reached from
