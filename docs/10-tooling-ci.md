@@ -1020,7 +1020,29 @@ Where the cost is, per component, deterministically.
 ```sh
 ./tests/perfdecomp.sh                       # merge-base with master, against HEAD
 ./tests/perfdecomp.sh --depth 8 --comp clang
+./tests/perfdecomp.sh --syzygy tests/syzygy # the workload that reaches the tablebase reader
+./tests/perfdecomp.sh --pgo                 # the lane that ships
 ```
+
+**Two flags decide which program is decomposed at all.** Without `--syzygy` the bench list opens
+no tablebase, so every tablebase row reports MATCHED NOTHING and the reader a probing search
+spends a large share of its time in is absent from the table entirely -- a decomposition of the
+engine minus the code the branch's largest result came from. With it, `tablebase probe` is a
+component like any other. Without `--pgo` the decomposition is of `-O3`, and the lane a player
+runs is decomposed nowhere; splitting a function changes what a profile can attribute, so the two
+modes can disagree about where cost sits.
+
+The same three refusals `perfbudget.sh` makes apply: no such directory, no `.rtbw` in it, no
+positions in the FEN file, all **skip**. The probing depth defaults to 14, matching
+`perfbudget.sh` and `fingerprint.sh`, so a component split, an instruction ratio and a call count
+describe one workload rather than three.
+
+One thing is inside the measured region on a probing run and is not on the instruction axis: the
+`SyzygyPath` line runs as the first bench command, so **mapping the tables is decomposed too** and
+lands in the tablebase rows beside the probing. `perfbudget.sh` subtracts that through a startup
+probe; a per-component split has nothing to subtract, because the question here is where the work
+is rather than what one change moved. Read `tablebase probe` on a probing profile as reader plus
+loader.
 
 `perfcounters.sh` says *whether* the machine executed the program differently. This says
 *where*. It runs callgrind with the cache and branch simulators on both sides, sums self cost
