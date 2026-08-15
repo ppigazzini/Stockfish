@@ -18,10 +18,11 @@
 
 #include "network.h"
 
+#include "../fatal.h"
+
 #include "../output_sink.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -191,7 +192,13 @@ void Network::verify(const std::function<void(std::string_view)>& f,
             f(msg);
         }
 
-        exit(EXIT_FAILURE);
+        // NOTHING LEFT TO SAY, so nothing is passed. The five-line diagnostic
+        // has already gone out through the callback this function was handed,
+        // which is the host's own channel; a reason here would print it a
+        // second time on a different stream. This site is the termination
+        // defect alone, which is what makes it the one that shows saying and
+        // terminating are separable seams.
+        engine_abort({});
     }
 
     if (f)

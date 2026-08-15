@@ -18,6 +18,10 @@
 
 #include "tt.h"
 
+#include <cstdio>
+
+#include "fatal.h"
+
 #include "arena.h"
 #include "parallel.h"
 
@@ -25,7 +29,6 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <numeric>
 #include <vector>
 
@@ -178,8 +181,12 @@ void TranspositionTable::resize(usize mbSize) {
 
     if (!table)
     {
-        std::cerr << "Failed to allocate " << mbSize << "MB for transposition table." << std::endl;
-        exit(EXIT_FAILURE);
+        // Same shape as the arena's two sites and for the same reason: this is
+        // an allocation failure, so the report is formatted without allocating.
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "Failed to allocate %lluMB for transposition table.",
+                      static_cast<unsigned long long>(mbSize));
+        engine_abort(buf);
     }
 
     clear();
