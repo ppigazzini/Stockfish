@@ -212,9 +212,32 @@ if [ "$rc" = 0 ]; then
     fi
     grep -E '^  ' "$BUILD/seams_run.log"
 
+    # The fatal seam, in its own process because the thing under test ends one.
+    # Both halves are asserted together: the host's handler must be REACHED, and
+    # the wrapper must terminate ANYWAY. The registered handler deliberately
+    # RETURNS -- that is the case fatal.h's [[noreturn]] is a promise about, and
+    # a run that printed the marker and exited 0 would mean the promise is one
+    # the compiler has already optimised against while it is not true.
+    ( cd "$BUILD/w/src" && ./engine-seams --abort ) > "$BUILD/abort_run.log" 2>&1
+    abrc=$?
+    grep -E '^  ' "$BUILD/abort_run.log"
+    if [ "$abrc" = 0 ]; then
+        echo "  engine_abort RETURNED to its caller -- the [[noreturn]] is not held"
+        echo
+        echo "enginelink: FINDINGS"
+        exit 1
+    fi
+    if ! grep -q 'host handler reached' "$BUILD/abort_run.log"; then
+        echo "  the process ended without reaching the registered fatal handler"
+        echo
+        echo "enginelink: FINDINGS"
+        exit 1
+    fi
+    echo "  fatal: terminated anyway, exit $abrc"
+
     echo
     echo "enginelink: the engine links alone, searches with no host, and reaches"
-    echo "enginelink: a registered clock and arena when one is supplied"
+    echo "enginelink: a registered clock, arena and fatal handler when supplied"
     echo "enginelink: clean"
     exit 0
 fi
