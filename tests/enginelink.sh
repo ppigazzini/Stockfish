@@ -161,18 +161,62 @@ if [ "$rc" = 0 ]; then
         exit 2
     fi
     # The DIRECTORY: the engine resolves its own default net name inside it.
-    if ( cd "$BUILD/w/src" && ./engine-standalone . ) > "$BUILD/run.log" 2>&1; then
+    if ! ( cd "$BUILD/w/src" && ./engine-standalone . ) > "$BUILD/run.log" 2>&1; then
         grep -E '^  ' "$BUILD/run.log"
+        echo "  the engine linked but did NOT run:"
+        tail -12 "$BUILD/run.log" | sed 's/^/    /'
         echo
-        echo "enginelink: the engine links alone AND searches with no host"
-        echo "enginelink: clean"
-        exit 0
+        echo "enginelink: FINDINGS"
+        exit 1
     fi
-    echo "  the engine linked but did NOT run:"
-    tail -12 "$BUILD/run.log" | sed 's/^/    /'
+    grep -E '^  ' "$BUILD/run.log"
+
+    # ------------------------------------------------- the substitution half
+    #
+    # A SECOND host off the SAME objects, because the expensive part is the
+    # non-LTO build and this asks a different question of it: not "does the
+    # default run" but "does a SUBSTITUTED implementation take effect". A seam
+    # whose getter the engine never consults passes the half above -- the
+    # default would simply never be called -- so the two halves are not one
+    # check wearing two names.
+    #
+    # A SECOND PROCESS, not more cases in the first host. The arena must be
+    # registered before the first allocation and never swapped while a block
+    # from the previous one is live, so asserting it means owning main from its
+    # first line, which a host that must leave every seam unregistered cannot do.
     echo
-    echo "enginelink: FINDINGS"
-    exit 1
+    echo "== running it again, with a recognisable implementation registered =="
+    mkdir -p "$BUILD/w/tests"
+    cp tests/seams_main.cpp "$BUILD/w/tests/seams_main.cpp"
+    if ! ( cd "$BUILD/w/tests" && "$CXX" -std=c++17 -O1 -fno-exceptions $ARCHFLAGS -c \
+           -o ../src/seams_stub.o seams_main.cpp ) > "$BUILD/seams_stub.log" 2>&1; then
+        echo "enginelink: SKIPPED -- the substitution host would not compile" >&2
+        tail -8 "$BUILD/seams_stub.log" >&2
+        exit 2
+    fi
+    if ! ( cd "$BUILD/w/src" && "$CXX" -o engine-seams $objs seams_stub.o -lpthread ) \
+         > "$BUILD/seams_link.log" 2>&1; then
+        echo "  the substitution host did NOT link:"
+        tail -12 "$BUILD/seams_link.log" | sed 's/^/    /'
+        echo
+        echo "enginelink: FINDINGS"
+        exit 1
+    fi
+    if ! ( cd "$BUILD/w/src" && ./engine-seams . ) > "$BUILD/seams_run.log" 2>&1; then
+        grep -E '^  ' "$BUILD/seams_run.log"
+        echo "  a registered seam was NOT reached:"
+        tail -12 "$BUILD/seams_run.log" | sed 's/^/    /'
+        echo
+        echo "enginelink: FINDINGS"
+        exit 1
+    fi
+    grep -E '^  ' "$BUILD/seams_run.log"
+
+    echo
+    echo "enginelink: the engine links alone, searches with no host, and reaches"
+    echo "enginelink: a registered clock and arena when one is supplied"
+    echo "enginelink: clean"
+    exit 0
 fi
 
 undef=$(grep -oE "undefined reference to \`[^']+'" "$BUILD/link.log" \
