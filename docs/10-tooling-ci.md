@@ -286,7 +286,16 @@ Play this branch against upstream and report whether the engine **played**.
 ```sh
 ./tests/match.sh                       # merge-base with master, against HEAD
 ./tests/match.sh --games 200 --tc 10+0.1
+./tests/match.sh --syzygy tests/syzygy-34man   # both engines probe
 ```
+
+**`--syzygy` is the only way the tablebase reader is exercised under a clock.** The bench list
+opens no table, so every other gate reaches that code either not at all or under callgrind, where
+nothing has a deadline. Both engines get the same `SyzygyPath`, because a match that gave one side
+tables would measure the tables. The path is made **absolute** before it is passed: fastchess runs
+the engines from its own working directory, so a relative one resolves to nothing there and the
+match reads as clean while probing no table. A missing directory and a directory with no `.rtbw`
+both **skip**.
 
 It builds both revisions with `profile-build`, fetches and builds fastchess at the revision
 `games.yml` already pins, and plays a match at a fixed time control. Every other gate here
