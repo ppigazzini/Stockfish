@@ -38,6 +38,9 @@ TT=${TT:-16}
 JOBS=${JOBS:-$(nproc 2>/dev/null || echo 4)}
 COMP=${COMP:-gcc}
 COMPONENTS=${COMPONENTS:-tests/perfcomponents.tsv}
+SYZYGY=
+PGO=0
+DEPTH_GIVEN=0
 
 usage() {
     cat <<'EOF'
@@ -51,6 +54,14 @@ usage: tests/perfdecomp.sh [<base-rev>] [<head-rev>] [options]
   --arch ARCH   build architecture (default x86-64-avx2; avx512 is not available
                 to callgrind at all)
   --comp C      gcc or clang (default gcc)
+  --syzygy DIR  decompose a PROBING workload instead of the bench list, with
+                SyzygyPath pointed at DIR. The bench list opens no tablebase, so
+                without this every tablebase row MATCHES NOTHING and the reader
+                that a probing search spends a quarter of its time in is absent
+                from the decomposition. An empty DIR SKIPS.
+  --pgo         build both sides with profile-guided optimisation, which is what
+                ships. Roughly 3x slower to build, and the only way this axis
+                sees the lane a player runs.
   --jobs N      parallel build jobs (default: nproc)
 EOF
 }
@@ -58,15 +69,23 @@ EOF
 POS=()
 while [ $# -gt 0 ]; do
     case "$1" in
-        --depth) DEPTH=$2; shift 2 ;;
+        --depth) DEPTH=$2; DEPTH_GIVEN=1; shift 2 ;;
         --arch)  ARCH=$2; shift 2 ;;
         --comp)  COMP=$2; shift 2 ;;
+        --syzygy) SYZYGY=$2; shift 2 ;;
+        --pgo)   PGO=1; shift ;;
         --jobs)  JOBS=$2; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "perfdecomp: unknown argument: $1" >&2; usage >&2; exit 2 ;;
         *) POS+=("$1"); shift ;;
     esac
 done
+
+# A probing run wants depth, not breadth: the positions are four men and the
+# search converges early. Keep this the same default tests/perfbudget.sh and
+# tests/fingerprint.sh use, so a component split, an instruction ratio and a call
+# count describe ONE workload rather than three.
+[ -n "$SYZYGY" ] && [ "$DEPTH_GIVEN" = "0" ] && DEPTH=14
 
 command -v valgrind >/dev/null || { echo "perfdecomp: SKIPPED -- valgrind is not installed" >&2; exit 2; }
 command -v python3 >/dev/null || { echo "perfdecomp: SKIPPED -- no python3" >&2; exit 2; }
@@ -96,7 +115,45 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "perfdecomp: base=$BASE_SHA head=$HEAD_SHA arch=$ARCH comp=$COMP depth=$DEPTH"
+# ------------------------------------------------------- the probing workload
+#
+# BENCH_ARGS is empty for the default list and names a file for --syzygy. The
+# file is assembled rather than committed, because its first line names a
+# directory only the caller knows and a committed absolute path works on exactly
+# one machine.
+#
+# An empty or missing corpus SKIPS. A probing decomposition taken with no tables
+# loaded is the bench list wearing a different name, and every tablebase row
+# would report MATCHED NOTHING while looking like a measured zero.
+#
+# WHAT IS INSIDE THE MEASURED REGION. The SyzygyPath line runs as the first bench
+# command, so mapping the tables is decomposed too -- it lands in the tablebase
+# rows beside the probing. That is honest for a per-component split, where the
+# question is where the work is rather than what one change moved; read the
+# `tablebase probe` row as reader plus loader on a probing profile.
+BENCH_ARGS=()
+if [ -n "$SYZYGY" ]; then
+    SYZYGY_ABS=$(cd "$SYZYGY" 2>/dev/null && pwd) \
+        || { echo "perfdecomp: SKIPPED -- --syzygy: no such directory: $SYZYGY" >&2; exit 2; }
+    SYZYGY=$SYZYGY_ABS
+    ls "$SYZYGY"/*.rtbw >/dev/null 2>&1 \
+        || { echo "perfdecomp: SKIPPED -- --syzygy: no .rtbw in $SYZYGY -- run tests/tbfetch.sh" >&2; exit 2; }
+    FENS=$PWD/tests/tbprobe.fens
+    [ -f "$FENS" ] \
+        || { echo "perfdecomp: SKIPPED -- --syzygy: $FENS is missing" >&2; exit 2; }
+
+    BENCH_FILE=$WORK/tbprobe.bench
+    {
+        echo "setoption name SyzygyPath value $SYZYGY"
+        grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$FENS"
+    } > "$BENCH_FILE"
+    [ "$(grep -cve '^setoption' "$BENCH_FILE")" != "0" ] \
+        || { echo "perfdecomp: SKIPPED -- --syzygy: $FENS holds no positions" >&2; exit 2; }
+
+    BENCH_ARGS=( "$BENCH_FILE" depth )
+fi
+
+echo "perfdecomp: base=$BASE_SHA head=$HEAD_SHA arch=$ARCH comp=$COMP depth=$DEPTH mode=$([ "$PGO" = 1 ] && echo pgo || echo O3) workload=$([ -n "$SYZYGY" ] && echo probing || echo bench-list)"
 echo
 
 profile() {  # side -> writes $WORK/cg.$side, echoes the node count
@@ -107,10 +164,13 @@ profile() {  # side -> writes $WORK/cg.$side, echoes the node count
     dir="$WORK/wt-$side/src"
     git worktree add --detach "$WORK/wt-$side" "$rev" >/dev/null 2>&1 || return 1
     cp src/*.nnue "$WORK/wt-$side/src/" 2>/dev/null
-    ( cd "$dir" && make -j"$JOBS" build ARCH="$ARCH" COMP="$COMP" ) \
+    local target=build
+    [ "$PGO" = 1 ] && target=profile-build
+    ( cd "$dir" && make -j"$JOBS" "$target" ARCH="$ARCH" COMP="$COMP" ) \
       > "$WORK/build-$side.log" 2>&1 || return 1
     ( cd "$dir" && valgrind --tool=callgrind --callgrind-out-file="$WORK/cg.$side" \
-        --cache-sim=yes --branch-sim=yes ./stockfish bench "$TT" 1 "$DEPTH" ) \
+        --cache-sim=yes --branch-sim=yes \
+        ./stockfish bench "$TT" 1 "$DEPTH" "${BENCH_ARGS[@]}" ) \
       > "$WORK/run-$side.log" 2>&1 || return 1
     grep -oE 'Nodes searched *: *[0-9]+' "$WORK/run-$side.log" | grep -oE '[0-9]+$'
 }
@@ -156,7 +216,7 @@ python3 tests/perfdecomp.py "$WORK/cg.base" "$WORK/cg.head" "$COMPONENTS"
 rcpy=$?
 
 echo
-echo "perfdecomp: base=$BASE_SHA head=$HEAD_SHA arch=$ARCH"
+echo "perfdecomp: base=$BASE_SHA head=$HEAD_SHA arch=$ARCH comp=$COMP mode=$([ "$PGO" = 1 ] && echo pgo || echo O3) workload=$([ -n "$SYZYGY" ] && echo probing || echo bench-list)"
 # Three outcomes, and they are not interchangeable. Collapsing them all to
 # SKIPPED tells a reader "the tool was absent" when what happened is "the two
 # profiles are not comparable", and hides a table that WAS printed.
