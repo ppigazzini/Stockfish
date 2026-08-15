@@ -135,6 +135,21 @@ for raw in open(script):
     else:
         pump(None, 0.4)
 p.stdin.write('quit\n'); p.stdin.flush()
+# DRAIN TO EOF, and this is not tidiness. A pump with until=None returns on the
+# first 50 ms gap in the output, so everything the engine printed after the last
+# one returned is still in the queue -- and a session whose final command has no
+# reply to wait for (`d`, `eval`, `position`) ends wherever the reader happened
+# to be. That is a race, and a golden recorded from the losing side is a file
+# that asserts nothing while looking like a corpus. quit closes stdout, so the
+# reader thread posts None and this terminates.
+while True:
+    try:
+        line = q.get(timeout=10)
+    except queue.Empty:
+        raise SystemExit("golden: the engine did not close its output after quit")
+    if line is None:
+        break
+    out.append(line)
 p.wait(timeout=10)
 print('\n'.join(out))
 PY
