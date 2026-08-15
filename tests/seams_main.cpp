@@ -38,27 +38,26 @@
 // asserting it means owning the process from the first line of main. A file that
 // also has to leave every seam unregistered cannot do that.
 //
-// THREE SEAMS CANNOT BE ASSERTED FROM HERE, and the mechanism is the finding
-// rather than the omission:
+// OWNING THE CLOCK IS WHAT MAKES ANOTHER SEAM REACHABLE, and that is worth
+// stating because it reads as a coincidence otherwise. `debug_dump` fires from
+// check_time on `tick - lastInfoTime >= 1000` -- a WALL-CLOCK branch -- so on a
+// real clock a short run reaches it by luck and a harness asserting it would be
+// flaky. A substituted clock that steps a second per reading reaches it on
+// purpose, every time. The seam under test supplies the determinism the next
+// seam's assertion needs.
 //
-//   output sink   The engine's only emit_line call is in syzygy_extend_pv, on
-//                 the time_abort path (search.cpp). Search::go wires every
-//                 update callback to a no-op (search_go.cpp), so a headless
-//                 search emits nothing. `line` is reachable only by calling it;
-//                 `debug_dump` fires from check_time on `tick - lastInfoTime >=
-//                 1000`, a WALL-CLOCK branch, so a short run reaches it by luck.
+// ONE SEAM STILL CANNOT BE OBSERVED DURING A SEARCH, and the mechanism is the
+// finding rather than the omission:
+//
 //   worker set    Search::go registers its own set for the duration of a call
 //                 with more than one worker and restores what was there. A
 //                 recorder registered here is displaced for exactly the window
-//                 it was meant to observe.
-//   tb source     Search::go assigns `w.tbConfig = Tablebases::Config()`, which
-//                 is cardinality 0, so Step 6's guard short-circuits on every
-//                 node and probe_wdl is never called whatever is registered.
-//                 The root ranking that would set a cardinality lives in the
-//                 POOL's path, not the headless one.
+//                 it was meant to observe. What IS checkable is the restore,
+//                 and that is what check_worker_set_is_restored does.
 //
-// Asserting those three needs the shell, or a headless entry point that accepts
-// a tablebase configuration. Neither is this file's to invent.
+// `OutputSink::line` is a separate gap from `debug_dump` and stays one: the
+// engine's only emit_line call is in syzygy_extend_pv on the time_abort path,
+// which needs a real corpus and a budget small enough to miss.
 //
 // Deliberately not a test framework: it must build from the engine sources
 // alone.
@@ -67,7 +66,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <functional>
+#include <thread>
+#include <vector>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <new>
 #include <string>
@@ -77,8 +80,13 @@
 #include "../src/engine/clock.h"
 #include "../src/engine/fatal.h"
 #include "../src/engine/nnue/network.h"
+#include "../src/engine/output_sink.h"
+#include "../src/engine/parallel.h"
 #include "../src/engine/position.h"
 #include "../src/engine/search_go.h"
+#include "../src/engine/searchoptions.h"
+#include "../src/engine/tb_source.h"
+#include "../src/engine/worker_set.h"
 #include "../src/engine/types.h"
 
 using namespace Stockfish;
@@ -103,18 +111,32 @@ namespace tagging_arena {
 
 constexpr u64 Magic = 0x5EA115EA115EA115ULL;
 
-// Keep the header a multiple of the largest alignment the engine asks for, so
-// the pointer handed out has the alignment the raw block had. memory_allocator
-// asserts alignment and static_asserts alignof(T) <= 4096; 64 covers every type
-// in the tree and keeps the arithmetic obvious.
-constexpr usize HeaderBytes = 64;
+// MATCH THE ALIGNMENT THE DEFAULT GUARANTEES, which is 4096 (arena.cpp's
+// default_alloc). A substituted allocator that returns less is not caught at the
+// registration or at the allocation: ASSERT_ALIGNED is compiled out under
+// NDEBUG, so the block is handed to placement new and the fault arrives later,
+// inside the NNUE's aligned vector loads, with nothing pointing back here.
+//
+// This harness learned that by crashing. A first version used plain malloc with
+// a 64-byte header; glibc returns large requests page-aligned, so every
+// single-worker search passed, and the two-worker rebuild took a size that came
+// back 16-aligned and segfaulted in update_accumulator_refresh_cache.
+//
+// The header is a WHOLE Alignment rather than 64 for the arithmetic reason: the
+// pointer handed out is raw + HeaderBytes, and that only keeps raw's alignment
+// when HeaderBytes is a multiple of it.
+constexpr usize Alignment   = 4096;
+constexpr usize HeaderBytes = Alignment;
 
 u64 allocs   = 0;
 u64 frees    = 0;
 u64 untagged = 0;
 
 void* alloc(usize bytes) {
-    void* raw = std::malloc(bytes + HeaderBytes);
+    if (bytes > std::numeric_limits<usize>::max() - HeaderBytes - (Alignment - 1))
+        return nullptr;
+    const usize total = ((bytes + HeaderBytes + Alignment - 1) / Alignment) * Alignment;
+    void*       raw   = std::aligned_alloc(Alignment, total);
     if (!raw)
         return nullptr;
     std::memcpy(raw, &Magic, sizeof(Magic));
@@ -232,6 +254,214 @@ int check_search_reads_the_clock(const Eval::NNUE::Network& net, const char* fen
     return 0;
 }
 
+// ------------------------------------------------------- the tablebase prober
+//
+// The seam whose cadence the whole handle question turns on: probe_wdl sits in
+// Step 6 and is reached PER NODE once tables are loaded. Nothing in-process
+// could reach it until Search::go learned to take a Tablebases::Config, because
+// the root ranking that sets a cardinality on the hosted path has no equivalent
+// here.
+namespace recording_tb {
+
+u64 probes = 0;
+
+int max_cardinality(void*) { return 7; }
+
+// WRITE *result ON EVERY PATH. tb_source.h states this as the one thing a host
+// must guarantee and says why: search() branches on it to decide whether the
+// returned WDLScore is a real verdict, so a prober that returns without writing
+// turns an unrelated value into a tablebase cutoff and stores a fabricated score
+// in the transposition table. A recognisable implementation that got this wrong
+// would be asserting the seam works while corrupting the search through it.
+Tablebases::WDLScore probe_wdl(void*, Position&, Tablebases::ProbeState* result) {
+    ++probes;
+    *result = Tablebases::ProbeState::OK;
+    return Tablebases::WDLScore::WDLDraw;
+}
+
+Tablebases::Config rank_root_moves(void*,
+                                   const SearchOptions&,
+                                   Position&,
+                                   Search::RootMoves&,
+                                   bool,
+                                   const std::function<bool()>&) {
+    return Tablebases::Config();
+}
+
+}  // namespace recording_tb
+
+// A three-man endgame with no castling rights and a zeroed fifty-move counter,
+// because Step 6's guard tests all three. A cardinality above the piece count
+// also clears the `depth >= probeDepth` half of the guard, so the probe is
+// reached on the fifty-move-zero nodes rather than only on deep ones.
+int check_tb_source_substituted(const Eval::NNUE::Network& net) {
+    const Tablebases::TbSource saved = Tablebases::tb_source();
+
+    recording_tb::probes = 0;
+    Tablebases::set_tb_source(Tablebases::TbSource{nullptr, recording_tb::max_cardinality,
+                                                  recording_tb::probe_wdl,
+                                                  recording_tb::rank_root_moves});
+
+    Tablebases::Config cfg;
+    cfg.cardinality = 7;
+    cfg.rootInTB    = false;
+    cfg.useRule50   = true;
+    cfg.probeDepth  = 0;
+
+    const auto r = Search::go(net, "8/8/8/4k3/8/8/4P3/4K3 w - - 0 1", false, 10, 1, cfg);
+
+    const u64 probes = recording_tb::probes;
+    Tablebases::set_tb_source(saved);
+
+    if (!r.has_value())
+        return fail("the probing search produced no result");
+    if (probes == 0)
+        return fail("a search with a cardinality reached no registered prober");
+
+    std::cout << "  tb source: a depth-10 search probed the registered prober " << probes
+              << " time(s)\n";
+    return 0;
+}
+
+// ----------------------------------------------------------- the output sink
+namespace recording_sink {
+
+u64 lines = 0;
+u64 dumps = 0;
+
+void line(std::string_view) { ++lines; }
+void debug_dump() { ++dumps; }
+
+}  // namespace recording_sink
+
+namespace stepping_clock {
+
+// A SECOND PER READING. check_time admits itself once per callsCnt nodes and
+// then fires the debug dump on `tick - lastInfoTime >= 1000`, so a clock that
+// steps a whole second between readings crosses that threshold on purpose
+// rather than when the machine happens to be slow.
+//
+// SEED IT ABOVE WHATEVER THE ENGINE LAST SAW, and the reason is a process-wide
+// static this harness ran into rather than predicted. `lastInfoTime` in
+// check_time is a function-local static: it is initialised on the FIRST
+// admission in the process and then carries across every later search,
+// including ones run under a different clock. A stepping clock starting at zero
+// therefore compares its own small readings against a threshold left behind by
+// the real clock's, `tick - lastInfoTime` is hugely negative, and the dump never
+// fires -- which is what the first version of this check reported.
+//
+// That static is one of the two the search path holds, and it is the one whose
+// failure is silent: a wrong info cadence is a plausible number. Reentrancy work
+// has to give it an owner.
+i64 next = 0;
+i64 now_us() {
+    next += 1'000'000;
+    return next;
+}
+
+}  // namespace stepping_clock
+
+int check_output_sink_substituted(const Eval::NNUE::Network& net, const char* fen) {
+    const Clock      savedClock = clock_source();
+    const OutputSink savedSink  = output_sink();
+
+    recording_sink::dumps = 0;
+    recording_sink::lines = 0;
+    // Read the real clock BEFORE substituting, so the stepping sequence
+    // continues from where the engine's own static was last written rather than
+    // from zero.
+    stepping_clock::next = now_us();
+    set_output_sink(OutputSink{recording_sink::line, recording_sink::debug_dump});
+    set_clock_source(Clock{stepping_clock::now_us});
+
+    const auto r = Search::go(net, fen, false, 12, 1);
+
+    const u64 dumps = recording_sink::dumps;
+    set_clock_source(savedClock);
+    set_output_sink(savedSink);
+
+    if (!r.has_value())
+        return fail("the sink search produced no result");
+    if (dumps == 0)
+        return fail("check_time never reached the registered sink debug_dump");
+
+    std::cout << "  output sink: debug_dump reached " << dumps
+              << " time(s) under a stepping clock\n";
+    return 0;
+}
+
+// ------------------------------------------------------------- the worker set
+//
+// A thread-owning parallel-for, because Search::go REFUSES a count above what
+// parallel_for().num_threads() reports and the built-in one reports 1. That
+// refusal is correct and enginelink_main.cpp asserts it; reaching the
+// multi-worker path at all needs a host with threads, so this is the smallest
+// one that has the right shape. A thread per dispatch rather than a pool: the
+// engine ships the pool and the thing under test is whether the seam can start
+// a helper and wait for it afterwards.
+namespace thread_host {
+
+constexpr usize Threads = 2;
+
+std::thread running[Threads];
+
+usize              num_threads() { return Threads; }
+usize              numa_nodes() { return 1; }
+std::vector<usize> thread_numa_map() { return {}; }
+
+void run_on(usize t, std::function<void()> fn) {
+    if (t >= Threads)
+    {
+        fn();
+        return;
+    }
+    if (running[t].joinable())
+        running[t].join();
+    running[t] = std::thread(std::move(fn));
+}
+
+void wait_on(usize t) {
+    if (t < Threads && running[t].joinable())
+        running[t].join();
+}
+
+}  // namespace thread_host
+
+//
+// Search::go registers its own set for a multi-worker call and puts back what
+// was there, so a recorder cannot observe the search itself. The RESTORE is a
+// real property and it is the one worth holding: a Search::go that reset the
+// seam to the default instead would silently unregister a host that had one,
+// which is the failure ScopedWorkerSet exists to avoid.
+int check_worker_set_is_restored(const Eval::NNUE::Network& net, const char* fen) {
+    set_parallel_for({thread_host::num_threads, thread_host::numa_nodes,
+                      thread_host::thread_numa_map, thread_host::run_on, thread_host::wait_on});
+
+    const WorkerSet saved = worker_set();
+
+    // A recognisable ctx: the engine must hand THIS one back afterwards.
+    static int marker = 0;
+    WorkerSet  mine   = saved;
+    mine.ctx          = &marker;
+    set_worker_set(mine);
+
+    const auto r = Search::go(net, fen, false, 6, 2);
+
+    const bool restored = worker_set().ctx == &marker;
+    set_worker_set(saved);
+    // Unregister BEFORE reporting: the seam reaches into this file's statics and
+    // nothing running afterwards may still be pointed at them.
+    reset_parallel_for();
+
+    if (!r.has_value())
+        return fail("a two-worker search produced no result");
+    if (!restored)
+        return fail("Search::go did not put the host worker set back");
+
+    std::cout << "  worker set: the host registration survived a two-worker search\n";
+    return 0;
+}
+
 // ------------------------------------------------------------- the fatal seam
 namespace recording_fatal {
 
@@ -299,6 +529,15 @@ int main(int argc, char** argv) {
     static constexpr char StartPos[] =
       "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     if (const int rc = check_search_reads_the_clock(*net, StartPos); rc != 0)
+        return rc;
+
+    if (const int rc = check_tb_source_substituted(*net); rc != 0)
+        return rc;
+
+    if (const int rc = check_output_sink_substituted(*net, StartPos); rc != 0)
+        return rc;
+
+    if (const int rc = check_worker_set_is_restored(*net, StartPos); rc != 0)
         return rc;
 
     // The arena verdict, read after the work rather than during it: a search
