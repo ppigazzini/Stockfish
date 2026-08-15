@@ -327,16 +327,53 @@ reached, only that it was. It is **not** immune at the caller -- a function inli
 caller disappears from the profile -- so read the one-sided list as inlining differences and
 the changed list as the signal.
 
+### The workload decides what the fingerprint can see
+
+The bench list never opens a tablebase, so every call inside the reader is absent from a
+default profile and a change routed through `decompress_pairs` reports no call-count change at
+all. `--syzygy` points `SyzygyPath` at a directory and drives `tests/tbprobe.fens` instead:
+
+```sh
+./tests/fingerprint.sh --syzygy tests/syzygy HEAD~1
+```
+
+The difference is the whole reason the option exists. A depth-8 bench run reports `tbhits 0`
+and 215 engine symbols; the probing run reports `tbhits` above zero, 245 engine symbols, and
+`decompress_pairs` called 243,166 times. A missing directory, a directory with no `.rtbw` and
+an empty FEN file all **skip**, because a probing measurement taken with no tables loaded is
+the bench list wearing a different name.
+
+Depth defaults to 14 rather than 8 under `--syzygy`, matching `perfbudget.sh`, so a call count
+from this gate and an instruction count from that one describe one workload rather than two.
+
+What the probing profile carries that the search does not: the `SyzygyPath` line runs as the
+first bench command, so mapping the tables is inside the measured region. `perfbudget.sh`
+subtracts that through a startup probe; this gate has nothing to subtract, because a call count
+is not a difference of two totals. A change to the table **loader** therefore moves counts here
+too.
+
+### Scope, and the two classes outside the verdict
+
 Scope is the engine's own symbols. The allocator and glibc's thread-cancellation counters
 (`_int_malloc`, `sbrk`, `munmap`, the pthread cancel pair) move between two runs of one
 binary, so they are reported apart from the verdict rather than folded into it. Functions
 callgrind can only name by address are excluded: two builds place them differently, so they
 have no comparable identity.
 
-It is deterministic: an A/A run reports IDENTICAL across every engine symbol, so any changed
-count is the change and not the machine. `tests/negative_control.sh fingerprint` is that
-property going red -- it forces `Position::adjust_key50` out of line, which turns an inlined
-body into a called symbol with a count of its own.
+**One engine symbol is outside it too, and the reason is a limit on the determinism claim.**
+`SearchManager::check_time` fires the debug dump on `tick - lastInfoTime >= 1000` -- a
+wall-clock millisecond count, not a node count -- so `dbg_print` is called once per second of
+*real* elapsed time. callgrind runs the engine roughly 50x slower than the metal and the factor
+moves with machine load, so that one count differs between two runs of the same binary. It is
+listed below the verdict with its count rather than dropped. Add a symbol to `CLOCK_DRIVEN`
+only when its call sits under a branch on elapsed **time**; that it moved in an A/A is the
+symptom every real defect has too.
+
+It is otherwise deterministic: an A/A run reports IDENTICAL across every engine symbol, on the
+bench list and on a probing workload alike, so any changed count is the change and not the
+machine. `tests/negative_control.sh fingerprint` is that property going red -- it forces
+`Position::adjust_key50` out of line, which turns an inlined body into a called symbol with a
+count of its own.
 
 **The build stamp is neutralised on both sides**, for the reason `textequal.sh` carries the same
 line: `misc.o` is compiled with `-DGIT_SHA`, `-DGIT_DATE` and `-DGIT_DIFFINDEX`, an empty
