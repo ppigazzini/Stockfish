@@ -57,6 +57,7 @@
 #include "../engine/tb_source.h"
 #include "../engine/searchoptions.h"
 #include "../engine/history.h"
+#include "../engine/host.h"
 #include "../engine/bitboard.h"
 #include "../engine/basetypes.h"
 
@@ -383,20 +384,36 @@ SearchOptions Engine::search_options() const {
 void Engine::resize_threads() {
     threads.wait_for_search_finished();
     searchOptions = search_options();
-    threads.set(numaContext.get_numa_config(),
-                {searchOptions, tt, sharedHists, threads.stop, threads.increaseDepth},
-                updateContext);
 
-    // ORDER: the pool must exist before it is installed, and be installed before
-    // set_tt_size, which clears the table THROUGH the parallel-for. Installing
-    // after would clear a resized table single-threaded on the first call and
-    // multi-threaded on every later one -- correct either way, and a silent
-    // performance cliff on exactly the path that allocates gigabytes.
+    // ORDER: install BEFORE the pool is built, because threads.set constructs
+    // every Worker and each one now binds a const Host& snapshotted below. A
+    // snapshot taken before these two registrations holds the inline
+    // parallel-for and the refusing worker set, and the Workers keep reading
+    // them for the life of the pool -- a search that runs, reports no workers
+    // and returns a plausible number.
+    //
+    // Registering here is safe because a seam's callbacks are invoked during a
+    // SEARCH, never during construction: threads.set dispatches worker creation
+    // through numaConfig.execute_on_numa_node, not through the parallel-for.
+    //
+    // Both must also be installed before set_tt_size, which clears the table
+    // THROUGH the parallel-for. Installing after would clear a resized table
+    // single-threaded on the first call and multi-threaded on every later one --
+    // correct either way, and a silent performance cliff on exactly the path
+    // that allocates gigabytes.
     hostPool = &threads;
     set_parallel_for({pool_num_threads, pool_numa_nodes, pool_thread_numa_map, pool_run_on,
                       pool_wait_on});
     set_worker_set({&threads, ws_start_searching, ws_wait_finished, ws_nodes_searched, ws_tb_hits,
                     ws_count, ws_at});
+
+    // AFTER the registrations and before the Workers exist. This is the one
+    // line the ordering above is for.
+    host = current_host();
+
+    threads.set(numaContext.get_numa_config(),
+                {searchOptions, tt, sharedHists, threads.stop, threads.increaseDepth, host},
+                updateContext);
 
     // Reallocate the hash with the new threadpool size
     set_tt_size(options["Hash"]);
