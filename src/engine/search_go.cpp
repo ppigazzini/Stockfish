@@ -28,6 +28,7 @@
 #include "arena.h"
 #include "clock.h"
 #include "history.h"
+#include "host.h"
 #include "movegen.h"
 #include "position.h"
 #include "search.h"
@@ -53,6 +54,9 @@ struct Context {
     std::atomic<bool>                    increaseDepth{true};
     std::deque<StateInfo>                states;
     SearchManager::UpdateContext         updates;
+    // Beside the SharedState that references it, so neither can outlive the
+    // other by accident.
+    Host                                 host;
     std::unique_ptr<SharedState>         shared;
     std::vector<ArenaPtr<Worker>>        workers;
 
@@ -130,7 +134,7 @@ void build_workers(Context& c, usize n) {
     c.sharedHistories.try_emplace(HistoryBankIndex(0), next_power_of_two(n));
 
     c.shared = std::make_unique<SharedState>(c.options, c.tt, c.sharedHistories, c.stop,
-                                             c.increaseDepth);
+                                             c.increaseDepth, c.host);
 
     c.workers.reserve(n);
     for (usize i = 0; i < n; ++i)
@@ -337,6 +341,17 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
         std::optional<ScopedWorkerSet> registration;
         if (workers > 1)
             registration.emplace(set);
+
+        // AFTER the registration above, because the Workers read their seams
+        // through the Host and this call installs one of them. A snapshot taken
+        // before it holds whatever worker set the CALLER had registered -- for a
+        // headless run, the default that refuses -- and the search then finds no
+        // workers to dispatch onto while every count still reads zero.
+        //
+        // Assign through the member the SharedState references: the reference is
+        // fixed at construction, the contents are not, so this reaches every
+        // worker already built. Once per call, which is setup cadence.
+        ctx->host = current_host();
 
         main.start_searching();
 
