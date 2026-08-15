@@ -23,7 +23,18 @@
 #include <string_view>
 
 #include "basetypes.h"
-#include "tb_source.h"
+// A forward declaration is NOT enough, which is what IWYU asks for here: go()'s
+// tbConfig parameter carries a `= {}` default argument, and value-initialising
+// an incomplete type is ill-formed, so dropping this include fails at the
+// DECLARATION rather than at any call site --
+//
+//   search_go.h: could not convert '<brace-enclosed initializer list>()'
+//                to 'Stockfish::Tablebases::Config'
+//
+// IWYU sees a by-value parameter and correctly says a name would do; it cannot
+// see the default argument. Dropping the default instead would push a Config
+// onto every caller that wants no tablebases, which is most of them.
+#include "tb_source.h"  // IWYU pragma: keep
 #include "types.h"
 
 namespace Stockfish {
