@@ -15,6 +15,21 @@
 # that uses it records: MaxCardinality is 3 or 4 depending on this flag, and the
 # engine prints the file count in its own output.
 #
+# `--men 5` IS NOT THE 5-MAN SET. It is ONE 5-man stem, KNNvKP, plus the four
+# stems a capture from it can reach -- the closure a probe needs, without which
+# every probe fails and the caller gets a corpus that loads and proves nothing.
+# KNNvKP is the table with the longest DTZ conversions, which is what
+# tests/tbpv.sh needs and what no smaller corpus supplies: 4-man material tops
+# out around fifty plies of extension against a 247-slot PV.
+#
+# It goes under resources/ rather than tests/. At 23 MB it is two orders above
+# the 3-4-man corpus, and resources/ is the scratch tree .gitignore covers
+# wholesale, so nothing here can drift into a commit.
+#
+# ADDING STEMS TO IT CHANGES WHAT IT REPRODUCES. The same seeded sweep over this
+# corpus plus the 3-4-man set does not fail, because richer tables give the
+# search different scores and a different PV to extend. Keep it at five.
+#
 # NOT tests/syzygy. That name belongs to tests/testing.py, whose
 # download_syzygy() skips its own fetch when the directory already exists and
 # whose TestSyzygy then expects the 4-man set it would have downloaded -- so a
@@ -31,14 +46,15 @@ MEN=3
 while [ $# -gt 0 ]; do
     case "$1" in
         --men) MEN=$2; shift 2 ;;
-        -h|--help) echo "usage: tbfetch.sh [--men 3|4] [dest]"; exit 0 ;;
+        -h|--help) echo "usage: tbfetch.sh [--men 3|4|5] [dest]"; exit 0 ;;
         *) break ;;
     esac
 done
 case "$MEN" in
     3) DEFAULT_DEST=$ROOT/tests/syzygy-3man ;;
     4) DEFAULT_DEST=$ROOT/tests/syzygy-34man ;;
-    *) echo "tbfetch: --men must be 3 or 4" >&2; exit 2 ;;
+    5) DEFAULT_DEST=$ROOT/resources/syzygy-5man ;;
+    *) echo "tbfetch: --men must be 3, 4 or 5" >&2; exit 2 ;;
 esac
 DEST=${1:-$DEFAULT_DEST}
 BASE=${TB_MIRROR:-http://tablebase.sesse.net/syzygy/3-4-5}
@@ -60,6 +76,11 @@ if [ "$MEN" = 4 ]; then
     STEMS="$STEMS KQQvK KQRvK KQBvK KQNvK KQPvK KRRvK KRBvK KRNvK KRPvK KBBvK"
     STEMS="$STEMS KBNvK KBPvK KNNvK KNPvK KPPvK KQvKQ KQvKR KQvKB KQvKN KQvKP"
     STEMS="$STEMS KRvKR KRvKB KRvKN KRvKP KBvKB KBvKN KBvKP KNvKN KNvKP KPvKP"
+fi
+if [ "$MEN" = 5 ]; then
+    # KNNvKP, then what a capture from it leaves: the pawn taken gives KNNvK, a
+    # knight taken gives KNvKP, and each of those closes over KNvK and KPvK.
+    STEMS="KNNvKP KNNvK KNvKP KNvK KPvK"
 fi
 
 for stem in $STEMS; do
