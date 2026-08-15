@@ -1143,6 +1143,46 @@ void Search::Worker::start_searching() {
     restore
 fi
 
+row enginelink-seam
+if selected enginelink-seam; then
+    # The substitution half, and the failure it exists for.
+    #
+    # clock.h's claim is that "a host substitutes ONE function and both views
+    # move together". The failure that breaks it is not a seam nobody reads --
+    # that is loud -- it is now() quietly reading a real clock while now_us()
+    # stays substituted. Every assertion about now_us() alone still passes, and
+    # a replay harness gets a deterministic search with one wall-clock component
+    # in it. No other gate in the tree can see that: an inline call to
+    # std::chrono leaves no undefined symbol for enginelink or linkcheck, and
+    # depcheck reads includes, which clock.cpp legitimately has.
+    echo "negative-control: enginelink  -- now() reading a clock the host did not supply"
+    nc_seam_baseline=1
+    ./tests/enginelink.sh >/dev/null 2>&1 || nc_seam_baseline=0
+    if [ "$nc_seam_baseline" = 0 ]; then
+        echo "  NO BASELINE -- enginelink is already red; this row can attribute nothing"
+        FAIL=$((FAIL+1))
+    fi
+    # The quotient is the mutation target, NOT the seam read. Cutting the seam
+    # out of now_us() would be caught by the read counter too, so the row would
+    # pass without establishing that the coherence assertion works.
+    mutate src/engine/clock.cpp \
+        'TimePoint now() { return TimePoint(now_us() / 1000); }' \
+        'TimePoint now() {
+    return TimePoint(std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now().time_since_epoch())
+                       .count());
+}'
+    if ./tests/enginelink.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- now() left the seam and the gate stayed green"
+        FAIL=$((FAIL+1))
+    elif [ "$nc_seam_baseline" = 1 ]; then
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    else
+        echo "  red, but it was red before the mutation -- not scored"
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- fuzz
 #
 # A fuzz harness has two ways to be useless, and only one of them is visible in

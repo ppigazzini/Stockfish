@@ -879,6 +879,48 @@ is given the net's **directory**, not a path to a net: `src/` is gitignored and 
 from older builds, so naming one from outside picks a net that will not parse against the
 feature set the objects were compiled for. The engine knows its own default name.
 
+### Then it runs a second host, with a seam substituted
+
+Everything above establishes that a default is reachable and works. It cannot establish that the
+engine **consults the seam at all** -- a getter nothing calls would pass every check above,
+because the default would simply never be reached and no assertion would notice.
+
+`tests/seams_main.cpp` is the second host. It links against the same objects, registers a
+*recognisable* implementation, and asserts the engine used it: a clock returning a scripted
+reading, and an arena that tags every block it hands out.
+
+The clock assertion is the sharp one, because `clock.h`'s claim -- *a host substitutes one
+function and both views move together* -- has never had a second implementation to test it
+against; `set_clock_source` has a declaration, a definition and no caller anywhere else in the
+tree. The registered clock returns `1999999`, deliberately not a multiple of 1000, and the host
+asserts `now_us()` is that reading **and** `now()` is `1999`. A seam where `now()` kept reading a
+real clock while `now_us()` was substituted would pass every assertion about `now_us()` alone,
+and would hand a replay harness a deterministic search with one wall-clock component in it. No
+other gate can see it: an inline `std::chrono` call leaves no undefined symbol for `linkcheck.sh`
+or the link half here, and `depcheck.sh` reads includes, which `clock.cpp` legitimately has.
+`tests/negative_control.sh enginelink-seam` is that property going red -- it makes `now()` read
+the steady clock directly and asserts the gate notices.
+
+The arena is a second process rather than more cases in the first host, and the ordering
+invariant is why: `arena.h` requires registration before the first allocation and forbids a swap
+while a block from the previous arena is live, so asserting it means owning `main` from its first
+line. A tagging arena is the only proposed check for that invariant and it works in **one
+direction only** -- it catches a block that did not come from it arriving at its `free`, which is
+the cross-allocator release the header warns about. The reverse, a block from it freed by
+somebody else, is invisible from inside an allocator and stays invisible.
+
+**Three seams cannot be asserted from a headless host**, and the mechanism is the finding rather
+than the omission:
+
+| seam | why not |
+|---|---|
+| output sink | the engine's only `emit_line` call is in `syzygy_extend_pv`, on the `time_abort` path, and `Search::go` wires every update callback to a no-op. `debug_dump` fires from `check_time` on a wall-clock branch, so a short run reaches it by luck |
+| worker set | `Search::go` registers its own set for a call with more than one worker and restores what was there, so a recorder is displaced for exactly the window it was meant to observe |
+| tablebase source | `Search::go` assigns `w.tbConfig = Tablebases::Config()`, which is cardinality 0, so Step 6's guard short-circuits on every node and `probe_wdl` is never called whatever is registered. The root ranking that would set a cardinality is in the pool's path |
+
+Asserting those three needs the shell, or a headless entry point that accepts a tablebase
+configuration.
+
 `tests/negative_control.sh enginelink` plants an engine object calling a platform symbol through
 a forward declaration and asserts the gate goes red. **The failure that row guards against is a
 green run over a link that resolved nothing**: `ld` handed an LTO object without the plugin
