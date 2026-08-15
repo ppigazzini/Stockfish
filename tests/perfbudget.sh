@@ -42,6 +42,7 @@ REPEAT=1
 COMP=gcc
 PGO=0
 SYZYGY=
+FENS_OVERRIDE=
 DEPTH_GIVEN=0
 KEEP=0
 JOBS=$(nproc 2>/dev/null || echo 4)
@@ -67,6 +68,11 @@ Options:
                      without this the whole tablebase reader is absent from
                      every figure this gate produces and a bound placed inside
                      decompress_pairs reads as free. An empty DIR SKIPS.
+  --fens FILE        the positions the probing workload runs (default:
+                     tests/tbprobe.fens, which is 4-man). The corpus and the
+                     positions have to match: 4-man positions against a 5-man
+                     corpus probe the small tables and leave the big one
+                     unread, which measures the decoder on the wrong data.
   --pgo              build both sides with profile-guided optimisation, which is
                      what ships; roughly 3x slower to build
   --tolerance PCT    fail above this percent regression (default: $TOLERANCE)
@@ -101,6 +107,7 @@ while [ $# -gt 0 ]; do
         --comp)      COMP=$2; shift 2 ;;
         --depth)     DEPTH=$2; DEPTH_GIVEN=1; shift 2 ;;
         --syzygy)    SYZYGY=$2; shift 2 ;;
+        --fens)      FENS_OVERRIDE=$2; shift 2 ;;
         --tt)        TT=$2; shift 2 ;;
         --tolerance) TOLERANCE=$2; shift 2 ;;
         --repeat)    REPEAT=$2; shift 2 ;;
@@ -138,6 +145,9 @@ num --tolerance "$TOLERANCE"
 awk -v t="$TOLERANCE" 'BEGIN{exit !(t > 0 && t <= 1)}' \
     || die "--tolerance must be in (0, 1] percent; $TOLERANCE would gate nothing"
 
+[ -z "$FENS_OVERRIDE" ] || [ -n "$SYZYGY" ] \
+    || die "--fens names the probing workload's positions and needs --syzygy"
+
 command -v valgrind >/dev/null || skip "valgrind is not installed"
 
 # ------------------------------------------------------- the probing workload
@@ -161,7 +171,7 @@ if [ -n "$SYZYGY" ]; then
     SYZYGY=$SYZYGY_ABS
     ls "$SYZYGY"/*.rtbw >/dev/null 2>&1 \
         || skip "--syzygy: no .rtbw in $SYZYGY -- run tests/tbfetch.sh"
-    FENS=$SRC_ROOT/tests/tbprobe.fens
+    FENS=${FENS_OVERRIDE:-$SRC_ROOT/tests/tbprobe.fens}
     [ -f "$FENS" ] || skip "--syzygy: $FENS is missing"
 
     BENCH_FILE=$WORK/tbprobe.bench
@@ -320,8 +330,16 @@ measure_side() {
 MODE=-O3; [ "$PGO" = "1" ] && MODE=PGO
 echo "perfbudget: arch=$ARCH comp=$COMP mode=$MODE depth=$DEPTH tt=$TT repeat=$REPEAT tolerance=${TOLERANCE}%"
 if [ -n "$SYZYGY" ]; then
-    echo "perfbudget: workload=probing ($(grep -cve '^setoption' "$BENCH_FILE") positions, SyzygyPath=$SYZYGY)"
-    echo "perfbudget: the corpus here is 4-man; a block-walk cost measured on it is a LOWER BOUND"
+    echo "perfbudget: workload=probing ($(grep -cve '^setoption' "$BENCH_FILE") positions, SyzygyPath=$SYZYGY, $(basename "$FENS"))"
+    # The men count comes from the corpus rather than from a sentence, because
+    # the sentence was written when 4-man was the only corpus there was and it
+    # went false the day a bigger one arrived. Block count scales with table
+    # size, so the two walk loops in decompress_pairs iterate less on a small
+    # corpus than on a large one -- a cost measured here bounds the same cost on
+    # anything bigger FROM BELOW, and never describes it.
+    CORPUS_MEN=$(ls "$SYZYGY"/*.rtbw | sed 's|.*/||; s|\.rtbw$||; s|v||' \
+        | awk '{ if (length($0) > m) m = length($0) } END { print m }')
+    echo "perfbudget: the corpus here is ${CORPUS_MEN}-man; a block-walk cost measured on it is a LOWER BOUND"
 fi
 echo "perfbudget: base=$BASE_REV head=$HEAD_REV"
 

@@ -1,0 +1,43 @@
+# Positions that probe a FIVE-man table, for the probing workload:
+#
+#     ./tests/perfbudget.sh --syzygy resources/syzygy-5man \
+#                           --fens tests/tbprobe5.fens HEAD~1
+#
+# tests/tbprobe.fens beside this one is four men, and says of itself that a cost
+# measured on it is a LOWER BOUND on the block walk, because block count scales
+# with table size. This file is what raises that bound. Every position is
+# KNNvKP: 13.7 MB of WDL against the 4-man corpus's largest at 148 KB, so
+# decompress_pairs walks a real table here rather than a handful of blocks.
+#
+# THE CORPUS AND THE POSITIONS ARE ONE CHOICE. `--syzygy` pointed at the 3-4-man
+# corpus with this file probes nothing -- no KNNvKP table is there to read --
+# and this corpus with the 4-man file leaves the big table unread. Neither
+# combination fails; both quietly measure something else, so the pair is named
+# together in the command above and in every report that quotes it.
+#
+# Nine positions, chosen to spread what the decoder has to decode rather than to
+# be typical. The five with |DTZ| > 100 are cursed wins and blessed losses: they
+# are the deepest entries the table holds, they are what `Syzygy50MoveRule`
+# reclassifies, and they are absent from four men entirely. The two draws probe
+# and return with no conversion to rank; the two clean wins are the ordinary
+# case the others are read against.
+#
+# Blank lines and lines beginning with '#' are not FENs -- perfbudget.sh filters
+# them and prepends the SyzygyPath line, which names a directory only the caller
+# knows.
+#
+# The comment after each position is what the engine's own `d` reports for it,
+# so a change to the decoder that alters a verdict shows up as a file that no
+# longer describes itself:
+#
+#     printf 'setoption name SyzygyPath value <dir>\nposition fen <fen>\nd\n' | ./stockfish
+#
+8/7p/1k6/8/8/N1N2K2/8/8 w - - 0 1        # WDL +1  DTZ +102   cursed win
+8/8/8/2k1p3/8/6N1/3K3N/8 w - - 0 1       # WDL +1  DTZ +104   cursed win
+2k5/6K1/4N3/8/4p3/8/8/3N4 w - - 0 1      # WDL +1  DTZ +116   cursed win, deepest here
+3k2N1/8/7p/8/4N3/8/6K1/8 b - - 0 1       # WDL -1  DTZ -103   blessed loss
+7N/8/5N2/4p3/4K3/8/5k2/8 b - - 0 1       # WDL -1  DTZ -111   blessed loss
+8/8/k2N4/3K4/8/5p2/8/N7 w - - 0 1        # WDL  0  DTZ    0   draw
+6k1/8/4N3/2p4K/8/5N2/8/8 b - - 0 1       # WDL  0  DTZ    0   draw
+8/pk3K2/8/8/8/N7/8/3N4 w - - 0 1         # WDL +2  DTZ  +36   win
+2N5/8/8/2p1k3/2K5/8/8/2N5 w - - 0 1      # WDL +2  DTZ  +54   win
