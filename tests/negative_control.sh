@@ -1183,6 +1183,51 @@ if selected enginelink-seam; then
     restore
 fi
 
+row tbpv
+if selected tbpv; then
+    # The PV extension's length bound, which is the ONLY unconditional exit the
+    # walk has: `rule50 && is_draw` is constant-false with Syzygy50MoveRule off
+    # and time_abort() is constant-false under `go depth`, so removing the bound
+    # leaves a loop whose termination depends entirely on where the tables run
+    # out. PVMoves checks its capacity with an assert alone, and -DNDEBUG is what
+    # ships, so the overrun is a write into the next RootMove, not a diagnostic.
+    #
+    # Mutate the bound WIDER rather than deleting it. A row that hangs is a rig
+    # fault and never a detection, which is the rule this file opens with about
+    # search bounds; MAX_PLY * 4 still terminates and still overruns the array.
+    echo "negative-control: tbpv        -- a PV walk bounded past the array that holds it"
+    if [ -z "$RUNPY" ]; then
+        echo "  SKIPPED -- no python3 with requests importable"; SKIP=$((SKIP+1))
+    elif ! $RUNPY tests/tbpv.py >/dev/null 2>&1; then
+        # Almost always the 5-man corpus, which tbfetch.sh --men 5 writes and a
+        # developer may not have. A row that was not green before the mutation
+        # can attribute nothing, so report it rather than scoring it.
+        echo "  SKIPPED -- tbpv is not green before the mutation (corpus absent?)"
+        SKIP=$((SKIP+1))
+    else
+        mutate src/engine/search.cpp \
+            '    while (rootMove.pv.size() < MAX_PLY && !(rule50 && pos.is_draw(0)))' \
+            '    while (rootMove.pv.size() < MAX_PLY * 4 && !(rule50 && pos.is_draw(0)))'
+        # REBUILD. tbpv.py drives src/stockfish rather than building one, so a
+        # mutated source that is not compiled reaches the sweep as nothing at
+        # all and the row reports NOT DETECTED for a mutation the engine never
+        # saw. The instrumented row above is the same shape for the same reason.
+        if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
+            if $RUNPY tests/tbpv.py >/dev/null 2>&1; then
+                echo "  NOT DETECTED -- a PV past MAX_PLY ran clean"; FAIL=$((FAIL+1))
+            else
+                echo "  ok, red (1)"; PASS=$((PASS+1))
+            fi
+        else
+            restore; die "the tbpv mutant did not compile"
+        fi
+        restore
+        # Put the real binary back: every later row and the caller's own tree
+        # would otherwise keep the mutant.
+        ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
+    fi
+fi
+
 row enginelink-fatal
 if selected enginelink-fatal; then
     # The fatal seam has two halves and only one of them is a compile error if

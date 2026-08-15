@@ -1228,6 +1228,12 @@ worth carrying in git:
 ./tests/tbfetch.sh --men 3 && ./tests/tbfetch.sh --men 4 && du -sh tests/syzygy-3man tests/syzygy-34man
 ```
 
+**`--men 5` is not the 5-man set.** It is one 5-man stem, `KNNvKP`, plus the four a capture from
+it can reach, which is the closure a probe needs and 23 MB of which one stem is 99%. It lands
+under `resources/`, the scratch tree `.gitignore` covers wholesale, rather than beside a 12 KB
+corpus in `tests/`. `tbpv.py` below is what needs it, and needs exactly it: adding stems changes
+what the sweep reproduces.
+
 **Separate directories, because what a corpus CONTAINS is part of what a test using it
 records.** `MaxCardinality` reads 3 or 4 depending on which is there and the engine prints the
 file count in its own output, so a 3-man corpus under the 4-man path makes a suite expecting
@@ -1430,6 +1436,40 @@ binary.
 The harness must guard against generating an unbounded `go` with no `stop` behind it, or it
 hangs on this engine behaviour rather than reporting it -- and a leading empty token makes a
 generated line read as `" go"`, which a guard matching on the first character misses.
+
+## `tests/tbpv.py`
+
+Walk the tablebase PV extension against the **array that has to hold it**.
+
+```sh
+./tests/tbfetch.sh --men 5              # 23 MB, once
+python3 tests/tbpv.py                   # 350 positions, about 7 seconds
+python3 tests/tbpv.py --bin path/to/sf  # a binary you built
+```
+
+`RootMove::pv` is a `PVMoves` -- a fixed `Move[MAX_PLY + 1]` whose `push_back` checks its bound
+with an `assert`, which `-DNDEBUG` removes from the build that ships. `syzygy_extend_pv`'s step 2
+appends one move per iteration, and its other three exits are all conditional on the position:
+`rule50 && is_draw` is constant-false with `Syzygy50MoveRule` off, `time_abort()` is
+constant-false whenever `use_time_management()` is -- `go infinite`, `go movetime`, `go depth`,
+which is how a GUI analyses -- and the tables run out only where the walk leaves them. The length
+bound is the array's capacity, and nothing else supplies one.
+
+**No other gate can fail on this.** `bench` probes no tablebases, so the anchor, both perf gates
+and every sanitizer row stay green while the overflow is live. That is the hole this fills.
+
+Two assertions, and they age differently. The engine must answer every position -- a walk with no
+bound either overruns the array or does not terminate, and this catches the second. And no `pv`
+may exceed `MAX_PLY`, read out of `src/engine/types.h` rather than pinned here, which is the one
+that stays true whatever the search does around it.
+
+**The sweep is a reproduction, and reproductions rot.** `tests/tbpv.fens` is 350 seeded KNNvKP
+positions driven through one engine with no `ucinewgame` between them -- the state one search
+leaves is part of what the next is driven with -- and it took a pre-fix binary to SIGSEGV at
+position 350. It does that only through the corpus `--men 5` fetches: add stems and the same
+sweep passes on the same defect, because richer tables hand the search different scores and a
+different PV to extend. So the gate SKIPS, loudly, when the corpus it is handed is not that one,
+and a clean run means "this sequence found nothing" rather than "the bound holds".
 
 ## `tests/uci_driver.py`
 
