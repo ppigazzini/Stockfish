@@ -222,6 +222,30 @@ once. `src/shell/engine.cpp` is the composition root.
 | `engine/clock.h` | `now_us` | reads `std::chrono::steady_clock` in microseconds | nothing; the default is the clock |
 | `engine/parallel.h` | thread count, NUMA map, `run_on`, `wait_on` | runs the work inline | `Engine::resize_threads` |
 | `engine/worker_set.h` | `start_searching`, `wait_for_search_finished`, the counters, `count`, `at` | reports no workers | `Engine::resize_threads` |
+| `engine/fatal.h` | `abort_now` | prints to `stderr` and exits | nothing; the default is the current behaviour |
+
+**The fatal seam routes a POLICY, not a service.** The other six hand over something the host
+does better; this one hands back a decision the engine was making on the host's behalf -- ending
+the process. A host embedding the engine cannot survive a failed `Hash` resize while the engine
+calls `exit()` itself, and its own error handling never runs.
+
+Two properties of it that the compiler cannot carry:
+
+- **`Fatal::abort_now` is not `[[noreturn]]` and cannot be.** The attribute appertains to a
+  function declaration, and a member of function-pointer type is a variable declaration; clang
+  refuses it outright and gcc accepts it silently, so spelling it there builds under one compiler
+  and not the other. The guarantee lives on `engine_abort`, which terminates **after** calling out
+  rather than trusting a handler to. Every caller is on a path that assumed it would not return,
+  and several are themselves `[[noreturn]]`.
+- **`reason` is what the engine still has to say.** A site that already emitted its diagnostic
+  through a callback it was handed passes nothing and the default prints nothing.
+  `Network::verify` is that site, and it is the one that shows saying and terminating are separable
+  -- it says the right thing through the right channel and still takes the process down.
+
+Two of the four callers are reporting that an allocation failed, so they format their message with
+`snprintf` into a stack buffer rather than a `std::string`: with `-fno-exceptions` a string that
+cannot get its buffer aborts, and the report the operator needs is lost to a second failure inside
+the first.
 
 A default must fail in one of three ways, and which one is a property of the service:
 

@@ -75,6 +75,7 @@
 #include "../src/engine/arena.h"
 #include "../src/engine/attacks.h"
 #include "../src/engine/clock.h"
+#include "../src/engine/fatal.h"
 #include "../src/engine/nnue/network.h"
 #include "../src/engine/position.h"
 #include "../src/engine/search_go.h"
@@ -231,9 +232,43 @@ int check_search_reads_the_clock(const Eval::NNUE::Network& net, const char* fen
     return 0;
 }
 
+// ------------------------------------------------------------- the fatal seam
+namespace recording_fatal {
+
+// RETURNS, deliberately. fatal.h's contract is that engine_abort terminates
+// AFTER calling out, precisely because a host handler is an ordinary function
+// that may return and every caller is on a path that assumed it would not. A
+// handler that returns is therefore the case worth registering: if the process
+// survives it, the [[noreturn]] on engine_abort is a lie the compiler has
+// already optimised against.
+void handler(std::string_view reason) {
+    std::cout << "  fatal: host handler reached with reason '" << reason << "'\n";
+    std::cout.flush();
+}
+
+}  // namespace recording_fatal
+
+// Runs in its own process, because the thing under test ends one. enginelink.sh
+// asserts the exit status and the marker together: a run that printed the marker
+// and exited 0 would mean the wrapper trusted a handler that returned.
+[[noreturn]] void run_abort_probe() {
+    set_fatal_source(Fatal{recording_fatal::handler});
+    engine_abort("probe");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (argc >= 2 && std::string(argv[1]) == "--abort")
+    {
+        run_abort_probe();
+        // Unreachable by contract. If control arrives here the seam let a
+        // returning handler through, so say so loudly rather than exiting 0 and
+        // letting the harness read silence as success.
+        std::cout << "  fatal: THE WRAPPER RETURNED -- engine_abort is not [[noreturn]]\n";
+        return 0;
+    }
+
     // FIRST, before anything the engine might allocate through. arena.h states
     // the invariant as an ordering one and nothing enforces it; here the harness
     // is the host, so registering on the first line is what makes every later
