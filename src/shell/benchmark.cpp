@@ -464,9 +464,24 @@ BenchmarkSetup setup_benchmark(std::istream& is) {
     // `setoption name Hash value -84901888`, rejected by the option layer, and
     // the run then measured whatever Hash happened to be set.
     //
-    // So each input is clamped to the range the thing it feeds will accept, and
-    // the clamp is reported: a silently corrected number is the same failure in
-    // a nicer disguise.
+    // So each input is clamped, and the clamp is reported: a silently corrected
+    // number is the same failure in a nicer disguise.
+    //
+    // THE THREAD CEILING IS WHAT THE HOST HAS, NOT WHAT `Threads` ACCEPTS.
+    // `Threads` ranges to max(1024, 4 * cores), so a four-figure thread count is
+    // inside the option's range and is granted -- and a worker carries its own
+    // histories and accumulator caches, tens of megabytes of them, which the
+    // allocator hands over one worker at a time until the host has no memory
+    // left. The hash a bare `speedtest N` derives rides on the same number at
+    // TT_SIZE_PER_THREAD per thread, so `speedtest 128` asks for 16 GB of table
+    // as well. Clamping into the option's range bounds neither; the core count
+    // bounds both, and is the count the no-argument form already uses.
+    //
+    // SYSTEM_THREADS_NB, not get_hardware_concurrency(): that one is allowed to
+    // report 0, and 0 here emits `setoption name Threads value 0`, which the
+    // option layer refuses -- leaving the run to proceed on whatever thread
+    // count was already set and report a number anyway.
+    const int            HostThreads  = int(SYSTEM_THREADS_NB);
     static constexpr int MaxDurationS = std::numeric_limits<int>::max() / 1000;
 
     BenchmarkSetup setup{};
@@ -484,10 +499,10 @@ BenchmarkSetup setup_benchmark(std::istream& is) {
     i64 requested;
 
     if (!(is >> requested))
-        setup.threads = int(get_hardware_concurrency());
+        setup.threads = HostThreads;
     else
     {
-        setup.threads = clamped("threads", requested, 1, MaxThreads);
+        setup.threads = clamped("threads", requested, 1, HostThreads);
         setup.originalInvocation += std::to_string(setup.threads);
     }
 

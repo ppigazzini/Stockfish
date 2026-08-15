@@ -64,8 +64,15 @@ namespace Stockfish {
 
 namespace NN = Eval::NNUE;
 
-// MaxHashMB is in engine.h; benchmark.cpp needs the same range.
+// The upper bound of the `Threads` option, and nothing else's ceiling. It is
+// four times the host's cores so a developer can oversubscribe deliberately,
+// which makes it the wrong number for any producer sizing a run: 1024 workers
+// are inside this range and past the memory of the host that offers it. Keep it
+// internal so no such producer can reach for it -- benchmark.cpp derives its
+// thread count from SYSTEM_THREADS_NB instead.
+namespace {
 int MaxThreads = std::max(1024, 4 * int(get_hardware_concurrency()));
+}
 
 // The default configuration will attempt to group L3 domains up to 32 threads.
 // This size was found to be a good balance between the Elo gain of increased
