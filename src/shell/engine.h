@@ -49,14 +49,15 @@
 
 namespace Stockfish {
 
-// The ranges the `Hash` and `Threads` options accept. Declared here rather than
-// left private to engine.cpp because shell/benchmark.cpp derives a Hash and a
-// thread count from what a user typed and then emits them as setoption lines:
-// a value outside these is rejected by the option layer and the run silently
-// proceeds on whatever was already set, so the producer has to know the range
-// the consumer will take.
+// The range the `Hash` option accepts. Declared here rather than left private
+// to engine.cpp because shell/benchmark.cpp derives a Hash from what a user
+// typed and then emits it as a setoption line: a value outside this range is
+// rejected by the option layer and the run silently proceeds on whatever was
+// already set, so the producer has to know the range the consumer will take.
+//
+// It is a range, not a resource bound -- a value inside it can still be more
+// memory than the host has, and only the allocation reports that.
 constexpr int MaxHashMB = Is64Bit ? 33554432 : 2048;
-extern int    MaxThreads;
 
 class Engine {
    public:
