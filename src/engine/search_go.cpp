@@ -203,7 +203,8 @@ struct HeadlessRunner {
                                        std::string_view           fen,
                                        bool                       chess960,
                                        int                        depth,
-                                       usize                      workers);
+                                       usize                      workers,
+                                       Tablebases::Config         tbConfig);
 };
 
 u64 HeadlessRunner::nodes_searched(void* p) {
@@ -225,7 +226,8 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
                                             std::string_view           fen,
                                             bool                       chess960,
                                             int                        depth,
-                                            usize                      workers) {
+                                            usize                      workers,
+                                            Tablebases::Config         tbConfig) {
 
     Context* ctx = &ctxRef;
 
@@ -285,7 +287,7 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
         w.nmpMinPly        = 0;
         w.rootDepth        = 0;
         w.rootMoves        = rootMoves;
-        w.tbConfig         = Tablebases::Config();
+        w.tbConfig         = tbConfig;
 
         // Each worker points at its OWN rootState, as ThreadPool::start_thinking
         // does. They search the same position from separate threads and a shared
@@ -347,8 +349,13 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
 }
 
 std::optional<GoResult>
-go(const Eval::NNUE::Network& net, std::string_view fen, bool chess960, int depth, usize workers) {
-    return HeadlessRunner::run(*context(), net, fen, chess960, depth, workers);
+go(const Eval::NNUE::Network& net,
+   std::string_view           fen,
+   bool                       chess960,
+   int                        depth,
+   usize                      workers,
+   Tablebases::Config         tbConfig) {
+    return HeadlessRunner::run(*context(), net, fen, chess960, depth, workers, tbConfig);
 }
 
 }  // namespace Stockfish::Search
