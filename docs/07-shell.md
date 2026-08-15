@@ -49,6 +49,15 @@ reverse destruction order takes the workers down before `searchOptions`, `tt`, `
 by pointer. Declaration order in `engine.h` fixes both ends; the constructor's initialiser list
 fixes neither.
 
+**`~Engine` puts back what it registered, and the arena is the exception.** It waits for the
+search, then calls `reset_worker_set()` and `reset_parallel_for()` and drops `hostPool`, because
+a seam still pointing at a destroyed pool is a call through a dangling `ctx` the moment anything
+else searches. **The arena is deliberately left installed**: `~TranspositionTable` frees through
+`arena()` during member destruction, which runs *after* the destructor body, so resetting it here
+would hand a host-allocated block to the engine's fallback `free` -- heap corruption with no
+diagnostic. A seam that owns memory is unregistered on a different schedule from one that owns a
+callback, and this is the one place the two rules meet.
+
 The seams are function pointers rather than closures, so a host that needs per-instance state
 passes it as the `void* ctx` the struct carries -- the worker set uses the pool itself, which
 spares it a global of its own. The parallel-for has no `ctx` and so needs one: `hostPool` in
@@ -81,6 +90,17 @@ whose first character is `#` is ignored, which is what lets a command file carry
 **`go` runs on a separate thread; the loop keeps reading.** That is what lets `stop` arrive
 during a search. It is also why end-of-input has to be treated as `quit` -- a pipe that closes
 mid-search must end the process rather than leave a detached search running.
+
+**Every command that mutates engine state goes through `UCIEngine::apply_idle`**, which stops
+the search, waits for it, then applies the change. `setoption` and `export_net` are its callers.
+Route a new mutating command through it rather than calling `wait_for_search_finished()` at the
+handler: the wait runs on the reader thread, and the reader thread is the only one that can
+deliver the `stop` that releases it, so a handler that waits without stopping first wedges the
+engine permanently against a `go infinite`.
+
+The choice is visible to a GUI and it is stop-first rather than refuse-while-searching: an
+option pushed mid-ponder is applied **and** a `bestmove` comes back, where refusing would give
+neither and no way to tell which. The cost is that such an option ends the ponder.
 
 `position` takes `startpos` or `fen`, then optional `moves`. The state chain is rebuilt from
 scratch each time, which is why `StateListPtr` is a `deque`: the search holds pointers into

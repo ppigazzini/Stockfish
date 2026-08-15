@@ -234,12 +234,15 @@ struct ContinuationHistoryBlock {
 // what a NUMA node is, and nothing here can be used to find out.
 using HistoryBankIndex = usize;
 
-// Set of histories shared between groups of threads. To avoid excessive
-// cross-node data transfer, histories are shared only between threads
-// on a given NUMA node. The passed thread count must be a power of two: both
-// tables are sized as a multiple of it and indexed by masking a key with
-// `size - 1`, which selects a row inside the array only while size is a power
-// of two.
+// One bank of histories, shared by every worker the host put in the same group.
+// WHICH workers those are is not this struct's business -- see HistoryBankIndex
+// above. The host groups to keep a bank off a remote node; the engine holds the
+// bank and never asks what the grouping meant.
+//
+// PASS A POWER OF TWO. Both tables are sized as a multiple of the count and
+// indexed by masking a key with `size - 1`, which selects a row inside the array
+// only while the size is a power of two. Any other count masks to an index the
+// array does not hold, and the assert below is the only thing that says so.
 struct SharedHistories {
     SharedHistories(usize threadCount) :
         correctionHistory(threadCount),

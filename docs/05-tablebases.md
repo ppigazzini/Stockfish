@@ -95,9 +95,9 @@ is the reason to reach for it before optimising: **the loop's shape is not what 
 suggests.** Decoding one symbol needs its length, and finding that length by walking `base64[]`
 cost more than everything else in the function put together.
 
-The length now comes from one load. A code no longer than K bits owns a whole number of buckets
-of the bitstream word's top K bits, because `base64[]` is right-padded to 64 bits -- so
-`lenTab[]` maps those bits straight to a length, exactly rather than approximately. K is the
+The length comes from one load. A code no longer than K bits owns a whole number of buckets of
+the bitstream word's top K bits, because `base64[]` is right-padded to 64 bits -- so `lenTab[]`
+maps those bits straight to a length, exactly rather than approximately. K is the
 table's own `maxSymLen` under a cap, and the lengths past the cap keep the walk and say so.
 Everything else the loop needs per symbol is a function of that length alone and is held per
 length, inline in `PairsData`.

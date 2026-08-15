@@ -318,12 +318,18 @@ including it. Four edges decide most of that closure:
 
 - **`numa.cpp` carries the cold half of `NumaConfig`** -- topology discovery, the string forms,
   thread binding, all of it running before the first search. What stays in `numa.h` is
-  template-bound and cannot move. **`search.h` no longer includes `numa.h`**, so the NUMA
-  subsystem reaches the pool and the composition root and stops there. That edge used to be
-  described here as load-bearing, on the grounds that `Search::Worker` held a
-  `NumaReplicatedAccessToken` by value; the member was written at construction and read by
-  nobody, so it was removed rather than replaced, and the constructor takes the
-  `HistoryBankIndex` the next line reduced it to anyway.
+  template-bound and cannot move. **`search.h` names no NUMA type**, so the NUMA subsystem
+  reaches the pool and the composition root and stops there:
+
+  ```sh
+  grep -nE 'NumaIndex|NumaReplicat|NumaConfig|numa\.h' src/engine/search.h   # nothing
+  ```
+
+  A `Search::Worker` takes a `HistoryBankIndex` -- an index into the engine's own map -- rather
+  than a topology handle. It does hold `numaThreadIdx` and `numaTotal`, but those are plain
+  `usize`: a position within a bank and the bank's size, used to cut the shared tables into
+  slices one worker each clears. They carry the host's grouping as two numbers, and nothing on
+  the search path can ask what the grouping meant.
 - **Shared memory does not ride along with it.** `LazyNumaReplicatedSystemWide` is the only user
   of `shm.h` in this family, and it lives in `numa_shared.h`, which includes both `numa.h` and
   `shm.h`. `shell/engine.h` owns one by value and includes `numa_shared.h`; `platform/thread.h`
