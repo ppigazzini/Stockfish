@@ -18,9 +18,12 @@
 
 #include "arena.h"
 
+#include <cstdio>
+
+#include "fatal.h"
+
 #include <cassert>
 #include <cstdlib>
-#include <iostream>
 #include <limits>
 
 // The guard platform/memory.cpp carries, repeated rather than included: these
@@ -86,15 +89,26 @@ void set_arena(const Arena& a) {
     current = a;
 }
 
+// A STACK BUFFER AND snprintf, not a std::string or a stream. Both callers here
+// are reporting that an allocation FAILED, so building the message must not be
+// an allocation: with -fno-exceptions a std::string that cannot get its buffer
+// aborts, and the report the operator needs is lost to a second failure inside
+// the first one. 128 bytes holds either message with two 20-digit numbers in it,
+// and snprintf truncates rather than overruns.
 void arena_alloc_failed(usize bytes) {
-    std::cerr << "Failed to allocate " << bytes << " bytes." << std::endl;
-    std::exit(EXIT_FAILURE);
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "Failed to allocate %llu bytes.",
+                  static_cast<unsigned long long>(bytes));
+    engine_abort(buf);
 }
 
 void arena_size_overflow(usize num, usize elementSize) {
-    std::cerr << "Refusing an array of " << num << " x " << elementSize
-              << " bytes: the byte count does not fit a size_t." << std::endl;
-    std::exit(EXIT_FAILURE);
+    char buf[128];
+    std::snprintf(buf, sizeof(buf),
+                  "Refusing an array of %llu x %llu bytes: the byte count does not fit a size_t.",
+                  static_cast<unsigned long long>(num),
+                  static_cast<unsigned long long>(elementSize));
+    engine_abort(buf);
 }
 
 }  // namespace Stockfish
