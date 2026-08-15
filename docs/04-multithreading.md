@@ -30,7 +30,14 @@ The speedup comes from the shared table: work one thread did is work another doe
 **Shared** -- the transposition table, the stop flag, the pooled counters, and the three
 tables `SharedHistories` owns: the continuation-history planes, the pawn history and the
 unified correction history. The transposition table is shared across the whole pool; a
-`SharedHistories` is shared only between the threads on one NUMA node.
+`SharedHistories` is shared only between the workers in one **bank**.
+
+**The host decides which workers share a bank, and the engine cannot ask why.** A worker is
+handed a `HistoryBankIndex`, which is an index into the engine's own
+`std::map<HistoryBankIndex, SharedHistories>` and nothing more; `ThreadPool` sets one bank per
+NUMA node, to keep a bank off a remote node. A host that groups differently gets a different
+sharing pattern and needs no engine change, and an engine that read the topology here would be
+naming a host type on the path a worker takes.
 
 ```cpp
 std::atomic_bool stop, increaseDepth;
@@ -153,9 +160,9 @@ several engine processes on one machine share one copy of a replicated network r
 loading its own -- relevant when a test harness runs many engines at once. The holder that uses
 it, `LazyNumaReplicatedSystemWide`, is in `src/platform/numa_shared.h` rather than `numa.h`.
 `thread.h` forward-declares it and takes one by reference; only a file that owns one by value
-includes `numa_shared.h`. Put it in `numa.h` instead and shared memory would reach everything
-that includes `search.h` -- which no longer includes `numa.h` at all, so that hazard is now one
-step further away rather than one step closer.
+includes `numa_shared.h`. Put it in `numa.h` instead and shared memory reaches everything that
+includes `numa.h` -- which `search.h` does not, so the engine sits two steps from it rather than
+one.
 
 **This is the largest platform-specific surface in the tree** and the least covered by the
 gates: the topology paths differ per OS, and `bench` exercises one thread on one node.
