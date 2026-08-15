@@ -40,6 +40,7 @@
 #include "bitboard.h"
 #include "evaluate.h"
 #include "history.h"
+#include "host.h"
 #include "prng.h"
 #include "movegen.h"
 #include "movepick.h"
@@ -62,7 +63,8 @@ inline int lmr_divisor(int depth) {
 
 namespace TB = Tablebases;
 
-void syzygy_extend_pv(const SearchOptions&         options,
+void syzygy_extend_pv(const Host&                  host,
+                      const SearchOptions&         options,
                       const Search::LimitsType&    limits,
                       Stockfish::Position&         root,
                       Stockfish::Search::RootMove& rootMove,
@@ -207,6 +209,7 @@ Search::Worker::Worker(SharedState&                   sharedState,
     manager(std::move(sm)),
     options(sharedState.options),
     tt(sharedState.tt),
+    host(sharedState.host),
     stopFlag(sharedState.stopFlag),
     increaseDepthFlag(sharedState.increaseDepthFlag),
       refreshTable() {
@@ -306,7 +309,7 @@ void Search::Worker::start_searching() {
     }
 
     // Main thread starts non-main threads, and begins own search.
-    worker_set().start_searching(worker_set().ctx);
+    host.workers.start_searching(host.workers.ctx);
     bool uciPvSent = iterative_deepening();
 
     // When we reach the maximum depth, we can arrive here without a raise of
@@ -322,12 +325,12 @@ void Search::Worker::start_searching() {
     stopFlag.store(true);
 
     // Wait until all threads have finished
-    worker_set().wait_for_search_finished(worker_set().ctx);
+    host.workers.wait_for_search_finished(host.workers.ctx);
 
     // When playing in 'nodes as time' mode, subtract the searched nodes from
     // the available ones before exiting.
     if (limits.npmsec)
-        main_manager()->tm.advance_nodes_time(worker_set().nodes_searched(worker_set().ctx)
+        main_manager()->tm.advance_nodes_time(host.workers.nodes_searched(host.workers.ctx)
                                               - limits.inc[rootPos.side_to_move()]);
 
     Worker* bestThread = this;
@@ -337,10 +340,10 @@ void Search::Worker::start_searching() {
     if (!limits.depth && !skill.enabled())
         {
             std::vector<Worker*> all;
-            const usize n = worker_set().count(worker_set().ctx);
+            const usize n = host.workers.count(host.workers.ctx);
             all.reserve(n);
             for (usize i = 0; i < n; ++i)
-                all.push_back(worker_set().at(worker_set().ctx, i));
+                all.push_back(host.workers.at(host.workers.ctx, i));
             // best_worker opens with workers.front(). With no host registered
             // the seam reports zero workers, and this is reachable that way:
             // Search::go(net, fen, chess960, 0) leaves limits.depth zero, so the
@@ -692,7 +695,7 @@ bool Search::Worker::iterative_deepening() {
 
             // Age out and update PV variability metric
             totBestMoveChanges /= 2;
-            const WorkerSet& ws      = worker_set();
+            const WorkerSet& ws      = host.workers;
             const usize      workers = ws.count(ws.ctx);
             for (usize i = 0; i < workers; ++i)
             {
@@ -1095,7 +1098,7 @@ Value Search::Worker::search(
             // this, an injected one is only asked to. FAIL is the safe seed --
             // it declines the cutoff rather than inventing one.
             TB::ProbeState err = TB::ProbeState::FAIL;
-            TB::WDLScore   wdl = TB::tb_source().probe_wdl(TB::tb_source().ctx, pos, &err);
+            TB::WDLScore   wdl = host.tb.probe_wdl(host.tb.ctx, pos, &err);
 
             // Force check of time on the next occasion
             if (is_mainthread())
@@ -2060,7 +2063,7 @@ int Search::Worker::reduction(bool i, Depth d, int mn) const {
 // stopped based on predefined thresholds like time limits or nodes searched.
 TimePoint Search::Worker::elapsed() const {
     return main_manager()->tm.elapsed(
-      []() { return worker_set().nodes_searched(worker_set().ctx); });
+      [this]() { return host.workers.nodes_searched(host.workers.ctx); });
 }
 
 
@@ -2275,13 +2278,14 @@ void SearchManager::check_time(Search::Worker& worker) {
 
     static TimePoint lastInfoTime = now();
 
-    TimePoint elapsed = tm.elapsed([]() { return worker_set().nodes_searched(worker_set().ctx); });
+    TimePoint elapsed =
+      tm.elapsed([&]() { return worker.host.workers.nodes_searched(worker.host.workers.ctx); });
     TimePoint tick    = worker.limits.startTime + elapsed;
 
     if (tick - lastInfoTime >= 1000)
     {
         lastInfoTime = tick;
-        output_sink().debug_dump();
+        worker.host.output.debug_dump();
     }
 
     // We should not stop pondering until told so by the GUI
@@ -2290,7 +2294,8 @@ void SearchManager::check_time(Search::Worker& worker) {
 
     if ((worker.limits.use_time_management() && (elapsed > tm.maximum() || stopOnPonderhit))
         || (worker.limits.movetime && elapsed >= worker.limits.movetime)
-        || (worker.limits.nodes && worker_set().nodes_searched(worker_set().ctx) >= worker.limits.nodes))
+        || (worker.limits.nodes
+            && worker.host.workers.nodes_searched(worker.host.workers.ctx) >= worker.limits.nodes))
         worker.stopFlag.store(true);
 }
 
@@ -2298,7 +2303,8 @@ void SearchManager::check_time(Search::Worker& worker) {
 // Keeps the search based PV for as long as it is verified to maintain the game
 // outcome, truncates afterwards. Finally, extends to mate the PV, providing a
 // possible continuation (but not a proven mating line).
-void syzygy_extend_pv(const SearchOptions&      options,
+void syzygy_extend_pv(const Host&               host,
+                      const SearchOptions&      options,
                       const Search::LimitsType& limits,
                       Position&                 root,
                       RootMove&                 rootMove,
@@ -2346,8 +2352,8 @@ void syzygy_extend_pv(const SearchOptions&      options,
         for (const auto& m : MoveList<ALL>(pos))
             legalMoves.emplace_back(m);
 
-        TB::Config config = TB::tb_source().rank_root_moves(TB::tb_source().ctx, options, pos,
-                                                            legalMoves, false, time_abort);
+        TB::Config config =
+          host.tb.rank_root_moves(host.tb.ctx, options, pos, legalMoves, false, time_abort);
         RootMove&  rm     = *std::find(legalMoves.begin(), legalMoves.end(), pvMove);
 
         if (legalMoves[0].tbRank != rm.tbRank)
@@ -2416,8 +2422,8 @@ void syzygy_extend_pv(const SearchOptions&      options,
           [](const Search::RootMove& a, const Search::RootMove& b) { return a.tbRank > b.tbRank; });
 
         // The winning side tries to minimize DTZ, the losing side maximizes it
-        TB::Config config = TB::tb_source().rank_root_moves(TB::tb_source().ctx, options, pos,
-                                                            legalMoves, true, time_abort);
+        TB::Config config =
+          host.tb.rank_root_moves(host.tb.ctx, options, pos, legalMoves, true, time_abort);
 
         // If DTZ is not available we might not find a mate, so we bail out
         if (!config.rootInTB || config.cardinality > 0)
@@ -2445,7 +2451,7 @@ void syzygy_extend_pv(const SearchOptions&      options,
 
     // Inform if we couldn't get a full extension in time
     if (time_abort())
-        emit_line(
+        host.output.line(
           "info string Syzygy based PV extension requires more time, increase Move Overhead as needed.");
 }
 
@@ -2453,11 +2459,12 @@ void SearchManager::output_pv(Search::Worker&           worker,
                               const TranspositionTable& tt,
                               Depth                     depth) {
 
-    const auto nodes     = worker_set().nodes_searched(worker_set().ctx);
+    const auto nodes     = worker.host.workers.nodes_searched(worker.host.workers.ctx);
     auto&      rootMoves = worker.rootMoves;
     auto&      pos       = worker.rootPos;
     usize      multiPV   = std::min(worker.options.multiPV, rootMoves.size());
-    u64        tbHits    = worker_set().tb_hits(worker_set().ctx) + (worker.tbConfig.rootInTB ? rootMoves.size() : 0);
+    u64        tbHits    = worker.host.workers.tb_hits(worker.host.workers.ctx)
+                      + (worker.tbConfig.rootInTB ? rootMoves.size() : 0);
 
     for (usize i = 0; i < multiPV; ++i)
     {
@@ -2479,7 +2486,8 @@ void SearchManager::output_pv(Search::Worker&           worker,
         // Previous PVs have already been extended. Inexact flags indicate an unreliable PV.
         if (is_decisive(v) && !is_mate_or_mated(v) && !usePreviousScore
             && (!rootMoves[i].is_inexact() || isTBScore))
-            syzygy_extend_pv(worker.options, worker.limits, pos, rootMoves[i], v, multiPV);
+            syzygy_extend_pv(worker.host, worker.options, worker.limits, pos, rootMoves[i],
+                             v, multiPV);
 
         std::string pv;
         for (Move m : usePreviousScore ? rootMoves[i].previousPV : rootMoves[i].pv)
