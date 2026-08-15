@@ -19,8 +19,6 @@
 #ifndef COMPILER_H_INCLUDED
 #define COMPILER_H_INCLUDED
 
-#include <chrono>
-
 #include "basetypes.h"
 
 // Reach TimePoint and now() through here: both are declared in clock.h, because
