@@ -44,6 +44,7 @@ DEPTH=8
 TT=16
 TOP=25
 SYZYGY=
+FENS_OVERRIDE=
 DEPTH_GIVEN=0
 KEEP=0
 JOBS=$(nproc 2>/dev/null || echo 4)
@@ -69,6 +70,10 @@ Options:
                 without this every call inside the tablebase reader is absent
                 from the fingerprint and a seam routed through decompress_pairs
                 shows no call-count change at all. An empty DIR SKIPS.
+  --fens FILE   the positions the probing workload runs (default:
+                tests/tbprobe.fens, four men). Pair tests/tbprobe5.fens with the
+                --men 5 corpus: a list whose men do not match the corpus reads
+                the small tables, or none, and profiles neither.
   --top N       how many changed symbols to list (default: $TOP)
   --jobs N      parallel build jobs (default: $JOBS)
   --keep        keep the build directories and the extracted counts
@@ -94,6 +99,7 @@ while [ $# -gt 0 ]; do
         --comp) COMP=$2; shift 2 ;;
         --depth) DEPTH=$2; DEPTH_GIVEN=1; shift 2 ;;
         --syzygy) SYZYGY=$2; shift 2 ;;
+        --fens)   FENS_OVERRIDE=$2; shift 2 ;;
         --tt) TT=$2; shift 2 ;;
         --top) TOP=$2; shift 2 ;;
         --jobs) JOBS=$2; shift 2 ;;
@@ -151,7 +157,7 @@ if [ -n "$SYZYGY" ]; then
     SYZYGY=$SYZYGY_ABS
     ls "$SYZYGY"/*.rtbw >/dev/null 2>&1 \
         || skip "--syzygy: no .rtbw in $SYZYGY -- run tests/tbfetch.sh"
-    FENS=$SRC_ROOT/tests/tbprobe.fens
+    FENS=${FENS_OVERRIDE:-$SRC_ROOT/tests/tbprobe.fens}
     [ -f "$FENS" ] || skip "--syzygy: $FENS is missing"
 
     BENCH_FILE=$WORK/tbprobe.bench
@@ -274,7 +280,7 @@ measure_side() {
     echo "$n $net"
 }
 
-echo "fingerprint: arch=$ARCH comp=$COMP depth=$DEPTH tt=$TT workload=${SYZYGY:+probing }${SYZYGY:-bench-list}"
+echo "fingerprint: arch=$ARCH comp=$COMP depth=$DEPTH tt=$TT workload=${SYZYGY:+probing }${SYZYGY:-bench-list}${SYZYGY:+ ($(basename "$FENS"))}"
 echo "fingerprint: base=$BASE_REV head=$HEAD_REV"
 
 prepare_tree "$BASE_REV" "$WORK/base"
