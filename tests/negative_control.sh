@@ -1183,6 +1183,38 @@ if selected enginelink-seam; then
     restore
 fi
 
+row enginelink-fatal
+if selected enginelink-fatal; then
+    # The fatal seam has two halves and only one of them is a compile error if
+    # broken. Dropping the [[noreturn]] guarantee -- letting engine_abort fall
+    # off its end -- does not compile, so -Werror already holds that half. The
+    # half nothing holds is the CALLOUT: a wrapper that terminates without
+    # giving the host its say still satisfies every type in the header, still
+    # ends the process, and silently turns the seam back into the exit() it
+    # replaced.
+    echo "negative-control: enginelink  -- terminating without giving the host its say"
+    nc_fatal_baseline=1
+    ./tests/enginelink.sh >/dev/null 2>&1 || nc_fatal_baseline=0
+    if [ "$nc_fatal_baseline" = 0 ]; then
+        echo "  NO BASELINE -- enginelink is already red; this row can attribute nothing"
+        FAIL=$((FAIL+1))
+    fi
+    # (void) reason, because -Wextra -Werror makes an unused parameter an error
+    # and a mutation that does not compile is not a behavioural change.
+    mutate src/engine/fatal.cpp \
+        '    fatal_source().abort_now(reason);' \
+        '    (void) reason;'
+    if ./tests/enginelink.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the host handler was skipped and the gate stayed green"
+        FAIL=$((FAIL+1))
+    elif [ "$nc_fatal_baseline" = 1 ]; then
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    else
+        echo "  red, but it was red before the mutation -- not scored"
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- fuzz
 #
 # A fuzz harness has two ways to be useless, and only one of them is visible in
