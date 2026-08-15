@@ -111,7 +111,8 @@ power of two because the index is a mask of the pawn key rather than a modulus.
 **The split between per-worker and shared decides the entry type.** `mainHistory`,
 `lowPlyHistory`, `captureHistory`, `continuationCorrectionHistory` and `ttMoveHistory` are
 `Worker` members, touched by one thread. The rest arrive through `SharedHistories&`, shared
-between the threads on one NUMA node -- and those are the ones whose entries carry
+between the workers the host put in the same bank ([04-multithreading.md](04-multithreading.md))
+-- and those are the ones whose entries carry
 `StatsEntry`'s `Shared = true`, reached as `AtomicStats` for the continuation and pawn planes
 and spelled out inside `CorrectionBundle` for the four correction counters. That makes the
 entry a `RelaxedAtomic<T>`, so the race is defined rather than undefined
