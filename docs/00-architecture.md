@@ -37,7 +37,8 @@ ls src/incbin                           # vendored, not ours
 | `engine/nnue/` | the network: feature transformer, accumulator, layers, feature sets |
 | `engine/score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from |
 | `engine/hashing.h` | `hash_bytes`, arithmetic over bytes with no OS in it, so both zones can call it: the net's content hash from `engine/`, the shared-memory segment name from `platform/` |
-| `engine/arena.h`, `output_sink.h`, `tb_source.h`, `clock.h`, `parallel.h`, `worker_set.h` | the seams, catalogued below |
+| `engine/arena.h`, `output_sink.h`, `tb_source.h`, `clock.h`, `parallel.h`, `worker_set.h`, `fatal.h` | the seams, catalogued below |
+| `engine/host.h`, `host.cpp` | `Host`, a snapshot of all seven registrations, and `current_host()` which takes one |
 | `engine/compiler.h` | what the COMPILER provides, not what the machine hosts: `RESTRICT`, `prefetch`, `IsLittleEndian`, `sf_always_inline`, `stringify`. In `engine/` for the same reason as `hashing.h` -- every zone spells the compiler, only the host spells the OS |
 | `platform/memory.h/.cpp` | aligned and large-page allocation |
 | `platform/numa.h/.cpp`, `numa_shared.h`, `shm.h`, `shm_unix.h` | NUMA topology, replication, cross-process sharing |
@@ -130,6 +131,41 @@ table, the accumulator stack and the refresh cache are allocated once outside an
 
 `platform` is not a layer *beneath* the engine: it is the runtime that hosts the engine, so it
 may depend on engine types and not the other way round.
+
+### What makes something a host service
+
+The rule the tree actually follows is narrower than "touches the outside world", and it is worth
+stating because the obvious reading gets a real case wrong:
+
+> **A thing belongs to `platform` when it NAMES THE OPERATING SYSTEM.** Reaching the outside
+> world through the language runtime does not move a file out of `engine/`.
+
+```sh
+grep -rnE '#include <(sys/|fcntl|unistd|windows|pthread|sched|dlfcn|signal)' src/engine/
+```
+
+returns nothing, and that is the rule holding rather than a coincidence.
+
+**The worked example is the pair that looks inconsistent.** Both the network and the tablebases
+are third-party files the engine reads, and only one of them is behind a seam:
+
+| reader | how it reads | zone |
+|---|---|---|
+| `Network::load` | `std::ifstream` (`engine/nnue/network.cpp`) | **engine**, no seam |
+| the tablebase prober | `::open`, `mmap`, `sys/mman.h` (`platform/syzygy/tbprobe.cpp`) | **platform**, behind `tb_source.h` |
+
+`tb_source.h` says *"probing is disk I/O -- a platform service"*, which read on its own would put
+the net loader in `platform` too. The distinction that decides it is not the disk, it is `mmap`:
+one reader asks the OS to map a file, the other asks the standard library for a stream.
+`enginelink.sh` draws the same line when it lets libstdc++, libc and pthread resolve while
+refusing everything else.
+
+**What that costs, stated rather than defended.** A host cannot substitute where the net comes
+from. One holding it in memory -- a GUI, a sandbox with no filesystem, a harness wanting a
+deliberately malformed net -- has to write a file for the engine to open, which is why
+`tests/enginelink_main.cpp` and `tests/seams_main.cpp` both take a *directory* rather than bytes.
+If a second reader ever wants that, the answer is a seam for the net's BYTES and not a move of
+`network.cpp`.
 
 A file's zone is **its directory**, so a new file joins a zone by where it is put, and one in
 a directory the mapping does not name resolves to `unassigned` -- reported by both checks
