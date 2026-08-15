@@ -116,6 +116,19 @@ without it the whole tablebase reader is absent from every figure this gate prod
 bound placed inside `decompress_pairs` reads as free. Anything touching
 `src/platform/syzygy/` quotes that cell. An empty `DIR` skips rather than measuring nothing.
 
+**The corpus and the positions are one choice, and `--fens` is how the second half is made.**
+The default list is `tests/tbprobe.fens`, which is four men, and the largest table it reaches is
+148 KB; `tests/tbprobe5.fens` against the `--men 5` corpus reaches 13.7 MB. Block count scales
+with table size, so a decoder cost measured on the small pair is a **lower bound** on the same
+cost in the large one -- the gate prints which it measured, reading the men count off the corpus
+rather than asserting it. Mismatch the two and nothing fails: 4-man positions leave a 5-man
+corpus's big table unread, and 5-man positions find no table at all in the 3-4-man one. Name
+both in the command and in whatever quotes it:
+
+```sh
+./tests/perfbudget.sh --syzygy resources/syzygy-5man --fens tests/tbprobe5.fens HEAD~1
+```
+
 **Measure both build modes.** `make profile-build` is the shipped recipe, and the two do not
 agree on the size of a regression: forcing `Position::adjust_key50` out of line reads
 materially cheaper under PGO than at `-O3`, because the profile lets the compiler make a
