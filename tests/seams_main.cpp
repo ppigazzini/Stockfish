@@ -79,6 +79,7 @@
 #include "../src/engine/attacks.h"
 #include "../src/engine/clock.h"
 #include "../src/engine/fatal.h"
+#include "../src/engine/host.h"
 #include "../src/engine/nnue/network.h"
 #include "../src/engine/output_sink.h"
 #include "../src/engine/parallel.h"
@@ -462,6 +463,49 @@ int check_worker_set_is_restored(const Eval::NNUE::Network& net, const char* fen
     return 0;
 }
 
+// ---------------------------------------------------------------- the handle
+//
+// Host is a SNAPSHOT of the seven registrations, not their storage, so the one
+// thing worth asserting is that it copies what is registered at the moment it is
+// taken -- and that a later registration does not reach back into a snapshot
+// already handed out. That second half is the whole point: it is what makes a
+// search read the seams it was built against rather than whatever the last
+// caller set.
+int check_host_snapshots_the_registration() {
+    const Clock saved = clock_source();
+
+    set_clock_source(Clock{scripted_clock::fixed_us});
+    const Host taken = current_host();
+
+    // Register something else AFTER taking it. A snapshot that tracked the
+    // global would move here, which is exactly the aliasing this shape exists to
+    // remove.
+    set_clock_source(Clock{scripted_clock::now_us});
+    const Host later = current_host();
+
+    const bool held  = taken.clock.now_us == scripted_clock::fixed_us;
+    const bool moved = later.clock.now_us == scripted_clock::now_us;
+
+    set_clock_source(saved);
+
+    if (!held)
+        return fail("the snapshot did not capture the registration current when it was taken");
+    if (!moved)
+        return fail("a later snapshot did not see the later registration");
+
+    // The unregistered fields must still be the defaults rather than zeroes: a
+    // Host that value-initialised anything would hand the engine a null function
+    // pointer, and the first call through it is the diagnostic.
+    if (taken.arena.alloc == nullptr || taken.tb.probe_wdl == nullptr
+        || taken.output.line == nullptr || taken.parallel.run_on == nullptr
+        || taken.workers.count == nullptr || taken.fatal.abort_now == nullptr)
+        return fail("a snapshot carried a null seam where a default was expected");
+
+    std::cout << "  host: the snapshot holds the registration it was taken under, "
+                 "and a later one does not move it\n";
+    return 0;
+}
+
 // ------------------------------------------------------------- the fatal seam
 namespace recording_fatal {
 
@@ -538,6 +582,9 @@ int main(int argc, char** argv) {
         return rc;
 
     if (const int rc = check_worker_set_is_restored(*net, StartPos); rc != 0)
+        return rc;
+
+    if (const int rc = check_host_snapshots_the_registration(); rc != 0)
         return rc;
 
     // The arena verdict, read after the work rather than during it: a search
