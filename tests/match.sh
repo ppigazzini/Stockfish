@@ -44,6 +44,7 @@ HASH=${HASH:-16}
 # is one place to bump when CI moves.
 FASTCHESS_REF=${FASTCHESS_REF:-894616028492ae6114835195f14a899f6fa237d3}
 CACHE=${CACHE:-${TMPDIR:-/tmp}/refish-fastchess}
+SYZYGY=
 # Empty means the book fastchess ships. It is balanced, which suits a liveness
 # gate and suits nothing else: from an equal start most games draw, so the
 # result carries almost no information per game. An unbalanced book gives one
@@ -67,6 +68,9 @@ usage: tests/match.sh [<base-rev>] [<head-rev>] [options]
   --jobs N         parallel build jobs (default: nproc)
   --book FILE      opening book in EPD (default: the balanced one fastchess
                    ships; an unbalanced book is what a strength measurement uses)
+  --syzygy DIR     give both engines this SyzygyPath. The bench list never
+                   probes, so the tablebase reader is the one hot path no other
+                   gate reaches under a clock
 
 A match cannot measure strength at the sizes this runs. It measures whether the
 engine plays. Compare the Elo against the error bar fastchess prints beside it.
@@ -84,6 +88,7 @@ while [ $# -gt 0 ]; do
         --threads)     THREADS=$2; shift 2 ;;
         --jobs)        JOBS=$2; shift 2 ;;
         --book)        BOOK=$2; shift 2 ;;
+        --syzygy)  SYZYGY=$2; shift 2 ;;
         -h|--help)     usage; exit 0 ;;
         -*) echo "match: unknown argument: $1" >&2; usage >&2; exit 2 ;;
         *) POS+=("$1"); shift ;;
@@ -184,6 +189,19 @@ if [ "$hb" = "$hh" ] && [ "$BASE_SHA" != "$HEAD_SHA" ]; then
     exit 2
 fi
 
+# An ABSOLUTE path, because fastchess runs the engines from its own working
+# directory and a relative SyzygyPath would silently resolve to nothing there --
+# which reads as a clean match that probed no table.
+TB_OPT=()
+if [ -n "$SYZYGY" ]; then
+    [ -d "$SYZYGY" ] || { echo "match: SKIPPED -- --syzygy: no such directory: $SYZYGY" >&2; exit 2; }
+    SYZYGY=$(cd "$SYZYGY" && pwd)
+    ls "$SYZYGY"/*.rtbw >/dev/null 2>&1 \
+        || { echo "match: SKIPPED -- --syzygy: no .rtbw in $SYZYGY -- run tests/tbfetch.sh" >&2; exit 2; }
+    TB_OPT=(option.SyzygyPath="$SYZYGY")
+    echo "match: syzygy $SYZYGY ($(ls "$SYZYGY"/*.rtbw | wc -l) WDL tables)"
+fi
+
 # Both engines get the same options; a match that changed Hash between sides
 # would measure the option, not the code.
 echo
@@ -196,6 +214,7 @@ set +e
     -engine name=refish   cmd="$WORK/wt-head/src/stockfish" \
     -engine name=upstream cmd="$WORK/wt-base/src/stockfish" \
     -each proto=uci tc="$TC" option.Threads="$THREADS" option.Hash="$HASH" \
+    "${TB_OPT[@]}" \
     -rounds "$ROUNDS" -games 2 -repeat \
     -concurrency "$CONCURRENCY" \
     -openings file="$BOOK" format=epd order=random \
