@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "../engine/history.h"
+#include "../engine/host.h"
 #include "../engine/nnue/network.h"
 #include "../engine/nnue/nnue_misc.h"
 #include "../platform/numa_shared.h"
@@ -157,6 +158,17 @@ class Engine {
     // and drops it, so the pool itself holds nothing -- the Workers are the
     // reason this must outlive them.
     SearchOptions                                     searchOptions;
+
+    // Same rule as the snapshot above, one seam over: every Worker binds this as
+    // a const Host& at construction and reads it for the life of the pool, and
+    // ThreadPool::set takes its SharedState by value and drops it, so the pool
+    // holds nothing and the Workers are the reason this must outlive them.
+    //
+    // TAKEN AFTER THE SEAMS ARE REGISTERED. current_host() copies what is
+    // registered when it runs, so a Host built before ArenaInstallerTag would
+    // hold the fallback allocator and the refusing worker set -- a working
+    // engine giving a different answer, with nothing to diagnose it.
+    Host                                              host;
     TranspositionTable                                tt;
     Eval::NNUE::EvalFile                              networkFile;
     LazyNumaReplicatedSystemWide<Eval::NNUE::Network> network;
