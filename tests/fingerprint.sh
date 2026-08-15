@@ -26,7 +26,12 @@
 # thread runtime move with the environment rather than with the code, and are
 # printed apart from it.
 #
-# callgrind simulates rather than samples, so the counts are deterministic.
+# callgrind simulates rather than samples, so the counts are deterministic --
+# for every symbol whose call count is a function of the PROGRAM. One class is
+# not: a symbol reached from a wall-clock branch is called a number of times
+# that depends on how long the run took, and under callgrind that is roughly
+# 50x real time and varies with machine load. Those are listed below the verdict
+# rather than inside it; see CLOCK_DRIVEN.
 #
 # Exit codes:  0 no call-count change   1 changed or void   2 skipped
 
@@ -38,6 +43,8 @@ COMP=gcc
 DEPTH=8
 TT=16
 TOP=25
+SYZYGY=
+DEPTH_GIVEN=0
 KEEP=0
 JOBS=$(nproc 2>/dev/null || echo 4)
 
@@ -55,8 +62,13 @@ Usage: $0 [options] <base-rev> [<head-rev>]
 Options:
   --arch ARCH   build architecture (default: $ARCH)
   --comp COMP   compiler (default: $COMP)
-  --depth D     bench depth (default: $DEPTH)
+  --depth D     bench depth (default: $DEPTH, or 14 with --syzygy)
   --tt MB       bench hash size (default: $TT)
+  --syzygy DIR  profile a PROBING workload instead of the bench list, with
+                SyzygyPath pointed at DIR. The bench list never probes, so
+                without this every call inside the tablebase reader is absent
+                from the fingerprint and a seam routed through decompress_pairs
+                shows no call-count change at all. An empty DIR SKIPS.
   --top N       how many changed symbols to list (default: $TOP)
   --jobs N      parallel build jobs (default: $JOBS)
   --keep        keep the build directories and the extracted counts
@@ -80,7 +92,8 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --arch) ARCH=$2; shift 2 ;;
         --comp) COMP=$2; shift 2 ;;
-        --depth) DEPTH=$2; shift 2 ;;
+        --depth) DEPTH=$2; DEPTH_GIVEN=1; shift 2 ;;
+        --syzygy) SYZYGY=$2; shift 2 ;;
         --tt) TT=$2; shift 2 ;;
         --top) TOP=$2; shift 2 ;;
         --jobs) JOBS=$2; shift 2 ;;
@@ -96,12 +109,61 @@ BASE_REV=$1
 HEAD_REV=${2:-HEAD}
 
 num() { case "$2" in ''|*[!0-9]*) die "$1 must be a number, got '$2'" ;; esac; }
+# A probing run wants depth, not breadth: the positions are four men and the
+# search converges early, so a depth-8 run barely reaches the reader it exists
+# to measure. Only the DEFAULT moves; --depth still wins. Keep this the same
+# number tests/perfbudget.sh uses, so a call count from this gate and an
+# instruction count from that one describe one workload rather than two.
+[ -n "$SYZYGY" ] && [ "$DEPTH_GIVEN" = "0" ] && DEPTH=14
+
 num --depth "$DEPTH"; num --tt "$TT"; num --top "$TOP"; num --jobs "$JOBS"
 
 command -v valgrind >/dev/null || skip "valgrind is not installed"
 case "$ARCH" in
     *avx512*|*vnni*) skip "callgrind implements no AVX-512; ARCH=$ARCH cannot be measured" ;;
 esac
+
+# ------------------------------------------------------- the probing workload
+#
+# BENCH_ARGS is empty for the default list and names a file for --syzygy. The
+# file is assembled here rather than committed, because its first line has to
+# name a directory only the caller knows, and a committed absolute path is a
+# file that works on exactly one machine.
+#
+# An empty or missing corpus SKIPS. It must not pass: a probing profile taken
+# with no tables loaded is the bench list wearing a different name, and a gate
+# that reports "no call-count change" over a reader it never entered is the
+# strongest wrong answer this instrument can give.
+#
+# WHAT IS IN THE PROFILE THAT IS NOT THE SEARCH. The SyzygyPath line runs as the
+# first bench command, so mapping the tables is INSIDE the measured region;
+# tests/perfbudget.sh subtracts it through a startup probe and this gate has
+# nothing to subtract, because a call count is not a difference of two totals.
+# So a change to the table LOADER moves counts here too. That is a real change
+# and not noise -- but read a moved count against both readers, not against
+# decompress_pairs alone.
+BENCH_ARGS=()
+if [ -n "$SYZYGY" ]; then
+    # Resolve into a second name: assigning to SYZYGY first would leave the
+    # diagnostic below naming the empty string it just became.
+    SYZYGY_ABS=$(cd "$SYZYGY" 2>/dev/null && pwd) \
+        || skip "--syzygy: no such directory: $SYZYGY"
+    SYZYGY=$SYZYGY_ABS
+    ls "$SYZYGY"/*.rtbw >/dev/null 2>&1 \
+        || skip "--syzygy: no .rtbw in $SYZYGY -- run tests/tbfetch.sh"
+    FENS=$SRC_ROOT/tests/tbprobe.fens
+    [ -f "$FENS" ] || skip "--syzygy: $FENS is missing"
+
+    BENCH_FILE=$WORK/tbprobe.bench
+    {
+        echo "setoption name SyzygyPath value $SYZYGY"
+        grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$FENS"
+    } > "$BENCH_FILE"
+    [ "$(grep -cve '^setoption' "$BENCH_FILE")" != "0" ] \
+        || skip "--syzygy: $FENS holds no positions"
+
+    BENCH_ARGS=( "$BENCH_FILE" depth )
+fi
 
 prepare_tree() {
     local rev=$1 dir=$2
@@ -201,7 +263,7 @@ measure_side() {
     local dir=$1 label=$2
     valgrind --tool=callgrind --callgrind-out-file="$dir/cg.out" \
              --cache-sim=no --branch-sim=no \
-             "$dir/src/stockfish" bench "$TT" 1 "$DEPTH" \
+             "$dir/src/stockfish" bench "$TT" 1 "$DEPTH" "${BENCH_ARGS[@]}" \
              > "$dir/bench.stdout" 2> "$dir/bench.stderr"
     local n net
     n=$(grep -a 'Nodes searched' "$dir/bench.stderr" | awk -F': *' '{print $2}' | tr -d ' \r')
@@ -212,7 +274,7 @@ measure_side() {
     echo "$n $net"
 }
 
-echo "fingerprint: arch=$ARCH comp=$COMP depth=$DEPTH tt=$TT"
+echo "fingerprint: arch=$ARCH comp=$COMP depth=$DEPTH tt=$TT workload=${SYZYGY:+probing }${SYZYGY:-bench-list}"
 echo "fingerprint: base=$BASE_REV head=$HEAD_REV"
 
 prepare_tree "$BASE_REV" "$WORK/base"
@@ -259,15 +321,41 @@ def load(p):
         d[n] = int(c)
     return d
 b, h, top = load(sys.argv[1]), load(sys.argv[2]), int(sys.argv[3])
+# Keep the unfiltered maps: the clock-driven report prints counts for symbols
+# the filters below remove from b and h.
+b_all, h_all = dict(b), dict(h)
 
 # The subject is the engine's own call graph. libc's allocator and glibc's
 # thread-cancellation counters move with the environment rather than with the
 # code -- _int_malloc, sbrk, munmap and the pthread cancel pair all differ
 # between two runs of one binary -- so they are reported apart from the verdict.
 def engine(k): return 'Stockfish' in k
+
+# AND ONE ENGINE SYMBOL IS NOT A FUNCTION OF THE PROGRAM EITHER.
+# SearchManager::check_time fires the debug dump on `tick - lastInfoTime >= 1000`
+# -- a WALL-CLOCK millisecond count, not a node count -- so dbg_print is called
+# once per second of real elapsed time. callgrind runs the engine roughly 50x
+# slower than the metal and the factor moves with machine load, so the count
+# differs between two runs of ONE binary. An A/A on a probing workload reports
+# it as a changed call count, which is the strongest wrong answer this gate can
+# give: it is the same binary twice.
+#
+# The bench list at depth 8 is short enough to hide this; a --syzygy run at
+# depth 14 is not. Listing it apart is not a silent cap -- it is printed below
+# with its count, so a reader sees what was set aside.
+#
+# ADD A SYMBOL HERE ONLY IF ITS COUNT IS DRIVEN BY THE CLOCK. The test is not
+# "it moved in an A/A" -- that is the symptom every real defect also has. It is
+# whether the call sits under a branch on elapsed TIME rather than on nodes,
+# depth or position.
+CLOCK_DRIVEN = {'Stockfish::dbg_print()'}
+def clock_driven(k): return k in CLOCK_DRIVEN
+
+clock_changed = sorted((k for k in b.keys() & h.keys()
+                        if b[k] != h[k] and clock_driven(k)))
 env_changed = sorted((k for k in b.keys() & h.keys() if b[k] != h[k] and not engine(k)))
-b = {k: v for k, v in b.items() if engine(k)}
-h = {k: v for k, v in h.items() if engine(k)}
+b = {k: v for k, v in b.items() if engine(k) and not clock_driven(k)}
+h = {k: v for k, v in h.items() if engine(k) and not clock_driven(k)}
 changed = sorted(((abs(h[k] - b[k]), k, b[k], h[k]) for k in b.keys() & h.keys() if b[k] != h[k]),
                  reverse=True)
 only_b = sorted(b.keys() - h.keys())
@@ -284,6 +372,14 @@ if only_b or only_h:
         print(f"  base only  {b[k]:>10}  {k[:80]}")
     for k in only_h[:top]:
         print(f"  head only  {h[k]:>10}  {k[:80]}")
+    print()
+
+if clock_changed:
+    print(f"clock-driven ({len(clock_changed)} symbol(s)): called once per second of REAL")
+    print(f"  elapsed time, so the count tracks how long callgrind took; not part of")
+    print(f"  the verdict")
+    for k in clock_changed:
+        print(f"  {b_all[k]:>12} -> {h_all[k]:<12} {h_all[k]-b_all[k]:+d}  {k[:80]}")
     print()
 
 if env_changed:
