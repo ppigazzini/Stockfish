@@ -922,17 +922,29 @@ direction only** -- it catches a block that did not come from it arriving at its
 the cross-allocator release the header warns about. The reverse, a block from it freed by
 somebody else, is invisible from inside an allocator and stays invisible.
 
-**Three seams cannot be asserted from a headless host**, and the mechanism is the finding rather
-than the omission:
+**All six seams are asserted**, and two of them only became reachable because of what the other
+four made possible:
 
-| seam | why not |
+| seam | how it is reached |
 |---|---|
-| output sink | the engine's only `emit_line` call is in `syzygy_extend_pv`, on the `time_abort` path, and `Search::go` wires every update callback to a no-op. `debug_dump` fires from `check_time` on a wall-clock branch, so a short run reaches it by luck |
-| worker set | `Search::go` registers its own set for a call with more than one worker and restores what was there, so a recorder is displaced for exactly the window it was meant to observe |
-| tablebase source | `Search::go` assigns `w.tbConfig = Tablebases::Config()`, which is cardinality 0, so Step 6's guard short-circuits on every node and `probe_wdl` is never called whatever is registered. The root ranking that would set a cardinality is in the pool's path |
+| clock | the quotient assertion above, plus a counting clock across a search |
+| tablebase source | `Search::go` takes a `Tablebases::Config`. A non-zero cardinality is the only way anything in-process clears Step 6's guard -- there is no root ranking on the headless path to set one -- so a depth-10 search on a three-man endgame reaches the registered prober |
+| output sink | **owning the clock is what makes this deterministic.** `debug_dump` fires from `check_time` on `tick - lastInfoTime >= 1000`, a wall-clock branch, so on a real clock a short run reaches it by luck. A substituted clock stepping a second per reading reaches it every time |
+| worker set | not observable during the search -- `Search::go` registers its own set for a multi-worker call -- so what is asserted is the **restore**: the host's `ctx` is back afterwards |
+| arena | the tagging allocator |
+| fatal | the `--abort` probe |
 
-Asserting those three needs the shell, or a headless entry point that accepts a tablebase
-configuration.
+`OutputSink::line` remains a gap and stays one: the engine's only `emit_line` call is in
+`syzygy_extend_pv` on the `time_abort` path, which needs a real corpus and a budget small enough
+to miss.
+
+**A substituted arena must match the alignment the default guarantees**, which is 4096. Nothing
+checks it -- `ASSERT_ALIGNED` is compiled out under `NDEBUG` -- so an under-aligned block is handed
+to placement new and the fault arrives later inside the NNUE's aligned vector loads, with nothing
+pointing back at the registration. This harness learned that by crashing: a first version wrapped
+plain `malloc` with a 64-byte header, glibc returns large requests page-aligned so every
+single-worker search passed, and the two-worker rebuild took a size that came back 16-aligned and
+segfaulted in `update_accumulator_refresh_cache`. `arena.h` now states the contract.
 
 `tests/negative_control.sh enginelink` plants an engine object calling a platform symbol through
 a forward declaration and asserts the gate goes red. **The failure that row guards against is a

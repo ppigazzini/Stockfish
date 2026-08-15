@@ -23,6 +23,7 @@
 #include <string_view>
 
 #include "basetypes.h"
+#include "tb_source.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -84,11 +85,23 @@ struct GoResult {
     u64   nodes;
 };
 
+// `tbConfig` is what the POOL's root ranking would have produced. Defaulting it
+// to a zero cardinality is what every caller wanting today's behaviour gets: the
+// guard at the top of Step 6 short-circuits and the tablebase seam is never
+// reached, which is exactly what a headless run without tables should do.
+//
+// PASS A NON-ZERO CARDINALITY AND THE SEAM IS REACHED PER NODE. That is the only
+// way anything in-process can exercise the injected prober -- there is no root
+// ranking on this path to set one -- so a harness asserting that a registered
+// prober takes effect has to say so here. It is also the caller's promise that
+// a prober IS registered: a cardinality without one reaches the default, which
+// answers "no tablebases loaded" and costs a branch per node for nothing.
 std::optional<GoResult> go(const Eval::NNUE::Network& net,
                            std::string_view           fen,
                            bool                       chess960,
                            int                        depth,
-                           usize                      workers = 1);
+                           usize                      workers  = 1,
+                           Tablebases::Config         tbConfig = {});
 
 }  // namespace Search
 }  // namespace Stockfish

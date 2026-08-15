@@ -237,7 +237,8 @@ if [ "$rc" = 0 ]; then
 
     echo
     echo "enginelink: the engine links alone, searches with no host, and reaches"
-    echo "enginelink: a registered clock, arena and fatal handler when supplied"
+    echo "enginelink: every seam a host substitutes -- clock, tablebase prober,"
+    echo "enginelink: output sink, worker set, arena and fatal handler"
     echo "enginelink: clean"
     exit 0
 fi

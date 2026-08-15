@@ -52,6 +52,14 @@ namespace Stockfish {
 // reach the same decision.
 constexpr usize DefaultHugePageBytes = usize(1) << 30;
 
+// WHAT A HOST MUST GUARANTEE. alloc and alloc_hinted return memory aligned to at
+// least 4096 bytes, which is what the default below provides and what every
+// caller is entitled to assume. Nothing checks it: ASSERT_ALIGNED is compiled
+// out under NDEBUG, so an under-aligned block is handed to placement new and the
+// fault arrives later inside the NNUE's aligned vector loads, with nothing
+// pointing back at the registration. A host that wraps its own allocator with a
+// header must make that header a whole multiple of the alignment, because the
+// pointer it hands out only keeps the raw block's alignment if it is.
 struct Arena {
     void* (*alloc)(usize bytes);
     void* (*alloc_hinted)(usize bytes, bool hugePageHint);
