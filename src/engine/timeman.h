@@ -61,10 +61,11 @@ class TimeManagement {
     // Every member a reader can reach carries a value this class wrote. init()
     // returns early whenever limits.time[us] is zero -- after startTime, before
     // the other two -- and use_time_management() does NOT exclude that case: it
-    // is true when only the OPPOSING side has a clock. `go btime N` with White
-    // to move therefore used to read two budgets out of storage nobody had
-    // written, which memcheck reported at search.cpp's `elapsed > tm.maximum()`
-    // and at its `min(totalTime, double(tm.maximum()))`.
+    // is true when only the OPPOSING side has a clock. So `go btime N` with
+    // White to move reaches both budgets on a path init() left early, and
+    // leaving them unwritten is an uninitialised read at search.cpp's
+    // `elapsed > tm.maximum()` and at its `min(totalTime, double(tm.maximum()))`
+    // -- the two sites memcheck names.
     //
     // NoBound rather than zero, because the value chosen IS the behaviour on
     // that input. Zero is an instant move; NoBound is a search that runs until
