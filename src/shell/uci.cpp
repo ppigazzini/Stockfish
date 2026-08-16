@@ -211,15 +211,15 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
     // TimePoint. A value outside it is reported, never silently corrected.
     constexpr TimePoint MaxClockMs = 1000000000000;
 
-    auto read_clock = [&](TimePoint& dst, const char* what) {
+    auto read_clock = [&](TimePoint& dst, const char* what, TimePoint lo = 0) {
         TimePoint given;
         if (!(is >> given))
             return;  // leave the stream failed; the check below reports it
 
-        const TimePoint bounded = std::clamp(given, TimePoint(0), MaxClockMs);
+        const TimePoint bounded = std::clamp(given, lo, MaxClockMs);
         if (bounded != given)
-            sync_cout << "info string " << what << ' ' << given << " is outside [0, " << MaxClockMs
-                      << "]; using " << bounded << sync_endl;
+            sync_cout << "info string " << what << ' ' << given << " is outside [" << lo << ", "
+                      << MaxClockMs << "]; using " << bounded << sync_endl;
         dst = bounded;
     };
 
@@ -246,8 +246,14 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
             is >> limits.depth;
         else if (token == "nodes")
             is >> limits.nodes;
+        // A movetime of zero is an unstoppable search, not an instant one:
+        // check_time's condition is `limits.movetime && elapsed >=
+        // limits.movetime`, so zero disables the only stop condition the search
+        // has, and `stop` is never read again while the UCI thread waits inside
+        // benchmark. `bench 16 1 0 default movetime` emits it without a user
+        // typing it, and so does any speedtest duration that truncates to zero.
         else if (token == "movetime")
-            read_clock(limits.movetime, "movetime");
+            read_clock(limits.movetime, "movetime", 1);
         else if (token == "mate")
             is >> limits.mate;
         else if (token == "perft")
