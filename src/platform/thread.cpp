@@ -256,7 +256,12 @@ void ThreadPool::set(const NumaConfig&                           numaConfig,
                 create_thread();
         }
 
-        clear();
+        // Not clear(): Search::Worker's constructor ends in Worker::clear(), and
+        // it ran on the worker's own thread inside the job above. A second pass
+        // writes the same values over the same 17 MiB -- the histories are
+        // filled from constants and the slice a worker owns is cut from
+        // numaThreadIdx and numaTotal, both fixed at construction.
+        reset_managers();
 
         main_thread()->wait_for_search_finished();
     }
@@ -274,6 +279,10 @@ void ThreadPool::clear() {
     for (auto&& th : threads)
         th->wait_for_search_finished();
 
+    reset_managers();
+}
+
+void ThreadPool::reset_managers() {
     // These two affect the time taken on the first move of a game:
     main_manager()->bestPreviousAverageScore = VALUE_INFINITE;
     main_manager()->previousTimeReduction    = 0.85;
