@@ -99,6 +99,13 @@ The length comes from one load. A code no longer than K bits owns a whole number
 the bitstream word's top K bits, because `base64[]` is right-padded to 64 bits -- so `lenTab[]`
 maps those bits straight to a length, exactly rather than approximately. K is the
 table's own `maxSymLen` under a cap, and the lengths past the cap keep the walk and say so.
+
+**The walk that remains does not start over.** A length under the cap owns a whole number of
+buckets, so a bucket `lenTab[]` declined holds no word of any length the table covers: every word
+in it is at least `lenTabBits - minSymLen + 1` long, and `escapeLen` is where the scan resumes.
+The index is clamped to the last `base64[]` entry, which `resize` leaves zero and which is what
+stops the walk -- the clamp is what makes the index safe, rather than an argument that the escape
+cannot be reached.
 Everything else the loop needs per symbol is a function of that length alone and is held per
 length, inline in `PairsData`.
 
