@@ -403,10 +403,18 @@ class TBFile: public std::ifstream {
             return *baseAddress = nullptr, nullptr;
         }
 
+        // Refused, not fatal. The size test is all this reader can say about an
+        // interrupted download, and it runs on the first PROBE -- init counts
+        // the file and maps nothing -- so ending the process here ended it in
+        // the middle of a search, with no bestmove and a GUI waiting on one. A
+        // refused table is a table the engine does not have, which is a state it
+        // already knows how to be in: the magic mismatch below leaves
+        // baseAddress null for exactly this reason.
         if (statbuf.st_size % 64 != 16)
         {
             std::cerr << "Corrupt tablebase file " << fname.string() << std::endl;
-            exit(EXIT_FAILURE);
+            ::close(fd);
+            return *baseAddress = nullptr, nullptr;
         }
 
         *mapping     = statbuf.st_size;
@@ -437,7 +445,8 @@ class TBFile: public std::ifstream {
         if (size_low % 64 != 16)
         {
             std::cerr << "Corrupt tablebase file " << fname.string() << std::endl;
-            exit(EXIT_FAILURE);
+            CloseHandle(fd);
+            return *baseAddress = nullptr, nullptr;
         }
 
         HANDLE mmap = CreateFileMapping(fd, nullptr, PAGE_READONLY, size_high, size_low, nullptr);
