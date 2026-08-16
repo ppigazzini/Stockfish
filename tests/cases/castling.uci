@@ -3,3 +3,8 @@ go perft 1
 setoption name UCI_Chess960 value true
 position fen 4k3/8/8/8/8/8/8/qR2K3 w B - 0 1
 go perft 1
+setoption name UCI_Chess960 value true
+position fen 4k3/8/8/8/8/8/8/RR1K4 w AB - 0 1
+d
+position fen 4k3/8/8/8/8/8/8/RR1K4 w AB - 0 1 moves a1a2
+d
