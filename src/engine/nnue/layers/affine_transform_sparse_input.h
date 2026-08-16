@@ -262,7 +262,16 @@ class AffineTransformSparseInput {
             #endif
         #endif
 
-        #ifdef FIX_GCC15_MISOPTIMIZATION
+        // x86-64 gcc elides the same two pointers and rebases each access on the array
+        // start, paying an add per non-zero chunk to undo what the block loop already
+        // computed. Only the BLOCK pointers are pinned: pinning col and input_addr as
+        // well, which FIX_GCC15_MISOPTIMIZATION does, costs an instruction back by
+        // keeping the per-iteration addresses out of the memory operands.
+        #if defined(__x86_64__) && defined(__GNUC__) && !defined(__clang__)
+            #define SF_BLOCK_BASE_BARRIER
+        #endif
+
+        #if defined(FIX_GCC15_MISOPTIMIZATION) || defined(SF_BLOCK_BASE_BARRIER)
             asm("" : "+r"(base_addr), "+r"(weights_base));  // opt barrier
         #endif
 
