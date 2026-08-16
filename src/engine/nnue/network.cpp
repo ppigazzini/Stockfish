@@ -241,15 +241,33 @@ NnueEvalTrace Network::trace_evaluate(const Position&    pos,
 }
 
 
+// A failed read has already overwritten the network it was read into.
+// read_parameters loads each section straight into the live object and checks
+// that section's hash afterwards, so a file with a well-formed FeatureTransformer
+// and a wrong later section leaves the live net half this file and half the last
+// one. evalFile.current was left naming the net that used to be there, and that
+// is the record everything downstream trusts: verify() compares it against the
+// option and passes, and load() skips a path equal to it -- so re-selecting the
+// net the engine says it has was a silent no-op and the engine went on
+// evaluating with the wreck. Clearing it makes the record true. The engine then
+// either reloads on the next selection or refuses to search, which are the two
+// states this seam already knows how to be in.
 void Network::load_external(const fs::path& dir, const fs::path& evalfilePath, EvalFile& evalFile) {
     std::ifstream stream(dir / evalfilePath, std::ios::binary);
-    auto          description = load(stream);
+    if (!stream)
+        return;  // nothing was opened, so nothing was overwritten
+
+    auto description = load(stream);
 
     if (description.has_value())
     {
         evalFile.current        = evalfilePath;
         evalFile.netDescription = description.value();
+        return;
     }
+
+    evalFile.current = std::nullopt;
+    evalFile.netDescription.clear();
 }
 
 
@@ -278,7 +296,14 @@ void Network::load_internal(EvalFile& evalFile) {
     {
         evalFile.current        = evalFile.defaultName;
         evalFile.netDescription = description.value();
+        return;
     }
+
+    // Same reason as load_external: the embedded net is read into the live
+    // object too, and a build that embedded a bad one must not report it as
+    // loaded.
+    evalFile.current = std::nullopt;
+    evalFile.netDescription.clear();
 }
 
 
