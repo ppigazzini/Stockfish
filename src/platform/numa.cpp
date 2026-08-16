@@ -172,9 +172,12 @@ std::optional<NumaConfig> NumaConfig::from_string(const std::string& s) {
         for (auto&& nodeStr : split(s, ":"))
         {
             auto indices = indices_from_shortened_string(std::string(nodeStr));
-            if (!indices.empty())
+            if (!indices.has_value())
+                return std::nullopt;
+
+            if (!indices->empty())
             {
-                for (auto idx : indices)
+                for (auto idx : *indices)
                 {
                     if (!cfg.add_cpu_to_node(n, CpuIndex(idx)))
                         return std::nullopt;
@@ -437,7 +440,14 @@ NumaReplicatedAccessToken NumaConfig::bind_current_thread_to_numa_node(NumaIndex
         return NumaReplicatedAccessToken(n);
     }
 
-std::vector<usize> NumaConfig::indices_from_shortened_string(const std::string& s) {
+// A COMPONENT THAT DOES NOT PARSE FAILS THE WHOLE STRING rather than being
+// dropped. Every component used to be optional, so `0,1 2,3` -- a policy with
+// one space in it -- produced {0,1,3} and reported nothing, and the caller had
+// no way to distinguish that from the policy the user typed. `from_string`
+// already owns a "keeping previous config" path for a string it cannot read;
+// this is what lets a half-readable one reach it. The sysfs callers keep the
+// lenient reading, spelled at their call sites.
+std::optional<std::vector<usize>> NumaConfig::indices_from_shortened_string(const std::string& s) {
         std::vector<usize> indices;
 
         if (s.empty())
@@ -452,8 +462,9 @@ std::vector<usize> NumaConfig::indices_from_shortened_string(const std::string& 
             if (parts.size() == 1)
             {
                 auto c = str_to_size_t(std::string(parts[0]));
-                if (c.has_value())
-                    indices.emplace_back(*c);
+                if (!c.has_value())
+                    return std::nullopt;
+                indices.emplace_back(*c);
             }
             else if (parts.size() == 2)
             {
@@ -461,14 +472,16 @@ std::vector<usize> NumaConfig::indices_from_shortened_string(const std::string& 
 
                 auto cfirst = str_to_size_t(std::string(parts[0]));
                 auto clast  = str_to_size_t(std::string(parts[1]));
-                if (cfirst.has_value() && clast.has_value() && *clast - *cfirst < MaxIndices)
+                if (!cfirst.has_value() || !clast.has_value() || *clast - *cfirst >= MaxIndices)
+                    return std::nullopt;
+
+                for (usize c = *cfirst; c <= *clast; ++c)
                 {
-                    for (usize c = *cfirst; c <= *clast; ++c)
-                    {
-                        indices.emplace_back(c);
-                    }
+                    indices.emplace_back(c);
                 }
             }
+            else
+                return std::nullopt;
         }
 
         return indices;
