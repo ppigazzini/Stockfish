@@ -969,6 +969,7 @@ What the hardware actually did, base against head, at every architecture tier in
 ./tests/perfcounters.sh                      # merge-base with master, against HEAD
 ./tests/perfcounters.sh --rounds 7 --comp clang
 ./tests/perfcounters.sh --tiers "x86-64-avx2" --pgo
+./tests/perfcounters.sh --syzygy resources/syzygy-5man --fens tests/tbprobe5.fens
 ```
 
 `perfbudget.sh` simulates and `npsab.sh` times. This one reads the CPU's counters:
@@ -1021,6 +1022,14 @@ part of the run, so the tool scales it and flags `scaled=1`, and the script drop
 rather than quote it. And both binaries hashing identically means one side was measured twice --
 which yields a ratio of 1.0000 that means nothing -- so equal hashes at different revisions are
 a skip, not a result.
+
+**`--syzygy` is what makes this the only REAL-cache view of the tablebase reader.** The bench
+list opens no tablebase, so without it the reader never executes and a locality claim about it
+can be checked against nothing but `perfdecomp.sh`'s simulated two-level model -- which has a
+fixed geometry and knows nothing about this machine's prefetcher. `--fens` names the positions
+and defaults to `tests/tbprobe.fens`; the corpus and the positions are one choice, and the two
+wrong pairings both run clean while measuring something other than what the report says. The
+depth defaults to 14 with `--syzygy`, matching the other two axes.
 
 ## `tests/perfdecomp.sh`
 
