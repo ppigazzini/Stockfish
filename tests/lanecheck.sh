@@ -36,6 +36,7 @@ cd "$ROOT" || exit 2
 # array cannot express the state.
 EXCUSED=(
   "npsab.sh	wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
+  "npsthreads.sh	thread scaling; it needs an idle box AND real cores, and a hosted runner has two shared vCPUs -- a scaling curve measured there describes the hypervisor"
   "testing.py	a harness imported by instrumented.py rather than a gate"
   "uci_driver.py	an operator harness for driving the engine by hand; every check it can make is owned by a gate that IS dispatched -- signature.sh the bench, perft.sh the movegen -- and a lane running it would assert them twice"
   "get_native_properties.sh	invoked by the Makefile, not by a workflow"
