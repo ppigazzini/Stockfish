@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string_view>
@@ -211,6 +212,26 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
     // TimePoint. A value outside it is reported, never silently corrected.
     constexpr TimePoint MaxClockMs = 1000000000000;
 
+    // The counts are not clocks and they reach arithmetic of their own.
+    // `movestogo` is carried into timeman as std::min(movestogo, 50) and then
+    // used as `mtg - 1`, so a negative one is a signed overflow -- and the
+    // engine played its move at depth 1 on a full clock. `mate` is compared as
+    // `2 * limits.mate`, so 2147483647 wraps to -2, the stop condition never
+    // fires, and `go mate 2147483647` searched on past a mate it had at depth 1.
+    // Neither number means anything below zero. Both are bounded where they
+    // enter rather than where they overflow, as the clocks above already are.
+    auto read_count = [&](int& dst, const char* what, int hi) {
+        i64 given;
+        if (!(is >> given))
+            return;  // leave the stream failed; the check below reports it
+
+        const i64 bounded = std::clamp(given, i64(0), i64(hi));
+        if (bounded != given)
+            sync_cout << "info string " << what << ' ' << given << " is outside [0, " << hi
+                      << "]; using " << bounded << sync_endl;
+        dst = int(bounded);
+    };
+
     auto read_clock = [&](TimePoint& dst, const char* what, TimePoint lo = 0) {
         TimePoint given;
         if (!(is >> given))
@@ -241,7 +262,7 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
         else if (token == "binc")
             read_clock(limits.inc[BLACK], "binc");
         else if (token == "movestogo")
-            is >> limits.movestogo;
+            read_count(limits.movestogo, "movestogo", std::numeric_limits<int>::max());
         else if (token == "depth")
             is >> limits.depth;
         else if (token == "nodes")
@@ -255,7 +276,7 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
         else if (token == "movetime")
             read_clock(limits.movetime, "movetime", 1);
         else if (token == "mate")
-            is >> limits.mate;
+            read_count(limits.mate, "mate", std::numeric_limits<int>::max() / 2);
         else if (token == "perft")
             is >> limits.perft;
         else if (token == "infinite")
