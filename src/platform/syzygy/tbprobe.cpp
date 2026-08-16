@@ -290,9 +290,9 @@ static_assert(sizeof(LR) == 3, "LR tree entry must be 3 bytes");
 //
 // symlen[] itself stays: the loop's own condition reads symlen[sym], and its
 // VALUE is what the symbol loop above subtracts from `offset`.
-constexpr u32 NodeLeft(u32 n) { return n & 0xFFF; }
-constexpr u32 NodeRight(u32 n) { return (n >> 12) & 0xFFF; }
-constexpr u32 NodeLeftLen(u32 n) { return n >> 24; }
+constexpr u32 node_left(u32 n) { return n & 0xFFF; }
+constexpr u32 node_right(u32 n) { return (n >> 12) & 0xFFF; }
+constexpr u32 node_left_len(u32 n) { return n >> 24; }
 
 // The file's three bytes, unpacked. Byte-wise, so it is the same value on
 // either byte order -- the layout is the file's, not the host's.
@@ -954,22 +954,22 @@ int decompress_pairs(PairsData* d, u64 idx) {
         // btree[sym], decode `left` out of it, and only then index symlen[] with
         // the value it had just produced.
         const u32 node    = d->tree[sym];
-        const int leftLen = int(NodeLeftLen(node));
+        const int leftLen = int(node_left_len(node));
 
         // If a symbol contains 36 sub-symbols (d->symlen[sym] + 1 = 36) and
         // expands in a pair (d->symlen[left] = 23, d->symlen[right] = 11), then
         // we know that, for instance, the tenth value (offset = 10) will be on
         // the left side because in Recursive Pairing child symbols are adjacent.
         if (offset < leftLen + 1)
-            sym = Sym(NodeLeft(node));
+            sym = Sym(node_left(node));
         else
         {
             offset -= leftLen + 1;
-            sym = Sym(NodeRight(node));
+            sym = Sym(node_right(node));
         }
     }
 
-    return int(NodeLeft(d->tree[sym]));
+    return int(node_left(d->tree[sym]));
 }
 
 bool check_dtz_stm(TBTable<WDL>*, int, File) { return true; }
@@ -1340,7 +1340,7 @@ enum SymColour : u8 {
 u8 set_symlen(PairsData* d, Sym s, std::vector<u8>& colour, bool& cyclic) {
 
     colour[s] = Grey;
-    Sym sr    = Sym(NodeRight(d->tree[s]));
+    Sym sr    = Sym(node_right(d->tree[s]));
 
     if (sr == 0xFFF)
     {
@@ -1348,7 +1348,7 @@ u8 set_symlen(PairsData* d, Sym s, std::vector<u8>& colour, bool& cyclic) {
         return 0;
     }
 
-    Sym sl = Sym(NodeLeft(d->tree[s]));
+    Sym sl = Sym(node_left(d->tree[s]));
 
     if (colour[sl] == Grey || colour[sr] == Grey)
     {
@@ -1647,7 +1647,7 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     // the whole domain would be up to 4096 entries per PairsData for a value
     // nothing can look at.
     for (usize s = 0; s < symlenSize; ++s)
-        d->tree[s] |= u32(d->symlen[NodeLeft(d->tree[s])]) << 24;
+        d->tree[s] |= u32(d->symlen[node_left(d->tree[s])]) << 24;
 
     return data + symlenSize * sizeof(LR) + (symlenSize & 1);
 }
