@@ -66,12 +66,15 @@ struct TTEntry {
     // Extract data from the TT entry. We have to convert TT internal bitfields
     // to external types.
     TTData read() const {
+        // genBound8 is read once: it is a relaxed atomic, so naming it twice is
+        // two loads the compiler is not allowed to fold into one.
+        const u8 gb = genBound8;
         return TTData{Move(move16),
                       Value(value16),
                       Value(eval16),
                       Depth(DEPTH_NONE + depth8),
-                      Bound((genBound8 & BOUND_MASK) >> BOUND_SHIFT),
-                      bool(genBound8 & PV_MASK)};
+                      Bound((gb & BOUND_MASK) >> BOUND_SHIFT),
+                      bool(gb & PV_MASK)};
     }
 
     // Check if the TT entry is occupied
@@ -146,7 +149,10 @@ void TTWriter::write(
     else if (entry.depth8 + DEPTH_NONE >= 5
              && Bound((entry.genBound8 & BOUND_MASK) >> BOUND_SHIFT) != BOUND_EXACT)
     {
-        auto v16 = entry.value16;
+        // `auto` here deduces RelaxedAtomic<i16>, not i16: the copy is an object
+        // holding a std::atomic, so it lands on the stack and every use reloads
+        // it from there. The shared entry is read exactly once either way.
+        const i16 v16 = entry.value16;
 
         // Guard against racy underflows, default to "unoccupied"
         if (std::abs(v16) < VALUE_INFINITE && is_decisive(v16))
@@ -293,7 +299,10 @@ std::tuple<bool, TTData, TTWriter> TranspositionTable::probe(const Key key) cons
         return {tte[i].is_occupied(), tte[i].read(), TTWriter(cluster, i)};
     }
 
-    // Find an entry to be replaced according to the replacement strategy
+    // Find an entry to be replaced according to the replacement strategy.
+    // The leader's value is carried instead of recomputed: depth8 and genBound8
+    // are relaxed atomics, so the compiler may not reuse the loads, and the
+    // incumbent would be re-read and re-aged once per remaining entry.
     int replace      = 0;
     int replaceValue = tte[0].depth8 - 8 * tte[0].relative_age(generation8);
     for (int i = 1; i < ClusterSize; ++i)
