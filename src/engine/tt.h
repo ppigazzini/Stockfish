@@ -53,7 +53,7 @@ struct TTData {
     TTData() = delete;
 
     // clang-format off
-    TTData(Move m, Value v, Value ev, Depth d, Bound b, bool pv) :
+    constexpr TTData(Move m, Value v, Value ev, Depth d, Bound b, bool pv) :
         move(m),
         value(v),
         eval(ev),
