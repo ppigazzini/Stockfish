@@ -443,6 +443,15 @@ void Position::set_castling_right(Color c, Square rfrom) {
     Square         kfrom = square<KING>(c);
     CastlingRights cr    = c & (kfrom < rfrom ? KING_SIDE : QUEEN_SIDE);
 
+    // A right has one rook and the mask had two. castlingRookSquare[cr] holds
+    // one square while castlingRightsMask carries the bit on every square ever
+    // named for cr, so a castling field with two tokens on the same side --
+    // `w AB` -- left the discarded rook holding a bit the position no longer
+    // uses, and moving that rook then cleared the right the OTHER rook owns.
+    // Only a malformed field reaches this, and pos_is_ok() cannot see it.
+    if (st->castlingRights & cr)
+        castlingRightsMask[castlingRookSquare[cr]] &= ~cr;
+
     st->castlingRights |= cr;
     castlingRightsMask[kfrom] |= cr;
     castlingRightsMask[rfrom] |= cr;
