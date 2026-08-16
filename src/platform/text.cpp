@@ -42,9 +42,19 @@ std::optional<usize> str_to_size_t(const std::string& s) {
     errno                           = 0;
     char*                    endptr = nullptr;
     const unsigned long long value  = std::strtoull(s.c_str(), &endptr, 10);
-    if (errno == ERANGE || (*endptr != '\0' && !std::isspace((unsigned char) *endptr))
-        || value > std::numeric_limits<usize>::max())
+    if (errno == ERANGE || value > std::numeric_limits<usize>::max())
         return std::nullopt;
+
+    // ONLY THE FIRST TRAILING CHARACTER USED TO BE INSPECTED, and whitespace
+    // passed, so "1 2" parsed as 1 and the caller could not tell a whole parse
+    // from half of one: `setoption name NumaPolicy value 0,1 2,3` was accepted
+    // as {0,1,3}. The whole tail has to be whitespace, not just its first byte.
+    // Whitespace is still accepted at all because the sysfs lines the NUMA
+    // prober reads end in a newline and one of them reaches here unstripped.
+    for (const char* p = endptr; *p != '\0'; ++p)
+        if (!std::isspace((unsigned char) *p))
+            return std::nullopt;
+
     return static_cast<usize>(value);
 }
 
