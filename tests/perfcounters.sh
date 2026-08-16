@@ -197,6 +197,22 @@ if [ -n "$SYZYGY" ]; then
                  | awk '{ if (length($0) > m) m = length($0) } END { print m }')
 fi
 
+# The startup probe loads the net and builds the magic tables, then quits without
+# searching. With --syzygy it maps the tables too, so the table LOAD lands in
+# startup and what is left in the search figure is the PROBE.
+#
+# WHY THIS EXISTS. Every counter here is whole-process, and the largest single
+# mispredict mover on this tree is the network reader, which runs ONCE. A
+# whole-process branch-miss ratio therefore cannot be read as a statement about
+# the search, and until this probe existed there was no way to tell the two
+# apart -- tests/perfbudget.sh subtracts startup and this axis did not.
+PROBE_IN=$WORK/probe.in
+{
+    [ -n "$SYZYGY" ] && echo "setoption name SyzygyPath value $SYZYGY"
+    echo isready
+    echo quit
+} > "$PROBE_IN"
+
 echo "perfcounters: base=$BASE_SHA head=$HEAD_SHA comp=$COMP mode=$([ "$PGO" = 1 ] && echo PGO || echo -O3)"
 echo "perfcounters: rounds=$ROUNDS depth=$DEPTH tt=$TT paranoid=$PARANOID"
 if [ -n "$SYZYGY" ]; then
@@ -238,6 +254,30 @@ build() {  # side arch -> binary path, or empty
 rc=0
 RESULTS="$WORK/results.tsv"
 : > "$RESULTS"
+
+# Whole run minus its own startup, counter by counter, for ONE round of ONE side.
+# Both readings come from the same side in the same round, so the pairing the
+# report relies on survives the subtraction.
+#
+# A counter that does not survive it drops the ROUND rather than clamping to
+# zero: startup is a separate process here, not a prefix of the measured one, so
+# a small counter can come back larger in the probe than in the run it is
+# subtracted from. That is noise, and a clamped zero would report it as a result.
+subtract_startup() {  # startup-file run-file -> a payload line, or nothing
+    awk '
+        NR == FNR { for (i = 2; i <= NF; i++) { split($i, a, "="); S[a[1]] = a[2] } next }
+        {
+            out = "perfcounters:"; ok = 1
+            for (i = 2; i <= NF; i++) {
+                split($i, a, "="); k = a[1]; v = a[2]
+                if (k == "scaled") { out = out " scaled=" v; continue }
+                d = v - S[k]
+                if (d <= 0) ok = 0
+                out = out " " k "=" d
+            }
+            if (ok) print out
+        }' "$1" "$2"
+}
 
 for arch in $TIERS; do
     echo "== $arch =="
@@ -293,6 +333,19 @@ for arch in $TIERS; do
             fi
             printf '%s\t%s\t%s\t%s\n' "$arch" "$side" "$r" "$(cat "$WORK/c-$side-$r.txt")" \
               >> "$RESULTS"
+
+            # The same binary, loading the same net and the same tables, doing no
+            # search. Measured per SIDE so a startup difference between the two is
+            # attributed rather than cancelled.
+            ( cd "$dir" && "$MEASURE" -o "$WORK/s-$side-$r.txt" ./stockfish < "$PROBE_IN" ) \
+              > /dev/null 2>&1
+            if [ -s "$WORK/s-$side-$r.txt" ] && ! grep -q 'scaled=1' "$WORK/s-$side-$r.txt"; then
+                printf '%s\t%s\t%s\t%s\n' "$arch/startup" "$side" "$r" \
+                  "$(cat "$WORK/s-$side-$r.txt")" >> "$RESULTS"
+                searchline=$(subtract_startup "$WORK/s-$side-$r.txt" "$WORK/c-$side-$r.txt")
+                [ -n "$searchline" ] && printf '%s\t%s\t%s\t%s\n' \
+                  "$arch/search" "$side" "$r" "$searchline" >> "$RESULTS"
+            fi
         done
         [ "$bad" = 1 ] && break
     done
@@ -307,7 +360,24 @@ for arch in $TIERS; do
     fi
     echo "  nodes $nodes_base on both sides"
 
+    echo "  whole process -- startup included, which is what this axis measures"
     python3 tests/perfcounters_report.py "$RESULTS" "$arch" || rc=1
+
+    # Supplementary, and deliberately outside rc: these two split the table above
+    # rather than adding a verdict to it. A tier whose startup probe did not pair
+    # still has a whole-process result, and that result is not in doubt.
+    echo
+    echo "  startup only -- net load, magic tables$([ -n "$SYZYGY" ] && printf '%s' ', table mapping')"
+    python3 tests/perfcounters_report.py "$RESULTS" "$arch/startup" || true
+    echo
+    echo "  search only -- each run minus its own startup, paired within the round"
+    echo "  READ INSTRUCTIONS HERE AND THE REST WITH CARE. The startup probe is a"
+    echo "  SEPARATE PROCESS: its instruction count is the same work either way, but"
+    echo "  it pays its own cold-cache and cold-predictor cost, where in the measured"
+    echo "  run that same work WARMS both for the search that follows. So this"
+    echo "  subtraction over-charges startup on cycles, misses and mispredicts, and"
+    echo "  the search figures for those read worse than the truth by that much."
+    python3 tests/perfcounters_report.py "$RESULTS" "$arch/search" || true
     echo
 done
 
