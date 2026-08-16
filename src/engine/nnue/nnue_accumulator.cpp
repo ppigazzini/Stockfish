@@ -368,6 +368,9 @@ void apply_combined(Color                                   perspective,
                     const PSQFeatureSet::IndexList&         psqRemoved,
                     const ThreatFeatureSet::IndexList&      thrAdded,
                     const ThreatFeatureSet::IndexList&      thrRemoved) {
+// One declaration needs it and nothing below does, so it does not outlive the
+// signature it qualifies.
+#undef SF_ACCUMULATOR_TARGET_RESTRICT
 
     const auto& fromAcc = from.accumulation[perspective];
     auto&       toAcc   = to.accumulation[perspective];
