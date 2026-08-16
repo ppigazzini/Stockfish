@@ -643,15 +643,31 @@ void apply_combined(Color                              perspective,
     }
 }
 
-void apply_combined(Color                              perspective,
-                    const FeatureTransformer&          featureTransformer,
-                    const AccumulatorState&            from,
-                    AccumulatorState&                  to,
-                    const PSQFeatureSet::IndexList&    psqAdded,
-                    const PSQFeatureSet::IndexList&    psqRemoved,
-                    const ThreatFeatureSet::IndexList& thrAdded,
-                    const ThreatFeatureSet::IndexList& thrRemoved,
-                    const WeightType*                  psqWeights) {
+// The tile store that ends each pass through `to` could, for all gcc knows, land in `from`
+// or in a weight row, so every load that follows it is ordered behind it. `to` is the only
+// parameter written through, and that it is distinct from everything else passed is what
+// `assert(computed.computed[p])` beside `assert(!target_state.computed[p])` already
+// establishes at both call sites.
+//
+// clang needs no telling and must not be told. The qualifier carries its cost estimate for
+// this body over `-inline-threshold=500`, so it stops inlining it into the two incremental
+// updaters, and the search reads +1.7452% at -O3 and +0.1091% under PGO -- the inliner, not
+// the aliasing: pinned back with always_inline the same source reads -0.0031% at -O3.
+#if defined(__GNUC__) && !defined(__clang__)
+    #define SF_ACCUMULATOR_TARGET_RESTRICT RESTRICT
+#else
+    #define SF_ACCUMULATOR_TARGET_RESTRICT
+#endif
+
+void apply_combined(Color                                   perspective,
+                    const FeatureTransformer&               featureTransformer,
+                    const AccumulatorState&                 from,
+                    AccumulatorState& SF_ACCUMULATOR_TARGET_RESTRICT to,
+                    const PSQFeatureSet::IndexList&         psqAdded,
+                    const PSQFeatureSet::IndexList&         psqRemoved,
+                    const ThreatFeatureSet::IndexList&      thrAdded,
+                    const ThreatFeatureSet::IndexList&      thrRemoved,
+                    const WeightType*                       psqWeights) {
     assert(psqRemoved.size() == 1 || psqRemoved.size() == 2);
     assert(psqAdded.size() == 1 || psqAdded.size() == 2);
 
