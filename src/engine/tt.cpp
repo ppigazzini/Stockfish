@@ -64,15 +64,16 @@ static constexpr u8 PV_MASK         = 1 << PV_SHIFT;
 struct TTEntry {
 
     // Extract data from the TT entry. We have to convert TT internal bitfields
-    // to external types.
-    TTData read() const {
-        // genBound8 is read once: it is a relaxed atomic, so naming it twice is
-        // two loads the compiler is not allowed to fold into one.
+    // to external types. depth8 is a parameter rather than a member read because
+    // the only caller has already asked the entry for it -- probe() needs the
+    // same byte to decide occupancy -- and a relaxed atomic named twice is two
+    // loads the compiler may not fold into one.
+    TTData read(int d8) const {
         const u8 gb = genBound8;
         return TTData{Move(move16),
                       Value(value16),
                       Value(eval16),
-                      Depth(DEPTH_NONE + depth8),
+                      Depth(DEPTH_NONE + d8),
                       Bound((gb & BOUND_MASK) >> BOUND_SHIFT),
                       bool(gb & PV_MASK)};
     }
@@ -313,7 +314,10 @@ std::tuple<bool, TTData, TTWriter> TranspositionTable::probe(const Key key) cons
         const int i = (int(lsb(matches)) >> 4) - 1;
         // This gap is the main place for read races.
         // After `read()` completes that copy is final, but may be self-inconsistent.
-        return {tte[i].is_occupied(), tte[i].read(), TTWriter(cluster, i)};
+        // depth8 answers both halves of the return -- occupancy and the copy's
+        // depth -- and it is a relaxed atomic, so it is read once for the two.
+        const int d8 = tte[i].depth8;
+        return {bool(d8), tte[i].read(d8), TTWriter(cluster, i)};
     }
 
     // Find an entry to be replaced according to the replacement strategy.
@@ -332,8 +336,13 @@ std::tuple<bool, TTData, TTWriter> TranspositionTable::probe(const Key key) cons
         }
     }
 
-    return {false, TTData{Move::none(), VALUE_NONE, VALUE_NONE, DEPTH_NONE, BOUND_NONE, false},
-            TTWriter(cluster, replace)};
+    // Everything a miss returns except the writer is the same six constants
+    // every time, so they are named once and copied in whole rather than
+    // materialised field by field on each of them.
+    static constexpr TTData NoData{Move::none(), VALUE_NONE, VALUE_NONE,
+                                   DEPTH_NONE,   BOUND_NONE, false};
+
+    return {false, NoData, TTWriter(cluster, replace)};
 }
 
 
