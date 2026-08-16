@@ -66,12 +66,15 @@ struct TTEntry {
 
     // Convert internal bitfields to external types
     TTData read() const {
+        // genBound8 is read once: it is a relaxed atomic, so naming it twice is
+        // two loads the compiler is not allowed to fold into one.
+        const u8 gb = genBound8;
         return TTData{Move(move16),
                       Value(value16),
                       Value(eval16),
                       Depth(DEPTH_NONE + depth8),
-                      Bound((genBound8 & BOUND_MASK) >> BOUND_SHIFT),
-                      bool(genBound8 & PV_MASK)};
+                      Bound((gb & BOUND_MASK) >> BOUND_SHIFT),
+                      bool(gb & PV_MASK)};
     }
 
     bool is_occupied() const { return bool(depth8); };
@@ -119,7 +122,12 @@ void TTEntry::save(
     else if (depth8 + DEPTH_NONE >= 5
              && Bound((genBound8 & BOUND_MASK) >> BOUND_SHIFT) != BOUND_EXACT)
     {
-        auto v16 = value16;
+        // `auto` here deduces RelaxedAtomic<i16>, not i16: the copy is an object
+        // holding a std::atomic, so it lands on the stack, every use reloads it
+        // from there, and its address being taken pulls a stack-protector
+        // prologue and epilogue into save() on every call. The shared entry is
+        // read exactly once either way.
+        const i16 v16 = value16;
         if (std::abs(v16) < VALUE_INFINITE && is_decisive(v16))
             depth8 = std::max(int(depth8) - 1,
                               0);  // guard against racy underflows, default to "unoccupied"
@@ -269,12 +277,23 @@ std::tuple<bool, TTData, TTWriter> TranspositionTable::probe(const Key key) cons
             // After `read()` completes that copy is final, but may be self-inconsistent.
             return {tte[i].is_occupied(), tte[i].read(), TTWriter(&tte[i])};
 
-    // Find an entry to be replaced according to the replacement strategy
-    TTEntry* replace = tte;
+    // Find an entry to be replaced according to the replacement strategy.
+    // The same comparison, in the same order, with the same ties: what changes
+    // is that the leader's value is carried instead of recomputed. depth8 and
+    // genBound8 are relaxed atomics, so the compiler may not reuse the loads,
+    // and the incumbent was being re-read and re-aged once per remaining entry.
+    TTEntry* replace      = tte;
+    int      replaceValue = tte[0].depth8 - 8 * tte[0].relative_age(generation8);
+
     for (int i = 1; i < ClusterSize; ++i)
-        if (replace->depth8 - 8 * replace->relative_age(generation8)
-            > tte[i].depth8 - 8 * tte[i].relative_age(generation8))
-            replace = &tte[i];
+    {
+        const int value = tte[i].depth8 - 8 * tte[i].relative_age(generation8);
+        if (replaceValue > value)
+        {
+            replace      = &tte[i];
+            replaceValue = value;
+        }
+    }
 
     return {false, TTData{Move::none(), VALUE_NONE, VALUE_NONE, DEPTH_NONE, BOUND_NONE, false},
             TTWriter(replace)};
