@@ -283,10 +283,6 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
             // or bonus for escaping an attack by a lesser piece.
             int v = 20 * (bool(threatByLesser[pt] & from) - bool(threatByLesser[pt] & to));
             m.value = value + PieceValue[pt] * v;
-
-
-            if (ply < LOW_PLY_HISTORY_SIZE)
-                m.value += 8 * (*lowPlyHistory)[ply][m.raw()] / (1 + ply);
         }
 
         else  // Type == EVASIONS
@@ -297,6 +293,24 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
                 m.value = (*mainHistory)[us][m.raw()] + (*continuationHistory[0])[pc][to];
         }
     }
+
+    // The low-ply term is a second pass over the same list, and the reason is
+    // the loop above rather than this one: `ply` and the row `ply` selects are
+    // invariant across the list, and the see_ge() call re-reads both per move.
+    // Here there is no call, so the row address and the divisor are derived
+    // once, and every move that is not at a low ply pays no test at all.
+    if constexpr (Type == QUIETS)
+    {
+        if (ply < LOW_PLY_HISTORY_SIZE)
+        {
+            const auto& lowPlyRow = (*lowPlyHistory)[ply];
+            const int   divisor   = 1 + ply;
+
+            for (ExtMove* p = cur; p != it; ++p)
+                p->value += 8 * lowPlyRow[p->raw()] / divisor;
+        }
+    }
+
     return it;
 }
 
