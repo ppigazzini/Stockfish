@@ -238,15 +238,31 @@ void TranspositionTable::clear() {
 }
 
 
+// One entry's contribution to the occupancy sample.
+static int counts_as_full(const TTEntry& e, u8 gen, int maxAge) {
+    return e.is_occupied() && e.relative_age(gen) <= maxAge;
+}
+
+
 // Returns an approximation of the hashtable
 // occupation during a search. The hash is x permill full, as per UCI protocol.
 // Only counts entries which are younger than maxAge.
 int TranspositionTable::hashfull(int maxAge) const {
+    // generation8 is a plain member and the entry bytes beside it are relaxed
+    // atomics, so it was reloaded on every occupied entry: a compiler will not
+    // hoist a plain load across an atomic one.
+    const u8 gen = generation8;
+
+    // The cluster is walked without a loop. Three iterations carrying a branch
+    // is under gcc's unrolling threshold, and the loop control it emitted --
+    // an advance, a bound and a jump per entry -- was half of what this
+    // function retired.
+    static_assert(ClusterSize == 3, "the cluster walk below is written out");
+
     int cnt = 0;
-    for (int i = 0; i < 1000; ++i)
-        for (int j = 0; j < ClusterSize; ++j)
-            cnt += table[i].entry[j].is_occupied()
-                && table[i].entry[j].relative_age(generation8) <= maxAge;
+    for (const Cluster* c = table, *last = table + 1000; c != last; ++c)
+        cnt += counts_as_full(c->entry[0], gen, maxAge) + counts_as_full(c->entry[1], gen, maxAge)
+             + counts_as_full(c->entry[2], gen, maxAge);
 
     return cnt / ClusterSize;
 }
