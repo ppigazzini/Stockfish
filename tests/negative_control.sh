@@ -1456,10 +1456,10 @@ if selected fuzzsearch; then
     # a lucky one.
     echo "negative-control: fuzzsearch  -- a defect on the first search"
     mutate src/engine/search_go.cpp \
-        '    w.limits          = LimitsType();' \
-        '    if (depth > 0)
-        *(volatile int*) nullptr = 0;
-    w.limits          = LimitsType();'
+        '        w.limits = LimitsType();' \
+        '        if (depth > 0)
+            *(volatile int*) nullptr = 0;
+        w.limits = LimitsType();'
     if ./tests/fuzzsearch.sh --seconds 20 >/dev/null 2>&1; then
         echo "  NOT DETECTED -- the fuzzer reported clean over a null dereference"
         FAIL=$((FAIL+1))
