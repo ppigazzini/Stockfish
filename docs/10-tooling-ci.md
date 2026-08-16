@@ -288,6 +288,53 @@ than reporting the median as a result. On a box doing anything else at the same 
 the expected outcome for a change of the size a refactor makes -- which is why the instruction
 axis exists.
 
+### `tests/npsthreads.sh`
+
+How the two revisions SCALE, across thread counts.
+
+```sh
+./tests/npsthreads.sh 5062aee5                       # 1 2 4 8 ... up to nproc
+./tests/npsthreads.sh --threads "1 16" --rounds 5 HEAD~1
+```
+
+**Every other axis in this tree is single-threaded.** `perfbudget.sh`, `perfcounters.sh`,
+`perfdecomp.sh` and `npsab.sh` all run `bench <tt> 1 <depth>`, and `match.sh` defaults to
+`Threads 1`. A player runs eight or sixteen, so nothing else here measures contention on the
+shared last level, on the transposition table, or on the counters the search manager polls.
+
+**The other axes cannot simply be pointed at more threads, and the reason is not effort.** They
+all refuse a comparison whose node counts differ, correctly -- a count over a different tree is
+not comparable. But a multi-threaded search at a fixed DEPTH is not reproducible against itself.
+Three runs of `bench 128 8 10 default depth` on this tree gave 4,214,870, 4,775,340 and
+4,098,171 nodes: a **16.5% spread** against a 0.02% tolerance. The single-threaded run beside it
+repeats exactly. Every existing gate reports VOID and learns nothing.
+
+**So the node count becomes the input.** With `nodes` as the limit type the search stops on a
+node budget rather than a depth, and the workload is fixed by construction; only the overshoot
+past the budget varies. The same three runs at `bench 128 8 3000000 default nodes` gave
+147,141,383, 147,141,788 and 147,146,570 -- a **0.0035% spread**. That is why this gate takes
+`--nodes` and not `--depth`, and why it carries a tolerance where `npsab.sh` carries an
+equality.
+
+**Read `r(T)/r(1)`, not the nps column.** The threaded nps ratio conflates single-thread speed,
+which three other axes already measure more precisely, with scaling, which none of them do. The
+headline divides the first out:
+
+> `r(T)/r(1)`, where `r(T)` is the median paired nps ratio at T threads
+
+which is identically the ratio of the two sides' scaling efficiencies. Below 1.000 means head
+scales worse. A value inside the A/A half-width printed beside it has established no direction,
+and that control widens with thread count on every box.
+
+**The hash is held FIXED across thread counts**, because a game has one hash size whatever the
+thread count. Growing it with T is the standard way to make a scaling curve look good, and it
+hides exactly the contention this gate exists to find.
+
+It refuses `ARCH=native`, warns when asked for more threads than the host has cores -- above
+that it measures the scheduler -- and warms both binaries at the WIDEST thread count, so the
+pool spin-up and the hash faulting are not paid inside round 1 of the row most likely to be
+quoted.
+
 ## `tests/match.sh`
 
 Play this branch against upstream and report whether the engine **played**.
