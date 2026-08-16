@@ -1031,6 +1031,27 @@ and defaults to `tests/tbprobe.fens`; the corpus and the positions are one choic
 wrong pairings both run clean while measuring something other than what the report says. The
 depth defaults to 14 with `--syzygy`, matching the other two axes.
 
+**Three tables, because the whole-process figure cannot be read as a search figure.** Every
+counter here covers the whole process, and the largest single mispredict mover on this tree is
+the network reader, which runs once. So each tier prints the whole process, then startup alone
+-- a probe that loads the net, builds the magic tables, maps any tablebases and quits without
+searching -- then the difference, paired within each round. The split is not cosmetic: on the
+bench list the whole process reads 0.86 on branch misses and the search alone reads 1.0044, so
+the entire apparent win is the loader and the search is fractionally worse.
+
+**Only the instruction row of that difference is clean.** The startup probe is a separate
+process, so it pays its own cold-cache and cold-predictor cost where in the measured run that
+same work WARMS both for the search behind it. Retired instructions are the same work either
+way; cycles, misses and mispredicts are over-charged to startup, and the search rows for those
+read worse than the truth by that much. The script prints this above the table rather than
+leaving it to be inferred.
+
+The two extra tables are outside the exit code deliberately. They split the first table rather
+than adding a verdict to it, and a tier whose startup probe did not pair still has a
+whole-process result that is not in doubt. A round in which any counter came back smaller in
+the run than in its own startup probe is dropped from the search table rather than clamped to
+zero, because a clamped zero reports noise as a measurement.
+
 ## `tests/perfdecomp.sh`
 
 Where the cost is, per component, deterministically.
