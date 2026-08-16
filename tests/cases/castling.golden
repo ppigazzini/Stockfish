@@ -1,0 +1,26 @@
+Stockfish <version>
+info string Available processors: <cpus>
+info string Using 1 thread
+b1a1: 1
+b1c1: 1
+b1d1: 1
+e1f2: 1
+e1e2: 1
+e1d2: 1
+e1f1: 1
+e1d1: 1
+
+Nodes searched: 8
+
+info string Available processors: <cpus>
+info string Using 1 thread
+b1a1: 1
+b1c1: 1
+b1d1: 1
+e1f2: 1
+e1e2: 1
+e1d2: 1
+e1f1: 1
+e1d1: 1
+
+Nodes searched: 8
