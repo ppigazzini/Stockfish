@@ -130,6 +130,34 @@ void memory_deleter_array(T* ptr, FREE_FUNC free_func) {
     free_func(raw_memory);
 }
 
+// WHY DEFAULT-INITIALISATION, AND WHAT IT COSTS THE CALLER.
+//
+// `new (p) T()` value-initialises and `new (p) T` does not. For a type whose
+// default constructor is trivial that is the only difference between them: one
+// zeroes the storage, the other runs no code at all. So
+// is_trivially_default_constructible_v is exactly the line between zeroing that
+// has no other effect and a constructor that has to run, and gating on it
+// leaves every type with a real default constructor on the path it was already
+// on.
+//
+// EVERY BYTE MUST BE WRITTEN BEFORE IT IS READ. The block comes from
+// aligned_large_pages_alloc or from the default arena's aligned malloc, and
+// neither promises zeros -- posix_memalign and _aligned_malloc both hand back
+// recycled heap, so an unwritten element holds arbitrary bytes rather than the
+// zeros a reader would have got before. What made this worth doing is that the
+// shared histories were zeroed and then completely overwritten by
+// Search::Worker::clear() before the first search, so the zeroing was dead.
+//
+// The zeroing was also the FIRST TOUCH that placed the pages, which is what
+// ThreadPool::set is buying when it constructs a bank inside
+// execute_on_numa_node. Placement now happens on whichever thread writes a page
+// first, so a caller relying on first touch must make that thread the one it
+// wants the pages near. Worker::clear() runs from the Worker constructor on the
+// already-bound worker thread and each worker writes a disjoint slice, so the
+// pages of a bank still land on the node its workers run on.
+template<typename T>
+constexpr bool arena_skips_init_v = std::is_trivially_default_constructible_v<T>;
+
 template<typename T, typename ALLOC_FUNC, typename... Args>
 inline std::enable_if_t<!std::is_array_v<T>, T*> memory_allocator(ALLOC_FUNC alloc_func,
                                                                   Args&&... args) {
@@ -137,7 +165,10 @@ inline std::enable_if_t<!std::is_array_v<T>, T*> memory_allocator(ALLOC_FUNC all
     if (raw_memory == nullptr)
         arena_alloc_failed(sizeof(T));
     ASSERT_ALIGNED(raw_memory, alignof(T));
-    return new (raw_memory) T(std::forward<Args>(args)...);
+    if constexpr (sizeof...(Args) == 0 && arena_skips_init_v<T>)
+        return new (raw_memory) T;
+    else
+        return new (raw_memory) T(std::forward<Args>(args)...);
 }
 
 template<typename T, typename ALLOC_FUNC>
@@ -161,8 +192,17 @@ memory_allocator(ALLOC_FUNC alloc_func, usize num) {
 
     new (raw_memory) usize(num);
 
+    // See arena_skips_init_v: the default-initialising arm begins the lifetimes
+    // and writes nothing, so the whole loop compiles away where the
+    // value-initialising one lowered to a memset of the array.
     for (usize i = 0; i < num; ++i)
-        new (raw_memory + array_offset + i * sizeof(ElementType)) ElementType();
+    {
+        void* slot = raw_memory + array_offset + i * sizeof(ElementType);
+        if constexpr (arena_skips_init_v<ElementType>)
+            new (slot) ElementType;
+        else
+            new (slot) ElementType();
+    }
 
     return reinterpret_cast<ElementType*>(raw_memory + array_offset);
 }
