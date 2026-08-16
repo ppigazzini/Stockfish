@@ -250,8 +250,9 @@ void TranspositionTable::clear() {
 }
 
 
-// One entry's contribution to the occupancy sample.
-static int counts_as_full(const TTEntry& e, u8 gen, int maxAge) {
+// Whether one entry counts towards the occupancy sample. The three results are
+// summed by the caller, where bool promotes to int on its own.
+static bool counts_as_full(const TTEntry& e, u8 gen, int maxAge) {
     return e.is_occupied() && e.relative_age(gen) <= maxAge;
 }
 
