@@ -448,6 +448,17 @@ NumaReplicatedAccessToken NumaConfig::bind_current_thread_to_numa_node(NumaIndex
 // this is what lets a half-readable one reach it. The sysfs callers keep the
 // lenient reading, spelled at their call sites.
 std::optional<std::vector<usize>> NumaConfig::indices_from_shortened_string(const std::string& s) {
+        // The range branch bounded how many indices a `first-last` expands to
+        // and nothing bounded how LARGE one is. Every index becomes
+        // highestCpuIndex, which sizes the CPU_ALLOC that binding a thread then
+        // CPU_ZERO_S's in full: `NumaPolicy 2000000000` made the engine resident
+        // in 183 MB it never reads, `4000000000` in 427 MB, and the growth is
+        // exactly highestCpuIndex/8 -- a 21-character line asks for 12.5 GB.
+        // The ceiling is the one get_process_affinity already reads the system
+        // with, so an index refused here is one no affinity mask on this host
+        // could have carried.
+        constexpr usize MaxCpuIndex = 1024 * 64 - 1;
+
         std::vector<usize> indices;
 
         if (s.empty())
@@ -462,7 +473,7 @@ std::optional<std::vector<usize>> NumaConfig::indices_from_shortened_string(cons
             if (parts.size() == 1)
             {
                 auto c = str_to_size_t(std::string(parts[0]));
-                if (!c.has_value())
+                if (!c.has_value() || *c > MaxCpuIndex)
                     return std::nullopt;
                 indices.emplace_back(*c);
             }
@@ -472,7 +483,8 @@ std::optional<std::vector<usize>> NumaConfig::indices_from_shortened_string(cons
 
                 auto cfirst = str_to_size_t(std::string(parts[0]));
                 auto clast  = str_to_size_t(std::string(parts[1]));
-                if (!cfirst.has_value() || !clast.has_value() || *clast - *cfirst >= MaxIndices)
+                if (!cfirst.has_value() || !clast.has_value() || *clast > MaxCpuIndex
+                    || *clast - *cfirst >= MaxIndices)
                     return std::nullopt;
 
                 for (usize c = *cfirst; c <= *clast; ++c)
