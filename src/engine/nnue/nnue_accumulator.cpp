@@ -250,7 +250,15 @@ sf_always_inline inline void apply_psq_features(const WeightType*               
                                                 const PSQFeatureSet::IndexList& list) {
     static_assert(sign == 1 || sign == -1);
 
-    for (int i = 0; i < list.ssize(); ++i)
+    // A piece move changes one or two psq features and this loop is entered eight times per
+    // call, so gcc's unroll-by-2 prologue -- the parity test and the end pointer, ten
+    // instructions -- is paid on every tile to save one and a half on a trip count that is
+    // almost always one.
+    const int n = list.ssize();
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC unroll 1
+#endif
+    for (int i = 0; i < n; ++i)
     {
         auto* column = reinterpret_cast<const vec_t*>(tileWeights + list[i] * Dimensions);
         for (IndexType k = 0; k < Tiling::NumRegs; ++k)
@@ -316,7 +324,13 @@ sf_always_inline inline void apply_psqt(const PSQTWeightType* tileWeights,
                                         const ValueList<IdxType, MaxLen>& list) {
     static_assert(sign == 1 || sign == -1);
 
-    for (int i = 0; i < list.ssize(); ++i)
+    // One psqt tile and one register, so the body is three instructions per feature and the
+    // unroll prologue is longer than the loop it introduces.
+    const int n = list.ssize();
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC unroll 1
+#endif
+    for (int i = 0; i < n; ++i)
     {
         auto* column = reinterpret_cast<const psqt_vec_t*>(tileWeights + list[i] * PSQTBuckets);
         for (IndexType k = 0; k < Tiling::NumPsqtRegs; ++k)
