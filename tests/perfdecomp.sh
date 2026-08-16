@@ -39,6 +39,7 @@ JOBS=${JOBS:-$(nproc 2>/dev/null || echo 4)}
 COMP=${COMP:-gcc}
 COMPONENTS=${COMPONENTS:-tests/perfcomponents.tsv}
 SYZYGY=
+FENS_OVERRIDE=
 PGO=0
 DEPTH_GIVEN=0
 
@@ -59,6 +60,12 @@ usage: tests/perfdecomp.sh [<base-rev>] [<head-rev>] [options]
                 without this every tablebase row MATCHES NOTHING and the reader
                 that a probing search spends a quarter of its time in is absent
                 from the decomposition. An empty DIR SKIPS.
+  --fens FILE   the positions the probing workload runs (default:
+                tests/tbprobe.fens, which is 4-man). THE CORPUS AND THE POSITIONS
+                ARE ONE CHOICE: 4-man positions against a 5-man corpus leave the
+                big table unread, 5-man positions against a 3-4-man corpus find
+                no table at all, and both run clean while decomposing something
+                other than what the report says.
   --pgo         build both sides with profile-guided optimisation, which is what
                 ships. Roughly 3x slower to build, and the only way this axis
                 sees the lane a player runs.
@@ -73,6 +80,7 @@ while [ $# -gt 0 ]; do
         --arch)  ARCH=$2; shift 2 ;;
         --comp)  COMP=$2; shift 2 ;;
         --syzygy) SYZYGY=$2; shift 2 ;;
+        --fens)  FENS_OVERRIDE=$2; shift 2 ;;
         --pgo)   PGO=1; shift ;;
         --jobs)  JOBS=$2; shift 2 ;;
         -h|--help) usage; exit 0 ;;
@@ -81,11 +89,17 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# A probing run wants depth, not breadth: the positions are four men and the
+# A probing run wants depth, not breadth: the positions have few men and the
 # search converges early. Keep this the same default tests/perfbudget.sh and
 # tests/fingerprint.sh use, so a component split, an instruction ratio and a call
 # count describe ONE workload rather than three.
 [ -n "$SYZYGY" ] && [ "$DEPTH_GIVEN" = "0" ] && DEPTH=14
+
+# --fens without --syzygy would name positions for a workload that never runs,
+# and the run would silently decompose the bench list instead.
+[ -z "$FENS_OVERRIDE" ] || [ -n "$SYZYGY" ] || {
+    echo "perfdecomp: --fens names the probing workload's positions and needs --syzygy" >&2
+    exit 2; }
 
 command -v valgrind >/dev/null || { echo "perfdecomp: SKIPPED -- valgrind is not installed" >&2; exit 2; }
 command -v python3 >/dev/null || { echo "perfdecomp: SKIPPED -- no python3" >&2; exit 2; }
@@ -138,7 +152,7 @@ if [ -n "$SYZYGY" ]; then
     SYZYGY=$SYZYGY_ABS
     ls "$SYZYGY"/*.rtbw >/dev/null 2>&1 \
         || { echo "perfdecomp: SKIPPED -- --syzygy: no .rtbw in $SYZYGY -- run tests/tbfetch.sh" >&2; exit 2; }
-    FENS=$PWD/tests/tbprobe.fens
+    FENS=${FENS_OVERRIDE:-$PWD/tests/tbprobe.fens}
     [ -f "$FENS" ] \
         || { echo "perfdecomp: SKIPPED -- --syzygy: $FENS is missing" >&2; exit 2; }
 
@@ -154,6 +168,15 @@ if [ -n "$SYZYGY" ]; then
 fi
 
 echo "perfdecomp: base=$BASE_SHA head=$HEAD_SHA arch=$ARCH comp=$COMP depth=$DEPTH mode=$([ "$PGO" = 1 ] && echo pgo || echo O3) workload=$([ -n "$SYZYGY" ] && echo probing || echo bench-list)"
+if [ -n "$SYZYGY" ]; then
+    # The men count is read off the corpus rather than asserted in a sentence:
+    # the sentence that said "4-man" was true when it was written and went false
+    # the day a bigger corpus arrived. Block count scales with table size, so a
+    # cost decomposed here bounds the same cost on anything bigger FROM BELOW.
+    CORPUS_MEN=$(ls "$SYZYGY"/*.rtbw | sed 's|.*/||; s|\.rtbw$||; s|v||' \
+                 | awk '{ if (length($0) > m) m = length($0) } END { print m }')
+    echo "perfdecomp: probing $(grep -cve '^setoption' "$BENCH_FILE") positions from $(basename "$FENS"), corpus ${CORPUS_MEN}-man ($SYZYGY)"
+fi
 echo
 
 profile() {  # side -> writes $WORK/cg.$side, echoes the node count
