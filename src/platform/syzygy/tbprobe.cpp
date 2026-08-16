@@ -2338,7 +2338,15 @@ bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, boo
     {
         pos.do_move(m.pv[0], st);
 
-        if (pos.is_draw(1))
+        // `rule50` is the option and this test used to ignore it. root_probe
+        // above spells the same draw test as `(rule50 && pos.is_draw(1)) ||
+        // pos.is_repetition(1)`; here every root move became WDLDraw once the
+        // halfmove clock crossed 99, so with Syzygy50MoveRule off -- the setting
+        // that says the clock does not end the game -- a won position was ranked
+        // and scored as drawn, and rank_root_moves then zeroed the cardinality
+        // and stopped probing during the search. A repetition is a draw under
+        // either setting, which is why only the clock half takes the flag.
+        if ((rule50 && pos.is_draw(1)) || pos.is_repetition(1))
             wdl = WDLDraw;
         else
             wdl = -probe_wdl(pos, &result);
