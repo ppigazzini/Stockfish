@@ -1029,7 +1029,8 @@ Where the cost is, per component, deterministically.
 ```sh
 ./tests/perfdecomp.sh                       # merge-base with master, against HEAD
 ./tests/perfdecomp.sh --depth 8 --comp clang
-./tests/perfdecomp.sh --syzygy tests/syzygy # the workload that reaches the tablebase reader
+./tests/perfdecomp.sh --syzygy tests/syzygy-34man   # reaches the tablebase reader
+./tests/perfdecomp.sh --syzygy resources/syzygy-5man --fens tests/tbprobe5.fens
 ./tests/perfdecomp.sh --pgo                 # the lane that ships
 ```
 
@@ -1045,6 +1046,15 @@ The same three refusals `perfbudget.sh` makes apply: no such directory, no `.rtb
 positions in the FEN file, all **skip**. The probing depth defaults to 14, matching
 `perfbudget.sh` and `fingerprint.sh`, so a component split, an instruction ratio and a call count
 describe one workload rather than three.
+
+**`--fens` names the positions, and the corpus alone does not.** It defaults to
+`tests/tbprobe.fens`, which is 4-man. Point `--syzygy` at a 5-man corpus without moving the
+positions and the big tables are never read; point 5-man positions at a 3-4-man corpus and no
+table is found at all. Both combinations run clean and report a decomposition of something other
+than what the caller asked for, which is why the banner names the FEN file and reads the men
+count off the corpus rather than asserting it in a sentence that goes false when a bigger corpus
+arrives. The cost of a block walk scales with table size, so a figure taken here bounds the same
+figure on anything bigger from below.
 
 One thing is inside the measured region on a probing run and is not on the instruction axis: the
 `SyzygyPath` line runs as the first bench command, so **mapping the tables is decomposed too** and
