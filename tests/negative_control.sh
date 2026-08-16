@@ -1483,6 +1483,7 @@ fi
 
 COVERAGE_EXCUSED_NAMES=(
   npsab.sh
+  npsthreads.sh
   negative_control.sh
   testing.py
   zones.sh
@@ -1494,6 +1495,7 @@ COVERAGE_EXCUSED_NAMES=(
 )
 COVERAGE_EXCUSED_WHY=(
   "a wall-clock measurement rather than a pass/fail gate; it carries its own A/A control, which is the same check from the inside"
+  "a scaling measurement rather than a pass/fail gate: it exits 0 for any ratio and 1 only when the node totals span more than the tolerance, and that refusal is the one perfbudget's row already covers. Its own A/A control is the check from the inside, as npsab's is"
   "this script -- it cannot be its own negative control"
   "a harness imported by instrumented.py rather than a gate; instrumented.py's row covers it"
   "the zone table, sourced by the four zone-aware gates; it asserts nothing itself"

@@ -81,10 +81,10 @@ single-threaded, so every gate above stays green while a data race is present.
 make -j build ARCH=x86-64-avx2 sanitize=thread && python3 ../tests/instrumented.py --sanitizer-thread ./stockfish
 ```
 
-## Performance: the five axes, and which one answers what
+## Performance: the six axes, and which one answers what
 
 `signature.sh` proves the engine searched the SAME TREE. It says nothing about what that tree
-cost. These five do, and they are not interchangeable.
+cost. These six do, and they are not interchangeable.
 
 ```sh
 ../tests/perfbudget.sh   <base-rev> [<head-rev>]  # retired instructions, deterministic
@@ -92,12 +92,14 @@ cost. These five do, and they are not interchangeable.
 ../tests/npsab.sh        <base-rev> [<head-rev>]  # interleaved paired wall clock
 ../tests/perfcounters.sh [<base>] [<head>]        # PMU: cycles, IPC, cache/branch, ALL tiers
 ../tests/perfdecomp.sh   [<base>] [<head>]        # per-component Ir/misses, deterministic
+../tests/npsthreads.sh   <base-rev> [<head-rev>]  # SCALING across thread counts
 ```
 
-The last two default their base to `git merge-base HEAD master`, which is the upstream commit
-this branch forked from. Keep local `master` at `upstream/master` and never commit on it: there
-is no pin file to drift, so a commit of your own on `master` silently moves the baseline both
-gates measure against, and every earlier number stops being comparable.
+`perfcounters.sh` and `perfdecomp.sh` default their base to `git merge-base HEAD master`, which
+is the upstream commit this branch forked from; the other four require it. Keep local `master`
+at `upstream/master` and never commit on it: there is no pin file to drift, so a commit of your
+own on `master` silently moves the baseline those two gates measure against, and every earlier
+number stops being comparable.
 
 **Measure with gcc AND clang, and let PGO decide.** One compiler cannot distinguish a change
 from its own codegen. Run `perfbudget.sh` with `--comp gcc` and `--comp clang`, and with
@@ -122,6 +124,7 @@ anything. A regression under PGO still does not land.
 | "this is faster" (an optimisation) | `npsab.sh` | see the trap below -- the instruction axis can invert the sign |
 | "this moved no cache line" | `perfcounters.sh` | the ONLY axis that sees a miss or a mispredict, and the only one that runs above avx2 |
 | "and if it did, where?" | `perfdecomp.sh` | per-component instructions and misses, deterministic -- but a simulated cache, not this one |
+| "this scales" -- anything touching the TT, the histories or the pool | `npsthreads.sh` | every other axis runs ONE thread, so a contention change is invisible to all five. It needs a node budget, not a depth: a threaded fixed-depth bench is not reproducible against itself |
 
 **The trap, measured on this repository.** `ee72cf49f` "Optimize RankAttacks" is marked *No
 functional change* and passed a 212,800-game SPRT. It shrinks a table 4x, trading instructions
