@@ -322,6 +322,25 @@ void ThreadPool::start_thinking(const SearchOptions&  options,
 
     Tablebases::Config tbConfig = Tablebases::rank_root_moves(options, pos, rootMoves);
 
+    // One pointer to a bundle, not four captured references. A std::function
+    // holds its callable inline only while the callable fits libstdc++'s
+    // 16-byte buffer; a `[&]` closure over limits, rootMoves, pos and tbConfig
+    // plus the thread pointer is 40 bytes, so every worker's setup job was an
+    // operator new and a matching free -- T of each per `go`, on the move
+    // latency path, before any thread starts searching. Two pointers fit the
+    // buffer.
+    //
+    // The bundle lives on this frame and every job that reads it has finished
+    // by the wait below, which is the same lifetime the references had.
+    struct RootSetup {
+        const Search::LimitsType* limits;
+        const Search::RootMoves*  rootMoves;
+        const Position*           pos;
+        const Tablebases::Config* tbConfig;
+    };
+
+    const RootSetup setup{&limits, &rootMoves, &pos, &tbConfig};
+
     for (auto&& th : threads)
     {
         // Capture the range-for's reference BY VALUE. `[&]` captured `th`
@@ -329,15 +348,15 @@ void ThreadPool::start_thinking(const SearchOptions&  options,
         // job it was handed to may still be running: formally undefined, and
         // both compilers happen to capture the referent.
         Thread* thread = th.get();
-        thread->run_custom_job([&, thread]() {
-            thread->worker->limits = limits;
+        thread->run_custom_job([&setup, thread]() {
+            thread->worker->limits = *setup.limits;
             thread->worker->nodes = thread->worker->tbHits = thread->worker->bestMoveChanges = 0;
             thread->worker->nmpMinPly                                                        = 0;
             thread->worker->rootDepth                                                        = 0;
-            thread->worker->rootMoves                                                        = rootMoves;
-            thread->worker->rootPos.set(pos.fen(), pos.is_chess960());
-            thread->worker->rootPos.copy_state_infos(pos);
-            thread->worker->tbConfig = tbConfig;
+            thread->worker->rootMoves = *setup.rootMoves;
+            thread->worker->rootPos.set(setup.pos->fen(), setup.pos->is_chess960());
+            thread->worker->rootPos.copy_state_infos(*setup.pos);
+            thread->worker->tbConfig = *setup.tbConfig;
         });
     }
 
