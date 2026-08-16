@@ -203,6 +203,19 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     Color us = pos.side_to_move();
 
     [[maybe_unused]] Bitboard threatByLesser[KING + 1];
+
+    // The tables the QUIETS arm reads are at the same ADDRESS for every move in
+    // the list, and pos.see_ge() below is a call the compiler cannot see
+    // through. That call is what stops those addresses being hoisted: after it
+    // gcc re-reads `this->continuationHistory` once per plane -- five times a
+    // move -- and re-derives the pawn bank's row from pos.pawn_key(). Both are
+    // invariant by construction, since a position does not change while its own
+    // move list is scored. Only the addresses are named here; every counter is
+    // still loaded per move.
+    [[maybe_unused]] const PieceToHistory *   contHist0, *contHist1, *contHist2, *contHist3,
+      *contHist5;
+    [[maybe_unused]] const PawnHistoryEntry* pawnHist;
+
     if constexpr (Type == QUIETS)
     {
         threatByLesser[PAWN]   = 0;
@@ -211,6 +224,13 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
           pos.attacks_by<KNIGHT>(~us) | pos.attacks_by<BISHOP>(~us) | threatByLesser[KNIGHT];
         threatByLesser[QUEEN] = pos.attacks_by<ROOK>(~us) | threatByLesser[ROOK];
         threatByLesser[KING]  = 0;
+
+        contHist0 = continuationHistory[0];
+        contHist1 = continuationHistory[1];
+        contHist2 = continuationHistory[2];
+        contHist3 = continuationHistory[3];
+        contHist5 = continuationHistory[5];
+        pawnHist  = &sharedHistory->pawn_entry(pos);
     }
 
     ExtMove* it = cur;
@@ -238,22 +258,31 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
 
         else if constexpr (Type == QUIETS)
         {
-            // histories
-            m.value = 2 * (*mainHistory)[us][m.raw()];
-            m.value += 2 * sharedHistory->pawn_entry(pos)[pc][to];
-            m.value += (*continuationHistory[0])[pc][to];
-            m.value += (*continuationHistory[1])[pc][to];
-            m.value += (*continuationHistory[2])[pc][to];
-            m.value += (*continuationHistory[3])[pc][to];
-            m.value += (*continuationHistory[5])[pc][to];
+            // histories -- summed in a local and stored once. m.value is a
+            // location the see_ge() call below can reach, so every `+=` on it
+            // is a load, an add and a store rather than an accumulator.
+            //
+            // The low-ply term below keeps its `+=` deliberately. Carrying the
+            // local past it makes the low-ply arm the loop's tail, and gcc then
+            // duplicates the exit test into both paths -- 237 K more mispredicts
+            // AND 476 K more instructions on a depth-9 search, so it is not even
+            // a trade. Stopping the accumulator at the store leaves the tail
+            // where it was, and the mispredicts fall with the instruction count.
+            int value = 2 * (*mainHistory)[us][m.raw()];
+            value += 2 * (*pawnHist)[pc][to];
+            value += (*contHist0)[pc][to];
+            value += (*contHist1)[pc][to];
+            value += (*contHist2)[pc][to];
+            value += (*contHist3)[pc][to];
+            value += (*contHist5)[pc][to];
 
             // bonus for checks
-            m.value += ((pos.check_squares(pt) & to) && pos.see_ge(m, -75)) * 16384;
+            value += ((pos.check_squares(pt) & to) && pos.see_ge(m, -75)) * 16384;
 
             // penalty for moving to a square threatened by a lesser piece
             // or bonus for escaping an attack by a lesser piece.
             int v = 20 * (bool(threatByLesser[pt] & from) - bool(threatByLesser[pt] & to));
-            m.value += PieceValue[pt] * v;
+            m.value = value + PieceValue[pt] * v;
 
 
             if (ply < LOW_PLY_HISTORY_SIZE)
