@@ -269,27 +269,44 @@ static_assert(sizeof(SparseEntry) == 6, "SparseEntry must be 6 bytes");
 using Sym = u16;  // Huffman symbol
 
 struct LR {
-    enum Side {
-        Left,
-        Right
-    };
-
     u8 lr[3];  // The first 12 bits is the left-hand symbol, the second 12
                // bits is the right-hand symbol. If the symbol has length 1,
                // then the left-hand symbol is the stored value.
-    template<Side S>
-    Sym get() {
-        return S == Left  ? ((lr[1] & 0xF) << 8) | lr[0]
-             : S == Right ? (lr[2] << 4) | (lr[1] >> 4)
-                          : (assert(false), Sym(-1));
-    }
 };
 
 static_assert(sizeof(LR) == 3, "LR tree entry must be 3 bytes");
 
-// A Sym read out of btree[] is twelve bits, so its domain is this and no larger
+// ONE LOAD PER EXPANSION STEP, not three. The walk down the pairing tree needs
+// the node's two children AND the left child's symlen[] to decide which way to
+// go, and those lived in two arrays indexed by two different symbols: the step
+// was btree[sym] -> left -> symlen[left], two dependent loads deep and three
+// cache lines wide. The left child's length is a property of the node, known
+// once the tree is built, so it is held IN the node.
+//
+// Twelve bits of left, twelve of right and eight of symlen[left] is exactly 32,
+// so the record is one scaled load with no address arithmetic of its own -- the
+// shape gcc folds, where the three-byte record cost a `lea (%rax,%rax,2)` and an
+// add per step.
+//
+// symlen[] itself stays: the loop's own condition reads symlen[sym], and its
+// VALUE is what the symbol loop above subtracts from `offset`.
+constexpr u32 NodeLeft(u32 n) { return n & 0xFFF; }
+constexpr u32 NodeRight(u32 n) { return (n >> 12) & 0xFFF; }
+constexpr u32 NodeLeftLen(u32 n) { return n >> 24; }
+
+// The file's three bytes, unpacked. Byte-wise, so it is the same value on
+// either byte order -- the layout is the file's, not the host's.
+constexpr u32 pack_node(const u8* p) {
+    return u32(p[0]) | (u32(p[1] & 0xF) << 8) | ((u32(p[2]) << 4 | u32(p[1] >> 4)) << 12);
+}
+
+// A symbol the file never described: Right == 0xFFF, Left == 0, which is what
+// the reader treats as a leaf.
+constexpr u32 LeafNode = u32(0xFFF) << 12;
+
+// A Sym read out of the tree is twelve bits, so its domain is this and no larger
 // whatever the file says about how many symbols it declared. symlen[], visited[]
-// and the reader's own copy of btree[] are all sized here, which is what lets
+// and the reader's own copy of the tree are all sized here, which is what lets
 // set_symlen() and decompress_pairs() index them with a value straight from the
 // file and still stay inside the buffer -- with no test in either loop.
 constexpr usize SymCount = 4096;
@@ -479,7 +496,6 @@ struct PairsData {
     usize sizeofBlock;         // Block size in bytes
     usize span;                // About every span values there is a SparseIndex[] entry
     Sym*  lowestSym;           // lowestSym[l] is the symbol of length l with the lowest value
-    LR*   btree;               // btree[sym] stores the left and right symbols that expand sym
     u16*  blockLength;         // Number of stored positions (minus one) for each block: 1..65536
     u32   blockLengthSize;     // Size of blockLength[] table: padded so it's bigger than blocksNum
     SparseEntry* sparseIndex;  // Partial indices into blockLength[]
@@ -495,8 +511,9 @@ struct PairsData {
     Piece           pieces[TBPIECES];  // Position pieces: the order of pieces defines the groups
     u64 groupIdx[TBPIECES + 1];        // Start index used for the encoding of the group's pieces
     int groupLen[TBPIECES + 1];        // Number of pieces in a given group: KRKN -> (3, 1)
-    u16 map_idx[4];            // WDLWin, WDLLoss, WDLCursedWin, WDLBlessedLoss (used in DTZ)
-    std::vector<LR> btreeBuf;  // btree[] copied out of the mapping, sized at SymCount
+    u16 map_idx[4];             // WDLWin, WDLLoss, WDLCursedWin, WDLBlessedLoss (used in DTZ)
+    std::vector<u32> tree;      // the pairing tree, unpacked out of the mapping and sized at
+                                // SymCount: left | right << 12 | symlen[left] << 24
     std::vector<u8> lenTab;         // the stream's top bits -> a symbol length
     u8              lenTabShift;    // 64 minus how many of them lenTab[] indexes
     u8              escapeLen;      // the first length lenTab[] cannot answer for
@@ -932,22 +949,27 @@ int decompress_pairs(PairsData* d, u64 idx) {
     // that will store the value we need.
     while (d->symlen[sym])
     {
-        Sym left = d->btree[sym].get<LR::Left>();
+        // Both children and the left one's length come out of one 32-bit load,
+        // so the step is one load deep instead of two: the old shape had to read
+        // btree[sym], decode `left` out of it, and only then index symlen[] with
+        // the value it had just produced.
+        const u32 node    = d->tree[sym];
+        const int leftLen = int(NodeLeftLen(node));
 
         // If a symbol contains 36 sub-symbols (d->symlen[sym] + 1 = 36) and
         // expands in a pair (d->symlen[left] = 23, d->symlen[right] = 11), then
         // we know that, for instance, the tenth value (offset = 10) will be on
         // the left side because in Recursive Pairing child symbols are adjacent.
-        if (offset < d->symlen[left] + 1)
-            sym = left;
+        if (offset < leftLen + 1)
+            sym = Sym(NodeLeft(node));
         else
         {
-            offset -= d->symlen[left] + 1;
-            sym = d->btree[sym].get<LR::Right>();
+            offset -= leftLen + 1;
+            sym = Sym(NodeRight(node));
         }
     }
 
-    return d->btree[sym].get<LR::Left>();
+    return int(NodeLeft(d->tree[sym]));
 }
 
 bool check_dtz_stm(TBTable<WDL>*, int, File) { return true; }
@@ -1291,11 +1313,11 @@ void set_groups(T& e, PairsData* d, int order[], File f) {
 }
 
 // In Recursive Pairing each symbol represents a pair of children symbols. So
-// read d->btree[] symbols data and expand each one in his left and right child
+// read d->tree[] symbols data and expand each one in his left and right child
 // symbol until reaching the leaves that represent the symbol value.
 // THE TREE IS NOT KNOWN TO BE ACYCLIC. Upstream's own comment here said "we can
 // set it now because tree is acyclic", and that is a claim about a file rather
-// than about the program: btree[] is read out of the table, and a crafted one
+// than about the program: the tree is read out of the table, and a crafted one
 // closes a loop. Nothing downstream survives it -- decompress_pairs' expansion
 // walk takes `sym = left` WITHOUT decreasing `offset`, so a cycle spins it
 // forever, and a spinning engine is the failure a UCI host cannot distinguish
@@ -1318,7 +1340,7 @@ enum SymColour : u8 {
 u8 set_symlen(PairsData* d, Sym s, std::vector<u8>& colour, bool& cyclic) {
 
     colour[s] = Grey;
-    Sym sr    = d->btree[s].get<LR::Right>();
+    Sym sr    = Sym(NodeRight(d->tree[s]));
 
     if (sr == 0xFFF)
     {
@@ -1326,7 +1348,7 @@ u8 set_symlen(PairsData* d, Sym s, std::vector<u8>& colour, bool& cyclic) {
         return 0;
     }
 
-    Sym sl = d->btree[s].get<LR::Left>();
+    Sym sl = Sym(NodeLeft(d->tree[s]));
 
     if (colour[sl] == Grey || colour[sr] == Grey)
     {
@@ -1562,13 +1584,12 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
         return nullptr;
 
     // AND BOUND IT BY THE DOMAIN IT IS INDEXED IN, not only by the file's size.
-    // symlenSize is a u16, so 0 to 65535, while btreeBuf[], symlen[] and
-    // colour[] below are SymCount entries because a Sym stored in btree[] is
-    // twelve bits. `fits` above compares the count against the space LEFT IN
-    // THE FILE, which a table large enough to hold the bytes it declares
-    // passes -- and the memcpy below then writes symlenSize * 3 bytes into
-    // 4096 * 3, and the loop after it indexes colour[] and writes symlen[] up
-    // to symlenSize.
+    // symlenSize is a u16, so 0 to 65535, while tree[], symlen[] and colour[]
+    // below are SymCount entries because a Sym stored in the tree is twelve
+    // bits. `fits` above compares the count against the space LEFT IN THE FILE,
+    // which a table large enough to hold the bytes it declares passes -- and the
+    // unpacking loop below then writes symlenSize entries into 4096, and the
+    // loop after it indexes colour[] and writes symlen[] up to symlenSize.
     //
     //   AddressSanitizer: heap-buffer-overflow
     //     WRITE of size 15000 at 0x...
@@ -1585,10 +1606,10 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     if (symlenSize > SymCount)
         return nullptr;
 
-    // COPY btree[] out of the mapping, into a buffer sized at the symbol's own
-    // domain rather than at the count the file declared.
+    // UNPACK THE TREE out of the mapping, into a buffer sized at the symbol's
+    // own domain rather than at the count the file declared.
     //
-    // set_symlen() below follows child symbols decoded from btree[] -- twelve
+    // set_symlen() below follows child symbols decoded from the tree -- twelve
     // bits, 0 to 4095, straight from the file -- and uses them both to index
     // visited[] and to WRITE symlen[]. Sizing those from the file's own u16 is
     // what makes a file that declares one symbol and names 2048 as its child an
@@ -1598,11 +1619,11 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     //
     // The tail the file did not declare is filled with LEAVES -- Right == 0xFFF,
     // Left == 0 -- so the recursion terminates on a symbol the file never wrote,
-    // and a walk that reaches one yields a value rather than a wild read. About
-    // 16 KiB per PairsData, paid once per table opened.
-    d->btreeBuf.assign(SymCount, LR{{0x00, 0xF0, 0xFF}});
-    std::memcpy(d->btreeBuf.data(), data, symlenSize * sizeof(LR));
-    d->btree = d->btreeBuf.data();
+    // and a walk that reaches one yields a value rather than a wild read. 16 KiB
+    // per PairsData, paid once per table opened.
+    d->tree.assign(SymCount, LeafNode);
+    for (usize i = 0; i < symlenSize; ++i)
+        d->tree[i] = pack_node(data + i * sizeof(LR));
 
     // The compression scheme used is "Recursive Pairing", that replaces the most
     // frequent adjacent pair of symbols in the source message by a new symbol,
@@ -1619,6 +1640,14 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
 
     if (cyclic)
         return nullptr;  // refused, the way a bad magic already is
+
+    // The left child's length, folded into the node the decoder loads. Only the
+    // symbols the file declared: the tail is leaves, symlen[] is zero across it,
+    // and the walk reads this field on internal nodes alone -- so a pass over
+    // the whole domain would be up to 4096 entries per PairsData for a value
+    // nothing can look at.
+    for (usize s = 0; s < symlenSize; ++s)
+        d->tree[s] |= u32(d->symlen[NodeLeft(d->tree[s])]) << 24;
 
     return data + symlenSize * sizeof(LR) + (symlenSize & 1);
 }
