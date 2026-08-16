@@ -19,6 +19,7 @@
 #include "numa.h"
 #include "text.h"
 #include "../engine/basetypes.h"
+#include "../engine/fatal.h"
 
 // Kept: std::memset and assert, which this file used to reach through
 // platform/memory.h. That header supplied both by accident and no longer
@@ -318,15 +319,26 @@ std::vector<NumaIndex> NumaConfig::distribute_threads_among_numa_nodes(CpuIndex 
         return ns;
     }
 
+// Every exit below used to be a bare std::exit(EXIT_FAILURE). The engine died
+// in the middle of `setoption name Threads` with no output at all -- on a policy
+// the option layer had just accepted, because from_string reads the string and
+// not the host, so a CPU this process cannot be bound to parses perfectly. What
+// the operator saw was an engine that stopped existing. Say which node and why,
+// and route it through the fatal seam so a host can decide instead of dying.
 NumaReplicatedAccessToken NumaConfig::bind_current_thread_to_numa_node(NumaIndex n) const {
+        const auto fail = [n](const char* what) {
+            engine_abort("Failed to bind a thread to NUMA node " + std::to_string(n) + ": " + what
+                         + ". The NumaPolicy in force names processors this process cannot use.");
+        };
+
         if (n >= nodes.size() || nodes[n].empty())
-            std::exit(EXIT_FAILURE);
+            fail("no such node in the current configuration");
 
 #if defined(__linux__) && !defined(__ANDROID__)
 
         cpu_set_t* mask = CPU_ALLOC(highestCpuIndex + 1);
         if (mask == nullptr)
-            std::exit(EXIT_FAILURE);
+            fail("could not allocate a CPU set");
 
         const usize masksize = CPU_ALLOC_SIZE(highestCpuIndex + 1);
 
@@ -340,7 +352,7 @@ NumaReplicatedAccessToken NumaConfig::bind_current_thread_to_numa_node(NumaIndex
         CPU_FREE(mask);
 
         if (status != 0)
-            std::exit(EXIT_FAILURE);
+            fail("sched_setaffinity was refused");
 
         // We yield this thread just to be sure it gets rescheduled.
         // This is defensive, allowed because this code is not performance critical.
@@ -380,7 +392,7 @@ NumaReplicatedAccessToken NumaConfig::bind_current_thread_to_numa_node(NumaIndex
             const BOOL status =
               SetThreadSelectedCpuSetMasks_f(hThread, groupAffinities.get(), numProcGroups);
             if (status == 0)
-                std::exit(EXIT_FAILURE);
+                fail("SetThreadSelectedCpuSetMasks was refused");
 
             // We yield this thread just to be sure it gets rescheduled.
             // This is defensive, allowed because this code is not performance critical.
@@ -428,7 +440,7 @@ NumaReplicatedAccessToken NumaConfig::bind_current_thread_to_numa_node(NumaIndex
 
             const BOOL status = SetThreadGroupAffinity(hThread, &affinity, nullptr);
             if (status == 0)
-                std::exit(EXIT_FAILURE);
+                fail("SetThreadGroupAffinity was refused");
 
             // We yield this thread just to be sure it gets rescheduled. This is
             // defensive, allowed because this code is not performance critical.
