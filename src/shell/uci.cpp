@@ -697,6 +697,21 @@ void UCIEngine::terminate_on_critical_error(const std::string& message) {
     sync_cout << "info string CRITICAL ERROR: Command `" << currentCmd
               << "` failed. Reason: " << message << '\n'
               << sync_endl;
+
+    // Stop the search before leaving, because std::exit does not leave quietly.
+    // It never unwinds main, so the thread pool is never joined -- and it DOES
+    // run static destructors, among them the tablebase reader's global TBTables,
+    // whose ~TBTable munmaps every mapping and frees every PairsData while
+    // workers are inside decompress_pairs reading exactly those. `position` and
+    // `go` do not wait for the search, so an invalid FEN or an unparsable limit
+    // arriving during `go infinite` reaches this line with every worker running.
+    //
+    // Every caller is on the UCI thread, which is the thread that can end a
+    // search, so this wait cannot be waiting on itself. A GUI now gets the
+    // bestmove of the search it asked for before the engine goes.
+    engine.stop();
+    engine.wait_for_search_finished();
+
     std::exit(1);
 }
 
