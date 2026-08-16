@@ -47,6 +47,9 @@ TT=${TT:-16}
 JOBS=${JOBS:-$(nproc 2>/dev/null || echo 4)}
 COMP=${COMP:-gcc}
 PGO=${PGO:-0}
+SYZYGY=
+FENS_OVERRIDE=
+DEPTH_GIVEN=0
 
 usage() {
     cat <<'EOF'
@@ -61,6 +64,18 @@ usage: tests/perfcounters.sh [<base-rev>] [<head-rev>] [options]
   --comp C      gcc or clang (default gcc)
   --jobs N      parallel build jobs (default: nproc)
   --pgo         build both sides with profile-build, which is what ships
+  --syzygy DIR  measure a PROBING workload instead of the bench list, with
+                SyzygyPath pointed at DIR, and default the depth to 14. The bench
+                list opens no tablebase, so without this THE ONLY AXIS THAT READS
+                A REAL CACHE MISS never executes the tablebase reader at all, and
+                a locality claim about that reader can be checked against nothing
+                but a simulated cache. An empty DIR SKIPS.
+  --fens FILE   the positions the probing workload runs (default:
+                tests/tbprobe.fens, which is 4-man). THE CORPUS AND THE POSITIONS
+                ARE ONE CHOICE: 4-man positions against a 5-man corpus leave the
+                big table unread, 5-man positions against a 3-4-man corpus find
+                no table at all, and both run clean while measuring something
+                other than what the report says.
 
 The default base needs no pin file. `master` tracks upstream/master, so
 `git merge-base HEAD master` is the upstream commit this branch actually forked
@@ -72,16 +87,31 @@ POS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --rounds) ROUNDS=$2; shift 2 ;;
-        --depth)  DEPTH=$2; shift 2 ;;
+        --depth)  DEPTH=$2; DEPTH_GIVEN=1; shift 2 ;;
         --tiers)  TIERS=$2; shift 2 ;;
         --comp)   COMP=$2; shift 2 ;;
         --jobs)   JOBS=$2; shift 2 ;;
         --pgo)    PGO=1; shift ;;
+        --syzygy) SYZYGY=$2; shift 2 ;;
+        --fens)   FENS_OVERRIDE=$2; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "perfcounters: unknown argument: $1" >&2; usage >&2; exit 2 ;;
         *) POS+=("$1"); shift ;;
     esac
 done
+
+# A probing run wants depth, not breadth: the positions have few men and the
+# search converges early, so a depth-13 bench-list default barely reaches the
+# reader this workload exists to measure. Match tests/perfbudget.sh and
+# tests/perfdecomp.sh, so all three axes describe ONE workload. Only the DEFAULT
+# moves; --depth still wins.
+[ -n "$SYZYGY" ] && [ "$DEPTH_GIVEN" = "0" ] && DEPTH=14
+
+# --fens without --syzygy would name positions for a workload that never runs,
+# and the run would silently measure the bench list instead.
+[ -z "$FENS_OVERRIDE" ] || [ -n "$SYZYGY" ] || {
+    echo "perfcounters: --fens names the probing workload's positions and needs --syzygy" >&2
+    exit 2; }
 
 command -v git >/dev/null || { echo "perfcounters: SKIPPED -- no git" >&2; exit 2; }
 command -v g++ >/dev/null || { echo "perfcounters: SKIPPED -- no g++" >&2; exit 2; }
@@ -128,8 +158,53 @@ if ! "$MEASURE" -o "$WORK/probe.txt" /bin/true >/dev/null 2>"$WORK/probe.err"; t
     exit 2
 fi
 
+# ------------------------------------------------------- the probing workload
+#
+# BENCH_ARGS is empty for the default list and names a file for --syzygy. The
+# file is assembled rather than committed, because its first line names a
+# directory only the caller knows and a committed absolute path works on exactly
+# one machine. It is written under $WORK, which is absolute, because each round
+# runs the binary from its own worktree's src/ and a relative path would resolve
+# against that instead.
+#
+# An empty or missing corpus SKIPS. It must not pass: a probing run taken with no
+# tables loaded is the bench list wearing a different name, and every figure it
+# produced would describe a reader that never executed.
+BENCH_ARGS=()
+if [ -n "$SYZYGY" ]; then
+    SYZYGY_ABS=$(cd "$SYZYGY" 2>/dev/null && pwd) \
+        || { echo "perfcounters: SKIPPED -- --syzygy: no such directory: $SYZYGY" >&2; exit 2; }
+    SYZYGY=$SYZYGY_ABS
+    ls "$SYZYGY"/*.rtbw >/dev/null 2>&1 \
+        || { echo "perfcounters: SKIPPED -- --syzygy: no .rtbw in $SYZYGY -- run tests/tbfetch.sh" >&2; exit 2; }
+    FENS=${FENS_OVERRIDE:-$PWD/tests/tbprobe.fens}
+    [ -f "$FENS" ] \
+        || { echo "perfcounters: SKIPPED -- --syzygy: $FENS is missing" >&2; exit 2; }
+
+    BENCH_FILE=$WORK/tbprobe.bench
+    {
+        echo "setoption name SyzygyPath value $SYZYGY"
+        grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$FENS"
+    } > "$BENCH_FILE"
+    NPOS=$(grep -cve '^setoption' "$BENCH_FILE")
+    [ "$NPOS" != "0" ] \
+        || { echo "perfcounters: SKIPPED -- --syzygy: $FENS holds no positions" >&2; exit 2; }
+    BENCH_ARGS=( "$BENCH_FILE" depth )
+
+    # The men count is read off the corpus rather than asserted in a sentence,
+    # which is what keeps it true when a bigger corpus arrives.
+    CORPUS_MEN=$(ls "$SYZYGY"/*.rtbw | sed 's|.*/||; s|\.rtbw$||; s|v||' \
+                 | awk '{ if (length($0) > m) m = length($0) } END { print m }')
+fi
+
 echo "perfcounters: base=$BASE_SHA head=$HEAD_SHA comp=$COMP mode=$([ "$PGO" = 1 ] && echo PGO || echo -O3)"
 echo "perfcounters: rounds=$ROUNDS depth=$DEPTH tt=$TT paranoid=$PARANOID"
+if [ -n "$SYZYGY" ]; then
+    echo "perfcounters: workload=probing ($NPOS positions from $(basename "$FENS"), corpus ${CORPUS_MEN}-man)"
+    echo "perfcounters: a block-walk cost measured on ${CORPUS_MEN} men is a LOWER BOUND on a larger corpus"
+else
+    echo "perfcounters: workload=bench-list -- opens no tablebase"
+fi
 echo "perfcounters: tiers: $TIERS"
 echo
 
@@ -203,7 +278,8 @@ for arch in $TIERS; do
         for side in $order; do
             bin=$([ "$side" = base ] && echo "$binbase" || echo "$binhead")
             dir=$(dirname "$bin")
-            ( cd "$dir" && "$MEASURE" -o "$WORK/c-$side-$r.txt" ./stockfish bench "$TT" 1 "$DEPTH" ) \
+            ( cd "$dir" && "$MEASURE" -o "$WORK/c-$side-$r.txt" \
+                ./stockfish bench "$TT" 1 "$DEPTH" "${BENCH_ARGS[@]}" ) \
               > "$WORK/o-$side-$r.txt" 2>&1
             n=$(grep -oE 'Nodes searched *: *[0-9]+' "$WORK/o-$side-$r.txt" | grep -oE '[0-9]+$')
             if [ -z "$n" ]; then
