@@ -676,9 +676,19 @@ bool Position::legal(Move m) const {
             if (attackers_to_exist(s, pieces(), ~us))
                 return false;
 
-        // In case of Chess960, verify if the Rook blocks some checks.
+        // Verify that the castling rook does not block a check on its own king.
         // For instance an enemy queen in SQ_A1 when castling rook is in SQ_B1.
-        return !chess960 || !(blockers_for_king(us) & m.to_sq());
+        //
+        // The test used to be gated on the UCI_Chess960 OPTION rather than on
+        // the geometry it stands for. Position::set adopts the first rook it
+        // meets walking in from the corner, so a sloppy castling field records a
+        // 960 rook square on a board the option calls standard, and the
+        // short-circuit then declared legal a castle that leaves the king
+        // capturable. The option is not evidence about the board. Dropping the
+        // gate costs one test on castling moves alone and changes nothing in
+        // standard geometry, where a corner rook lies on no line between its own
+        // king and any slider and so can never be one of its blockers.
+        return !(blockers_for_king(us) & m.to_sq());
     }
 
     // If the moving piece is a king, check whether the destination square is
