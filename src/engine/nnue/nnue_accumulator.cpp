@@ -668,6 +668,9 @@ void apply_combined(Color                                   perspective,
                     const ThreatFeatureSet::IndexList&      thrAdded,
                     const ThreatFeatureSet::IndexList&      thrRemoved,
                     const WeightType*                       psqWeights) {
+// One declaration needs it and nothing below does, so it does not outlive the
+// signature it qualifies.
+#undef SF_ACCUMULATOR_TARGET_RESTRICT
     assert(psqRemoved.size() == 1 || psqRemoved.size() == 2);
     assert(psqAdded.size() == 1 || psqAdded.size() == 2);
 
