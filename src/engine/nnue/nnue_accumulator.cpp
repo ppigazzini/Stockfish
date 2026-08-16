@@ -274,7 +274,15 @@ sf_always_inline void apply_psq_features(const WeightType*               tileWei
         return;
     }
 
-    for (int i = 0; i < list.ssize(); ++i)
+    // The peel above takes the incremental path. What is left is the refresh,
+    // where the list is long -- but gcc still answers a counted loop with an
+    // unroll-by-2 prologue, the parity test and the end pointer, ten instructions
+    // paid per tile.
+    const int n = list.ssize();
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC unroll 1
+#endif
+    for (int i = 0; i < n; ++i)
         apply_psq_column<sign>(tileWeights, acc, list[i]);
 }
 
@@ -333,7 +341,13 @@ sf_always_inline void apply_psqt(const PSQTWeightType* tileWeights,
                                  const ValueList<IdxType, MaxLen>& list) {
     static_assert(sign == 1 || sign == -1);
 
-    for (int i = 0; i < list.ssize(); ++i)
+    // One psqt tile and one register, so the body is three instructions per feature and the
+    // unroll prologue is longer than the loop it introduces.
+    const int n = list.ssize();
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC unroll 1
+#endif
+    for (int i = 0; i < n; ++i)
     {
         auto* column = reinterpret_cast<const psqt_vec_t*>(tileWeights + list[i] * PSQTBuckets);
         for (IndexType k = 0; k < Tiling::NumPsqtRegs; ++k)
