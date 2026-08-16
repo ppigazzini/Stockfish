@@ -217,6 +217,15 @@ read as a regression when its separately measured startup probe got cheaper by m
 is real and its sign is not the change's, which is the same class of trap as the locality case
 above.
 
+**Startup carries its own verdict, at its own tolerance.** Two deltas are printed and both are
+reported before either exits, so a run that regressed on both does not send the reader to fix
+one and rediscover the other. `--startup-tolerance` defaults to 1%, against the search
+tolerance's 0.02%, because startup is paid ONCE per process and the search is not: a tenth of a
+percent in the loader is invisible to a player who then searches for minutes, and the same tenth
+in the search is the whole subject of this gate. It is a real quantity either way -- this tree
+has moved it by a sixth -- and before it was gated it was measured, printed, and decided by
+nobody in either direction.
+
 ### `tests/textequal.sh`
 
 Per-symbol machine-code equivalence, LTO disabled.

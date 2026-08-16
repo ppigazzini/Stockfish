@@ -38,6 +38,13 @@ ARCH=x86-64-avx2
 DEPTH=8
 TT=16
 TOLERANCE=0.02     # percent
+# Startup is a ONE-OFF cost per process and the search is not, so the two do not
+# answer to the same number. A player pays startup once and then searches for
+# minutes; a tenth of a percent there is invisible where the same tenth in the
+# search is the whole subject of this gate. 1% is loose enough that a refactor
+# shifting a few million Ir out of 1.2e9 does not trip it, and tight enough that
+# the 16% this tree has actually moved could never have passed unremarked.
+STARTUP_TOLERANCE=1.0   # percent
 REPEAT=1
 COMP=gcc
 PGO=0
@@ -75,7 +82,14 @@ Options:
                      unread, which measures the decoder on the wrong data.
   --pgo              build both sides with profile-guided optimisation, which is
                      what ships; roughly 3x slower to build
-  --tolerance PCT    fail above this percent regression (default: $TOLERANCE)
+  --tolerance PCT    fail above this percent regression in the SEARCH figure
+                     (default: $TOLERANCE)
+  --startup-tolerance PCT
+                     fail above this percent regression in the STARTUP figure
+                     (default: $STARTUP_TOLERANCE). Startup is measured per binary and
+                     subtracted from the search; without this it was measured
+                     and printed and nothing decided whether it was allowed to
+                     move, in either direction.
   --repeat N         measure each side N times, report the median and the spread
   --jobs N           parallel build jobs (default: $JOBS)
   --keep             keep the build directories
@@ -110,6 +124,7 @@ while [ $# -gt 0 ]; do
         --fens)      FENS_OVERRIDE=$2; shift 2 ;;
         --tt)        TT=$2; shift 2 ;;
         --tolerance) TOLERANCE=$2; shift 2 ;;
+        --startup-tolerance) STARTUP_TOLERANCE=$2; shift 2 ;;
         --repeat)    REPEAT=$2; shift 2 ;;
         --jobs)      JOBS=$2; shift 2 ;;
         --pgo)       PGO=1; shift ;;
@@ -139,11 +154,13 @@ num() {
 [ -n "$SYZYGY" ] && [ "$DEPTH_GIVEN" = "0" ] && DEPTH=14
 
 num --depth "$DEPTH"; num --tt "$TT"; num --repeat "$REPEAT"; num --jobs "$JOBS"
-num --tolerance "$TOLERANCE"
+num --tolerance "$TOLERANCE"; num --startup-tolerance "$STARTUP_TOLERANCE"
 [ "$REPEAT" -ge 1 ] 2>/dev/null || die "--repeat must be at least 1"
 [ "$DEPTH" -ge 1 ] 2>/dev/null || die "--depth must be at least 1"
 awk -v t="$TOLERANCE" 'BEGIN{exit !(t > 0 && t <= 1)}' \
     || die "--tolerance must be in (0, 1] percent; $TOLERANCE would gate nothing"
+awk -v t="$STARTUP_TOLERANCE" 'BEGIN{exit !(t > 0 && t <= 25)}' \
+    || die "--startup-tolerance must be in (0, 25] percent; $STARTUP_TOLERANCE would gate nothing"
 
 [ -z "$FENS_OVERRIDE" ] || [ -n "$SYZYGY" ] \
     || die "--fens names the probing workload's positions and needs --syzygy"
@@ -392,19 +409,42 @@ fi
 
 DELTA=$(awk -v b="$B_IR" -v h="$H_IR" 'BEGIN{printf "%.4f", (h-b)*100.0/b}')
 ABS=$((H_IR - B_IR))
+S_DELTA=$(awk -v b="$B_START" -v h="$H_START" 'BEGIN{printf "%.4f", (h-b)*100.0/b}')
+S_ABS=$((H_START - B_START))
 
-printf 'delta: %+d Ir  (%+.4f%%)\n' "$ABS" "$DELTA"
+printf 'delta:   search  %+d Ir  (%+.4f%%)\n' "$ABS" "$DELTA"
+printf 'delta:   startup %+d Ir  (%+.4f%%)\n' "$S_ABS" "$S_DELTA"
 
+# Two verdicts, and BOTH are reported before either exits. A run that failed on
+# both quantities and printed only the first would send the reader to fix one
+# regression while the other waited to be rediscovered.
 VERDICT=$(awk -v d="$DELTA" -v t="$TOLERANCE" 'BEGIN{print (d > t) ? "FAIL" : "PASS"}')
+S_VERDICT=$(awk -v d="$S_DELTA" -v t="$STARTUP_TOLERANCE" 'BEGIN{print (d > t) ? "FAIL" : "PASS"}')
+
 if [ "$VERDICT" = "FAIL" ]; then
-    echo "perfbudget: FAIL -- regression of ${DELTA}% exceeds the ${TOLERANCE}% tolerance"
-    exit 1
+    echo "perfbudget: FAIL -- search regression of ${DELTA}% exceeds the ${TOLERANCE}% tolerance"
+else
+    IMPROVED=$(awk -v d="$DELTA" -v t="$TOLERANCE" 'BEGIN{print (d < -t) ? "yes" : "no"}')
+    if [ "$IMPROVED" = "yes" ]; then
+        echo "perfbudget: PASS -- search improvement of ${DELTA}%"
+    else
+        echo "perfbudget: PASS -- search within the ${TOLERANCE}% tolerance"
+    fi
 fi
 
-IMPROVED=$(awk -v d="$DELTA" -v t="$TOLERANCE" 'BEGIN{print (d < -t) ? "yes" : "no"}')
-if [ "$IMPROVED" = "yes" ]; then
-    echo "perfbudget: PASS -- improvement of ${DELTA}%"
+if [ "$S_VERDICT" = "FAIL" ]; then
+    echo "perfbudget: FAIL -- startup regression of ${S_DELTA}% exceeds the ${STARTUP_TOLERANCE}% tolerance"
+    echo "  Startup is the net load and the magic-table build, paid once per process."
+    echo "  It is subtracted from the search figure above, so a search that passed says"
+    echo "  nothing about it. Raise --startup-tolerance only with a reason written down."
 else
-    echo "perfbudget: PASS -- within the ${TOLERANCE}% tolerance"
+    S_IMPROVED=$(awk -v d="$S_DELTA" -v t="$STARTUP_TOLERANCE" 'BEGIN{print (d < -t) ? "yes" : "no"}')
+    if [ "$S_IMPROVED" = "yes" ]; then
+        echo "perfbudget: PASS -- startup improvement of ${S_DELTA}%"
+    else
+        echo "perfbudget: PASS -- startup within the ${STARTUP_TOLERANCE}% tolerance"
+    fi
 fi
+
+[ "$VERDICT" = "PASS" ] && [ "$S_VERDICT" = "PASS" ] || exit 1
 exit 0
