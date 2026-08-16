@@ -501,6 +501,23 @@ else
 fi
 
 if [ -f "$CORPUS/KQvK.rtbw" ]; then
+    dir="$WORK/fx/truncated-table"
+    mkdir -p "$dir"
+    cp "$CORPUS"/*.rtb? "$dir/"
+    # One byte short, which is what an interrupted download leaves. Every Syzygy
+    # table is 16 bytes past a multiple of 64 and TBFile::map has always tested
+    # that -- but the test ran on the first PROBE, because Tablebases::init
+    # counts files and maps none, and it ended the process there: no bestmove,
+    # mid-search, on a file the load had already reported as found. The engine
+    # must refuse the table and keep playing without it.
+    truncate -s -1 "$dir/KQvK.rtbw"
+    check "truncated-table" "$dir" "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
+else
+    echo "malformed: truncated-table  SKIPPED -- no 3-man corpus; run tests/tbfetch.sh"
+    SKIP=$((SKIP+1))
+fi
+
+if [ -f "$CORPUS/KQvK.rtbw" ]; then
     dir="$WORK/fx/empty-blocklength"
     mkdir -p "$dir"
     cp "$CORPUS"/*.rtb? "$dir/"
