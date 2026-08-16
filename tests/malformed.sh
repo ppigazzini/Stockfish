@@ -31,6 +31,11 @@
 # is protecting, or it certifies the reads it cannot see.
 #
 # Exit codes:  0 every fixture refused   1 a fixture was not   2 skipped
+#
+# A SKIP IS NOT A PASS, and eight of the fifteen fixtures below need the 3-man
+# corpus. Reaching the end with any of them unrun exits 2, the code this header
+# has always named: a gate that returns 0 over half its cases counts in a lane
+# summary as coverage it did not provide.
 
 set -u
 set -o pipefail
@@ -41,11 +46,27 @@ cd "$ROOT" || exit 2
 ARCH=${ARCH:-x86-64-avx2}
 JOBS=${JOBS:-$(nproc 2>/dev/null || echo 4)}
 EXE=${EXE:-}
-CORPUS=${CORPUS:-$ROOT/tests/syzygy-3man}
+
+# The corpus is fetched, never committed -- .gitignore covers tests/syzygy-3man
+# -- so a GIT WORKTREE starts without it while the checkout it was cut from has
+# it already. `git rev-parse --git-common-dir` names that checkout's .git, and
+# its parent is where tbfetch.sh put the tables, so a worktree finds them
+# instead of skipping eight fixtures a metre from the files.
+corpus_default() {
+    local common
+    [ -d "$ROOT/tests/syzygy-3man" ] && { echo "$ROOT/tests/syzygy-3man"; return; }
+    common=$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null) || true
+    if [ -n "$common" ]; then
+        common=$(cd "$ROOT" && cd "$(dirname "$common")" && pwd)
+        [ -d "$common/tests/syzygy-3man" ] && { echo "$common/tests/syzygy-3man"; return; }
+    fi
+    echo "$ROOT/tests/syzygy-3man"
+}
+CORPUS=${CORPUS:-$(corpus_default)}
 
 usage() {
     cat <<'EOF'
-usage: tests/malformed.sh [--exe PATH] [--arch ARCH] [--jobs N]
+usage: tests/malformed.sh [--exe PATH] [--arch ARCH] [--jobs N] [--corpus DIR]
 
   --exe PATH    test this binary instead of building a sanitized one. It is then
                 YOUR claim that it was built with the sanitizers; the gate cannot
@@ -53,6 +74,9 @@ usage: tests/malformed.sh [--exe PATH] [--arch ARCH] [--jobs N]
                 it appears to.
   --arch ARCH   build architecture (default x86-64-avx2)
   --jobs N      parallel build jobs (default: nproc)
+  --corpus DIR  3-man Syzygy tables for the eight corpus fixtures. Defaults to
+                tests/syzygy-3man in this tree, then in the checkout a worktree
+                was cut from. Without them the gate exits 2, not 0.
 EOF
 }
 
@@ -61,6 +85,7 @@ while [ $# -gt 0 ]; do
         --exe)     EXE=$2; shift 2 ;;
         --arch)    ARCH=$2; shift 2 ;;
         --jobs)    JOBS=$2; shift 2 ;;
+        --corpus)  CORPUS=$2; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "malformed: unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -501,4 +526,9 @@ check_resource "alloc-failure  " "allocator_may_return_null=1:max_allocation_siz
 echo
 echo "malformed: $PASS refused, $FAIL not refused, $SKIP skipped"
 [ "$FAIL" = "0" ] || exit 1
+if [ "$SKIP" != "0" ]; then
+    echo "malformed: SKIPPED -- $SKIP fixtures did not run; no corpus at $CORPUS" >&2
+    echo "malformed: fetch it with tests/tbfetch.sh, or name one with --corpus" >&2
+    exit 2
+fi
 exit 0
