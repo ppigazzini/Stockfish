@@ -667,7 +667,9 @@ class NumaConfig {
         return true;
     }
 
-    static std::vector<usize> indices_from_shortened_string(const std::string& s);
+    // nullopt when any component of the string does not parse. The user policy
+    // refuses the whole string on it; the sysfs readers below take what parsed.
+    static std::optional<std::vector<usize>> indices_from_shortened_string(const std::string& s);
 
     // This function queries the system for the mapping of processors to NUMA nodes.
     // On Linux we read from standardized kernel sysfs, with a fallback to single NUMA
@@ -700,7 +702,10 @@ class NumaConfig {
         else
         {
             remove_whitespace(*nodeIdsStr);
-            for (usize n : indices_from_shortened_string(*nodeIdsStr))
+            // The kernel wrote these, and a line this reader cannot follow is
+            // not a reason to stop reading the ones it can -- the fallback
+            // below is for a file that is absent, not for one that is odd.
+            for (usize n : indices_from_shortened_string(*nodeIdsStr).value_or(std::vector<usize>{}))
             {
                 // /sys/devices/system/node/node.../cpulist
                 std::string path =
@@ -717,7 +722,8 @@ class NumaConfig {
                 else
                 {
                     remove_whitespace(*cpuIdsStr);
-                    for (usize c : indices_from_shortened_string(*cpuIdsStr))
+                    for (usize c :
+                         indices_from_shortened_string(*cpuIdsStr).value_or(std::vector<usize>{}))
                     {
                         if (is_cpu_allowed(c))
                             cfg.add_cpu_to_node(n, c);
@@ -792,7 +798,8 @@ class NumaConfig {
                 continue;
 
             L3Domain domain;
-            for (usize c : indices_from_shortened_string(*siblingsStr))
+            for (usize c :
+                 indices_from_shortened_string(*siblingsStr).value_or(std::vector<usize>{}))
             {
                 if (is_cpu_allowed(c))
                 {
