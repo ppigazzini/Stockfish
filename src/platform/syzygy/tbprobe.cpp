@@ -723,13 +723,10 @@ void TBTables::add(const std::vector<PieceType>& pieces) {
         code += PieceToChar[pt];
     code.insert(code.find('K', 1), "v");
 
-    TBFile file_dtz(code + ".rtbz");  // KRK -> KRvK
-    if (file_dtz.is_open())
-    {
-        file_dtz.close();
-        foundDTZFiles++;
-    }
-
+    // The WDL file is the gate, so the DTZ count is taken behind it. Counted
+    // first, a directory holding only .rtbz files reported "Found 0 WDL and 35
+    // DTZ tablebase files (up to 0-man)" -- a count of tables the engine had
+    // just decided not to use, printed beside a cardinality saying it uses none.
     TBFile file(code + ".rtbw");  // KRK -> KRvK
 
     if (!file.is_open())  // Only WDL file is checked
@@ -737,6 +734,13 @@ void TBTables::add(const std::vector<PieceType>& pieces) {
 
     file.close();
     foundWDLFiles++;
+
+    TBFile file_dtz(code + ".rtbz");  // KRK -> KRvK
+    if (file_dtz.is_open())
+    {
+        file_dtz.close();
+        foundDTZFiles++;
+    }
 
     MaxCardinality = std::max(int(pieces.size()), MaxCardinality);
 
