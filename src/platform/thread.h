@@ -184,6 +184,11 @@ class ThreadPool {
     auto empty() const noexcept { return threads.empty(); }
 
    private:
+    // The half of clear() that is not the workers' histories. Split out because
+    // set() needs exactly this half: every Worker clears its own histories in
+    // its constructor, on the thread that will own them.
+    void reset_managers();
+
     StateListPtr                         setupStates;
     std::vector<std::unique_ptr<Thread>> threads;
     std::vector<NumaIndex>               boundThreadToNumaNode;
