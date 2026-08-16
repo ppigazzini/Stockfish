@@ -343,14 +343,31 @@ sf_always_inline inline void apply_psqt(const PSQTWeightType* tileWeights,
 
 #endif
 
-void apply_combined(Color                              perspective,
-                    const FeatureTransformer&          featureTransformer,
-                    const AccumulatorState&            from,
-                    AccumulatorState&                  to,
-                    const PSQFeatureSet::IndexList&    psqAdded,
-                    const PSQFeatureSet::IndexList&    psqRemoved,
-                    const ThreatFeatureSet::IndexList& thrAdded,
-                    const ThreatFeatureSet::IndexList& thrRemoved) {
+// A list's size sits beside its values, so gcc must assume the accumulator store that ends
+// each tile could be a store into one of the four index lists, and reloads every bound, end
+// pointer and unroll parity test on all eight tiles from values that cannot have changed.
+// `to` is the only parameter written through, and that it is distinct from everything else
+// passed is what `assert(computed.computed[p])` beside `assert(!target_state.computed[p])`
+// already establishes at both call sites.
+//
+// clang needs no telling and must not be told. The qualifier carries its cost estimate for
+// this body over `-inline-threshold=500`, so it stops inlining it into the two incremental
+// updaters, and the search reads +1.7452% at -O3 and +0.1091% under PGO -- the inliner, not
+// the aliasing: pinned back with always_inline the same source reads -0.0031% at -O3.
+#if defined(__GNUC__) && !defined(__clang__)
+    #define SF_ACCUMULATOR_TARGET_RESTRICT RESTRICT
+#else
+    #define SF_ACCUMULATOR_TARGET_RESTRICT
+#endif
+
+void apply_combined(Color                                   perspective,
+                    const FeatureTransformer&               featureTransformer,
+                    const AccumulatorState&                 from,
+                    AccumulatorState& SF_ACCUMULATOR_TARGET_RESTRICT to,
+                    const PSQFeatureSet::IndexList&         psqAdded,
+                    const PSQFeatureSet::IndexList&         psqRemoved,
+                    const ThreatFeatureSet::IndexList&      thrAdded,
+                    const ThreatFeatureSet::IndexList&      thrRemoved) {
 
     const auto& fromAcc = from.accumulation[perspective];
     auto&       toAcc   = to.accumulation[perspective];
