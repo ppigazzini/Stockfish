@@ -46,6 +46,12 @@
 #
 # Exit codes:  0 clean   1 findings   2 skipped
 
+# shellcheck disable=SC2016
+# The patterns below match LITERAL backticks -- a citation in these pages is
+# written `abc1234`, so the backtick is data, not command substitution. Every
+# SC2016 in this file is that, which is a property of the file rather than of
+# a line, so the directive is file-scoped.
+
 set -u
 set -o pipefail
 

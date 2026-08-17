@@ -86,7 +86,7 @@ fi
 echo
 echo "== commit bodies whose text reads as a footer ($SCOPE) =="
 offenders=$(
-git log --format='%H' $RANGE | while read -r f; do
+git log --format='%H' "$RANGE" | while read -r f; do
     hit=$(git show -s --format='%b' "$f" \
           | grep -o '\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b' || true)
     hit=$(printf '%s\n' "$hit" | sed -n '1p')
@@ -94,7 +94,7 @@ git log --format='%H' $RANGE | while read -r f; do
     # A real footer is fine. Anything else with that shape is not.
     body=$(git show -s --format='%b' "$f")
     grep -qE '^Bench: *[1-9][0-9]{5,7}$' <<< "$body" && continue
-    echo "$(git rev-parse --short=8 "$f")"
+    git rev-parse --short=8 "$f"
 done
 )
 
