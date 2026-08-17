@@ -2,10 +2,10 @@
 # Python package to build -- this file exists so ruff, ty and pre-commit share
 # one config, the same shape the sibling ports use.
 #
-# It also declares the dependency the gates actually need. tests/testing.py
-# imports `requests`, and nothing in the tree said so: CI works only because the
-# hosted runner image happens to ship it, and a fresh checkout fails with
-# ModuleNotFoundError from a gate that then proves nothing. See "Running the
+# The gates need no third-party package. They did -- tests/testing.py imported
+# `requests` for one download -- and the cost was that CI worked only because the
+# runner image happened to ship it while a fresh checkout failed with
+# ModuleNotFoundError from a gate that then proved nothing. See "Running the
 # gates" below.
 
 [project]
@@ -21,16 +21,20 @@ dev = [
     "ruff>=0.16.1",
     "ty>=0.0.65",
 ]
-# What tests/instrumented.py needs to run at all, kept out of `dev` so the
-# default sync stays a lint toolchain. Either of these works:
+# EMPTY, and that is the point. tests/testing.py imported `requests` for one
+# streamed download, so importing the harness at all needed a third-party package
+# and a fresh checkout got ModuleNotFoundError from a gate that then proved
+# nothing. urllib.request does the same job from the standard library, so the
+# gates now run under a bare python3:
 #
-#   uv run --with requests tests/instrumented.py --none ./stockfish
-#   uv sync --group gates && uv run tests/instrumented.py --none ./stockfish
+#   python3 tests/instrumented.py --none ./stockfish
 #
 # Run it from src/ -- it resolves EvalFile against the working directory.
-gates = [
-    "requests>=2.32",
-]
+#
+# Kept as an empty group rather than deleted: `uv sync --group gates` is in the
+# setup instructions and in muscle memory, and a group that no longer exists
+# fails where an empty one succeeds and says nothing is needed.
+gates = []
 
 [tool.ruff]
 target-version = "py310"
