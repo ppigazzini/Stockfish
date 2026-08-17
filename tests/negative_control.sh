@@ -380,6 +380,98 @@ if selected lanecheck; then
     rm -f tests/zzz_unlaned.sh
 fi
 
+# --------------------------------------------------------------- devcite
+
+# Three rows, because devcite.sh makes three separable claims and a single row
+# would leave two of them able to pass while broken.
+#
+# NONE of these uses mutate/restore, and that is forced rather than chosen:
+# `__DEV/` is gitignored, `restore` copies a backup over a file it recorded, and
+# the corpus these rows need does not exist in a clone at all. So each row
+# CREATES a throwaway page, asserts red, and removes it -- the same shape as the
+# `zzz_unlaned.sh` row above, for the same reason.
+#
+# A missing `__DEV/` makes devcite.sh SKIP (exit 2), and a skip is not a red. The
+# rows therefore assert `rc == 1` rather than `rc != 0`, or a clone without the
+# working area would report three passes it never earned.
+#
+# AND EACH ROW GREPS FOR ITS OWN FINDING rather than resting on the exit code.
+# That is not belt-and-braces: on the tree these rows were written against,
+# devcite.sh was ALREADY red -- check 5 had found real content loss in
+# Stockfish-bugs.md. Three rows testing `rc == 1` would all have passed without
+# the mutations doing anything, which is `optiondefaults-rig`'s failure exactly:
+# a comparison that passes on an empty field set. A row must fail when its own
+# mutation is reverted, and only naming the throwaway page proves that.
+
+row devcite static
+if selected devcite; then
+    echo "negative-control: devcite     -- a rebase-fragile citation with no subject"
+    if [ -d __DEV ]; then
+        # A commit object reachable from NO ref, made here rather than borrowed
+        # from the repo's backup branches. Borrowing one would tie the row to
+        # this machine's refs: on a clone without them the SHA is not a commit,
+        # devcite skips it, and the row reports NOT DETECTED for the wrong
+        # reason.
+        ncsha=$(git commit-tree 'HEAD^{tree}' -p HEAD \
+                -m 'negative-control: unreferenced commit' </dev/null 2>/dev/null)
+        if [ -n "$ncsha" ]; then
+            printf '# negative control\n\nCited: `%s` and nothing else.\n' \
+                   "${ncsha:0:8}" > __DEV/zzz_negctl.md
+            out=$(./tests/devcite.sh 2>&1); rc=$?
+            if [ "$rc" = 1 ] && printf '%s' "$out" | grep -q 'zzz_negctl\.md'; then
+                echo "  ok, red (1)"; PASS=$((PASS+1))
+            else
+                echo "  NOT DETECTED -- devcite rc=$rc and did not name the page"
+                FAIL=$((FAIL+1))
+            fi
+            rm -f __DEV/zzz_negctl.md
+        else
+            echo "  SKIPPED -- git commit-tree produced nothing"
+        fi
+    else
+        echo "  SKIPPED -- no __DEV/ in this tree"
+    fi
+fi
+
+row devcite-placeholder static
+if selected devcite-placeholder; then
+    echo "negative-control: devcite     -- a citation placeholder left in a table"
+    if [ -d __DEV ]; then
+        printf '# negative control\n\n| 1 | done | `SHA99` |\n' > __DEV/zzz_negctl2.md
+        out=$(./tests/devcite.sh 2>&1); rc=$?
+        if [ "$rc" = 1 ] && printf '%s' "$out" | grep -q 'zzz_negctl2\.md'; then
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        else
+            echo "  NOT DETECTED -- devcite rc=$rc and did not name the page"
+            FAIL=$((FAIL+1))
+        fi
+        rm -f __DEV/zzz_negctl2.md
+    else
+        echo "  SKIPPED -- no __DEV/ in this tree"
+    fi
+fi
+
+row devcite-fence static
+if selected devcite-fence; then
+    echo "negative-control: devcite     -- an unclosed code fence"
+    if [ -d __DEV ]; then
+        # The check that found real content loss on this tree: an unmatched
+        # opener makes every line after it read as code, which silently disables
+        # the line-oriented checks above it.
+        printf '# negative control\n\n```sh\necho unterminated\n' > __DEV/zzz_negctl3.md
+        out=$(./tests/devcite.sh 2>&1); rc=$?
+        if [ "$rc" = 1 ] && printf '%s' "$out" | grep -q 'zzz_negctl3\.md'; then
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        else
+            echo "  NOT DETECTED -- devcite rc=$rc and did not name the page"
+            FAIL=$((FAIL+1))
+        fi
+        rm -f __DEV/zzz_negctl3.md
+    else
+        echo "  SKIPPED -- no __DEV/ in this tree"
+    fi
+fi
+
 # --------------------------------------------------------------- perft
 
 row perft
