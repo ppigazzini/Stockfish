@@ -662,6 +662,54 @@ if selected devcite-fence; then
     fi
 fi
 
+# --------------------------------------------------------------- arena
+
+row arena-swap
+if selected arena-swap; then
+    # engine/arena.h states the ordering invariant in prose -- set_arena "must
+    # never be called while anything allocated from the previous arena is still
+    # live" -- and until the block counter landed nothing in the tree could see a
+    # violation. A block taken from one allocator and released by another is heap
+    # corruption with no diagnostic, so the failure this guards reports NOTHING
+    # on its own: no crash at the swap, no wrong answer, just a free through the
+    # wrong allocator later.
+    #
+    # The mutation takes a block from the DEFAULT arena and then swaps, which is
+    # the exact sequence ArenaInstallerTag exists to make impossible by running
+    # before every allocating member.
+    #
+    # Asserts-only, so this row builds `debug=yes`: under NDEBUG the counter and
+    # its updates do not exist, which is what keeps the shipped allocation path a
+    # bare indirect call.
+    echo "negative-control: arena       -- the arena swapped under a live block"
+    mutate src/shell/engine.cpp \
+        '    set_arena({aligned_large_pages_alloc, aligned_large_pages_alloc_with_hint,
+               aligned_large_pages_free, HugePageSize});' \
+        '    void* ncLive = arena_alloc(64);
+    (void) ncLive;
+    set_arena({aligned_large_pages_alloc, aligned_large_pages_alloc_with_hint,
+               aligned_large_pages_free, HugePageSize});'
+    # objclean first: `debug=yes` also turns on _GLIBCXX_DEBUG, which changes the
+    # standard library's ABI, and a flag change alone does not force a rebuild.
+    # Linking debug objects against release ones fails on a std::__debug:: symbol
+    # and says nothing about the mode, which is a confusing way to lose a row.
+    if ( cd src && make objclean >/dev/null 2>&1;
+         make -j"$(nproc)" build ARCH=x86-64-avx2 debug=yes ) >/dev/null 2>&1; then
+        out=$( ( cd src && printf 'quit\n' | ./stockfish ) 2>&1 )
+        rc=$?
+        if [ "$rc" != 0 ] && grep -q 'arena_live_blocks() == 0' <<< "$out"; then
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        else
+            echo "  NOT DETECTED -- the swap under a live block was not reported (rc=$rc)"
+            FAIL=$((FAIL+1))
+        fi
+    else
+        restore; die "the arena mutant did not compile"
+    fi
+    restore
+    ( cd src && make objclean >/dev/null 2>&1; make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
+fi
+
 # --------------------------------------------------------------- perft
 
 row perft
