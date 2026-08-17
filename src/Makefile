@@ -111,7 +111,7 @@ HEADERS = platform/text.h engine/arena.h engine/clock.h engine/search_go.h engin
 		engine/nnue/nnue_architecture.h engine/nnue/nnue_common.h engine/nnue/nnue_feature_transformer.h engine/nnue/simd.h \
 		engine/nnue/nnz_helper.h engine/position.h engine/search.h platform/syzygy/tbprobe.h platform/thread.h platform/thread_native.h engine/timeman.h \
 		engine/tt.h shell/tune.h engine/types.h shell/uci.h shell/ucioption.h shell/perft.h engine/nnue/network.h shell/engine.h engine/score.h engine/searchoptions.h engine/hashing.h platform/numa.h platform/numa_shared.h platform/memory.h platform/shm.h platform/shm_unix.h \
-		engine/basetypes.h engine/compiler.h
+		engine/basetypes.h engine/compiler.h engine/fatal.h engine/host.h engine/prng.h
 
 OBJS = $(notdir $(SRCS:.cpp=.o))
 

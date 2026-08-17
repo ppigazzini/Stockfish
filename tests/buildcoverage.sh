@@ -67,6 +67,32 @@ while IFS= read -r -d '' f; do
 done < <(git ls-files -z 'src/*.cpp' 'src/**/*.cpp')
 [ "$missing" = 0 ] && echo "  ok, all $count"
 
+echo
+echo "== every tracked header is named by the build =="
+# HEADERS drives `make format` and nothing else, so a header missing from it is
+# never compiled differently -- it is simply never formatted, and the drift shows
+# up as a diff in whichever unrelated commit finally adds it. Three had gone
+# missing when this check was written (engine/fatal.h, host.h, prng.h), and all
+# three were added by the two milestones immediately before it: a list drifts
+# exactly where the work is.
+#
+# Same corpus rule as the sources: vendored trees are excluded because the build
+# formats none of them, and re-formatting a third-party header makes every future
+# update a conflict.
+hmissing=0
+hcount=0
+while IFS= read -r -d '' f; do
+    case "$f" in src/incbin/*|src/universal/*) continue ;; esac
+    hcount=$((hcount + 1))
+    if ! grep -qF "$(basename "$f")" "$recipe"; then
+        echo "  UNFORMATTED  $f -- named by no build variable"
+        hmissing=$((hmissing + 1))
+    fi
+done < <(git ls-files -z 'src/*.h' 'src/**/*.h')
+[ "$hmissing" = 0 ] && echo "  ok, all $hcount"
+missing=$((missing + hmissing))
+
+echo
 # A second way a source ends up in the tree and not in the binary, and this one
 # passes the check above. `OBJS = $(notdir $(SRCS:.cpp=.o))` flattens every object
 # into ONE name space and VPATH is a flat search path across the zone
