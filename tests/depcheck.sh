@@ -5,11 +5,26 @@
 # not a layer beneath the engine: it is the runtime that HOSTS the engine, so it
 # may depend on engine types and not the other way round.
 #
-# TWO edges are checked, both out of the engine, because both are defects rather
-# than choices: an engine file that includes a SHELL header, and one that includes
-# a PLATFORM header. The engine is the chess library; a library that reaches into
-# the process driving it cannot be linked without that process, and cannot be
-# reasoned about without reading it.
+# THREE edges are checked, because each is a defect rather than a choice.
+#
+# Two out of the engine: an engine file that includes a SHELL header, and one that
+# includes a PLATFORM header. The engine is the chess library; a library that
+# reaches into the process driving it cannot be linked without that process, and
+# cannot be reasoned about without reading it.
+#
+# One out of the platform: a PLATFORM file that includes a SHELL header. This is
+# the direction nothing looked at for the longest, and it was not empty when the
+# rule was added -- two edges existed. platform/thread.cpp reached shell/uci.h to
+# turn a `searchmoves` token into a Move, because the engine's own LimitsType
+# carried UCI wire format; platform/syzygy/tbprobe.cpp reached shell/console.h for
+# one `info string`. Severing the TYPE closed the first and the output-sink seam
+# closed the second, so the baseline ships empty.
+#
+# Both were found by this rule on its first run, and one of them had been reported
+# as already-severed by an audit whose grep was anchored on `../shell` and could
+# not see `../../shell`. That is the trap the basename resolution below exists to
+# avoid, walked into by a hand-rolled command in the same week the note was
+# written.
 #
 # The platform rule exists because tests/linkcheck.sh cannot see this class.
 # linkcheck reasons about symbols an object leaves undefined, and a dependency
@@ -51,6 +66,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT" || exit 2
 BASELINE=tests/depcheck.baseline
 BASELINE_PLATFORM=tests/depcheck-platform.baseline
+BASELINE_PLATFORM_SHELL=tests/depcheck-platform-shell.baseline
 
 # Through $ROOT, and NOT through $(dirname "${BASH_SOURCE[0]}"). The cd above
 # has already run, so a relative invocation path no longer resolves: AGENTS.md
@@ -105,12 +121,12 @@ while IFS= read -r -d '' f; do
 done < <(git ls-files -z src)
 [ "$unassigned" = 0 ] && echo "  ok"
 
-# One rule, applied twice. A second copy of this loop is how two checks come to
-# disagree about which file is engine.
-edges_out_of_engine() {
-    local want=$1 f inc istem
+# One rule, applied three times. A second copy of this loop is how two checks
+# come to disagree about which file is engine.
+edges_out_of() {
+    local from=$1 want=$2 f inc istem
     for f in $FILES; do
-        [ "$(zone_of_path "$f")" = engine ] || continue
+        [ "$(zone_of_path "$f")" = "$from" ] || continue
         grep -oE '^[[:space:]]*#include "[^"]+"' "$f" 2>/dev/null \
         | sed 's/.*"\(.*\)"/\1/' | while read -r inc; do
             istem=$(basename "$inc"); istem=${istem%.*}
@@ -121,12 +137,13 @@ edges_out_of_engine() {
 
 rc=0
 
-# $1 label   $2 target zone   $3 baseline path
+# $1 source zone   $2 target zone   $3 baseline path
 check_rule() {
-    local label=$1 want=$2 baseline=$3 violations known new gone n_known
+    local from=$1 want=$2 baseline=$3 violations known new gone n_known
+    local label="$from -> $want"
     echo
-    echo "== engine files that include a $label header =="
-    violations=$(edges_out_of_engine "$want")
+    echo "== $from files that include a $want header =="
+    violations=$(edges_out_of "$from" "$want")
 
     if [ -f "$baseline" ]; then
         known=$(grep -vE '^\s*(#|$)' "$baseline" | sort -u)
@@ -166,8 +183,16 @@ check_rule() {
     echo "depcheck: $n_known baselined $label edge(s)"
 }
 
-check_rule shell    shell    "$BASELINE"
-check_rule platform platform "$BASELINE_PLATFORM"
+check_rule engine   shell    "$BASELINE"
+check_rule engine   platform "$BASELINE_PLATFORM"
+
+# The THIRD direction, and the one that went unwatched longest. The two rules
+# above leave the runtime free to reach into the CLI, which is the same drift
+# class in the one direction nothing looked at: platform/thread.cpp included
+# shell/uci.h to turn a `searchmoves` token into a Move, because the engine's own
+# LimitsType carried UCI wire format. Severing the TYPE closed the include, and
+# this baseline ships EMPTY and is meant to stay that way.
+check_rule platform shell    "$BASELINE_PLATFORM_SHELL"
 
 echo
 [ "$unassigned" = 0 ] || { echo "depcheck: $unassigned file(s) in no zone -- move them into a zone directory"; rc=1; }
