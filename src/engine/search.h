@@ -58,7 +58,6 @@ class TranspositionTable;
 // it themselves.
 struct Host;
 
-class ThreadPool;
 struct SearchOptions;
 
 namespace Eval::NNUE {
@@ -371,6 +370,27 @@ class NullSearchManager: public ISearchManager {
     void check_time(Search::Worker&) override {}
 };
 
+// Everything a Worker needs to be given a root position, as one argument.
+//
+// It is a bundle of POINTERS and it must stay one. ThreadPool hands it to every
+// worker through a std::function, which holds its callable inline only while
+// that callable fits libstdc++'s 16-byte buffer. A closure over the five
+// referents is 48 bytes, so each worker's setup job became an operator new and a
+// matching free -- one pair per thread per `go`, on the move-latency path,
+// before any thread starts searching. Capturing one pointer to this plus the
+// thread pointer is 16 bytes and fits. See `0ec0cc2f`
+// "perf(platform): keep the root-setup job out of the heap".
+//
+// The bundle lives on the caller's frame and every job reading it has finished
+// by the wait that follows, which is the same lifetime the references had.
+struct RootSetup {
+    const LimitsType*         limits;
+    const RootMoves*          rootMoves;
+    const Position*           pos;
+    const StateInfo*          state;
+    const Tablebases::Config* tbConfig;
+};
+
 // Search::Worker is the class that does the actual search.
 // It is instantiated once per thread, and it is responsible for keeping track
 // of the search history, and storing data required for the search.
@@ -397,6 +417,30 @@ class Worker {
     bool is_mainthread() const { return threadIdx == 0; }
 
     void ensure_network_replicated(const Eval::NNUE::Network& net);
+
+    // Hand this worker a root position, and reset the per-search counters that
+    // go with it. Public, and the trade is worth stating: it is a wider door
+    // than the `friend class Stockfish::ThreadPool` it replaced -- anyone may
+    // call it now, where only the pool could before -- and a far narrower one,
+    // because friendship granted every private member of this class forever and
+    // this grants one operation. It is also the only form a gate can see: a
+    // forward declaration emits no symbol, so depcheck, linkcheck and
+    // enginelink were all structurally blind to that friendship.
+    void set_root(const RootSetup& setup);
+
+    // The three reads the pool did through friendship. Named for the WorkerSet
+    // seam they implement -- `nodes_searched` and `tb_hits` are that seam's own
+    // words -- so the host aggregates over an interface rather than over this
+    // class's private layout.
+    u64 nodes_searched() const { return u64(nodes); }
+    u64 tb_hits() const { return u64(tbHits); }
+
+    // Only the main thread has a real one; the assert is the contract and
+    // NDEBUG deletes it, which is B13.4's subject rather than this commit's.
+    SearchManager* main_manager() const {
+        assert(threadIdx == 0);
+        return static_cast<SearchManager*>(manager.get());
+    }
 
     // Public because they need to be updatable by the stats
     ButterflyHistory mainHistory;
@@ -429,12 +473,6 @@ class Worker {
     Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
 
     int reduction(bool i, Depth d, int mn, int delta) const;
-
-    // Pointer to the search manager, only allowed to be called by the main thread
-    SearchManager* main_manager() const {
-        assert(threadIdx == 0);
-        return static_cast<SearchManager*>(manager.get());
-    }
 
     TimePoint elapsed() const;
 
@@ -513,12 +551,10 @@ class Worker {
     Eval::NNUE::AccumulatorStack  accumulatorStack;
     Eval::NNUE::AccumulatorCaches refreshTable;
 
-    friend class Stockfish::ThreadPool;
-
-    // The engine's own headless entry (search_go.cpp) sets the same root state
-    // the platform's pool sets, so it needs the same access the pool has. A
-    // friend rather than a public setter: nothing outside these two should be
-    // able to hand a worker a root position.
+    // The engine's own headless entry (search_go.cpp) builds a root position
+    // field by field rather than copying one, so it keeps the access the pool
+    // gave up. It is an ENGINE type; the rule the gate enforces is that no
+    // `friend` in engine/ may name a type outside this zone.
     friend struct HeadlessRunner;
     friend class SearchManager;
 };

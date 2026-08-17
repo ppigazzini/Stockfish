@@ -145,8 +145,26 @@ void Thread::idle_loop() {
 
 Search::SearchManager* ThreadPool::main_manager() { return main_thread()->worker->main_manager(); }
 
-u64 ThreadPool::nodes_searched() const { return accumulate(&Search::Worker::nodes); }
-u64 ThreadPool::tb_hits() const { return accumulate(&Search::Worker::tbHits); }
+// Two explicit loops rather than one `accumulate` over a pointer-to-member.
+// The counters became private with the ThreadPool friendship, so the aggregation
+// now reads them through Worker's accessors -- and a POINTER to one of those is
+// a runtime value the compiler need not devirtualise, where a direct call
+// inlines to the same relaxed load the member access was. nodes_searched() is
+// reached from check_time, which runs once in every 512 nodes and then loops
+// over every thread, so this is not a path to hand an indirect call.
+u64 ThreadPool::nodes_searched() const {
+    u64 sum = 0;
+    for (auto&& th : threads)
+        sum += th->worker->nodes_searched();
+    return sum;
+}
+
+u64 ThreadPool::tb_hits() const {
+    u64 sum = 0;
+    for (auto&& th : threads)
+        sum += th->worker->tb_hits();
+    return sum;
+}
 
 static usize next_power_of_two(u64 count) { return count > 1 ? (2ULL << msb(count - 1)) : 1; }
 
@@ -346,15 +364,10 @@ void ThreadPool::start_thinking(const SearchOptions&  options,
     //
     // The bundle lives on this frame and every job that reads it has finished
     // by the wait below, which is the same lifetime the references had.
-    struct RootSetup {
-        const Search::LimitsType* limits;
-        const Search::RootMoves*  rootMoves;
-        const Position*           pos;
-        const StateInfo*          state;
-        const Tablebases::Config* tbConfig;
-    };
-
-    const RootSetup setup{&limits, &rootMoves, &pos, &setupStates->back(), &tbConfig};
+    // Search::RootSetup now, declared in engine/search.h beside the Worker it
+    // is for. The bundle-of-pointers shape and the 16-byte reasoning above are
+    // unchanged and are recorded there.
+    const Search::RootSetup setup{&limits, &rootMoves, &pos, &setupStates->back(), &tbConfig};
 
     for (auto&& th : threads)
     {
@@ -363,17 +376,8 @@ void ThreadPool::start_thinking(const SearchOptions&  options,
         // job it was handed to may still be running: formally undefined, and
         // both compilers happen to capture the referent.
         Thread* thread = th.get();
-        thread->run_custom_job([&setup, thread]() {
-            thread->worker->limits = *setup.limits;
-            thread->worker->nodes = thread->worker->tbHits = thread->worker->bestMoveChanges = 0;
-            thread->worker->nmpMinPly                                                        = 0;
-            thread->worker->rootDepth                                                        = 0;
-            thread->worker->rootMoves = *setup.rootMoves;
-            thread->worker->rootPos.set(setup.pos->fen(), setup.pos->is_chess960(),
-                                        &thread->worker->rootState);
-            thread->worker->rootState = *setup.state;
-            thread->worker->tbConfig  = *setup.tbConfig;
-        });
+        // Still exactly two captures, so the job still fits the 16-byte buffer.
+        thread->run_custom_job([&setup, thread]() { thread->worker->set_root(setup); });
     }
 
     for (auto&& th : threads)
