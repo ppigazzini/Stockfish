@@ -59,6 +59,8 @@ Run it on an IDLE box. A background build forfeits the measurement.
 EOF
 }
 
+# shellcheck disable=SC2329
+# invoked by `trap cleanup EXIT INT TERM` below, which shellcheck cannot see
 cleanup() {
     [ "$KEEP" = "1" ] && { echo "kept: $WORK"; return; }
     for d in "$WORK"/*/; do

@@ -103,6 +103,8 @@ Examples:
 EOF
 }
 
+# shellcheck disable=SC2329
+# invoked by `trap cleanup EXIT INT TERM` below, which shellcheck cannot see
 cleanup() {
     [ "$KEEP" = "1" ] && { echo "kept: $WORK"; return; }
     for d in "$WORK"/*/; do
@@ -302,7 +304,7 @@ net_of() {
 measure_side() {
     local dir=$1 label=$2 i
     local -a search_ir
-    local nodes= startup= net=
+    local nodes='' startup='' net=''
 
     startup=$(printf '%s\n' "${PROBE_SETUP[@]}" isready quit > "$dir/probe.in";
               valgrind --tool=callgrind --callgrind-out-file="$dir/cg.startup" \
@@ -354,6 +356,8 @@ if [ -n "$SYZYGY" ]; then
     # size, so the two walk loops in decompress_pairs iterate less on a small
     # corpus than on a large one -- a cost measured here bounds the same cost on
     # anything bigger FROM BELOW, and never describes it.
+    # shellcheck disable=SC2012
+    # a gate-controlled corpus directory; the filenames are fixed and space-free
     CORPUS_MEN=$(ls "$SYZYGY"/*.rtbw | sed 's|.*/||; s|\.rtbw$||; s|v||' \
         | awk '{ if (length($0) > m) m = length($0) } END { print m }')
     echo "perfbudget: the corpus here is ${CORPUS_MEN}-man; a block-walk cost measured on it is a LOWER BOUND"
