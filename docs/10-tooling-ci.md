@@ -1214,8 +1214,8 @@ Five mechanical checks over this documentation set:
    documentation when it does;
 4. every script in `tests/` and `scripts/` is named by some page, because a gate nobody can
    discover is a gate nobody runs;
-5. no **tracked** file references the untracked working area, `.gitignore` and `docslint.sh`
-   itself excepted.
+5. no **tracked** file references the untracked working area; the exemption list is in the
+   script, and every entry on it is a file whose *subject* is that area.
 
 Check 5 sweeps every tracked file rather than every page, and that scope is load-bearing: a
 source comment or a workflow file dangles for a reader exactly as a doc line does. Check 2
@@ -1227,6 +1227,49 @@ because an ignored directory lands in it and reports clean.
 sentence has become false. Three classes it will pass: a real symbol attributed to the wrong
 file, a list with the wrong count or order, and a behaviour described as absent from a build
 that has it. That half is yours.
+
+## `tests/devcite.sh`
+
+Citation hygiene for the untracked working area. Five checks: every cited SHA is an ancestor of
+`HEAD`; every rebase-fragile citation carries its commit subject; every relative link resolves;
+no SHA-shaped placeholder survives; every fenced code block is closed.
+
+```sh
+./tests/devcite.sh          # 0 clean, 1 findings, 2 skipped (no working area)
+```
+
+**Existence is the wrong test, and that is the whole reason this gate exists.** A rebase leaves
+its pre-rebase commits in the object store, and a backup ref pins them indefinitely, so
+
+```sh
+git cat-file -e "$sha^{commit}"          # WRONG -- asks about this clone
+git merge-base --is-ancestor "$sha" HEAD # asks whether it is on the branch
+```
+
+differ for every citation written before the last rebase. Two audits of this tree ran the first
+one; the second used it to retract a finding the first had got right.
+
+So the gate classifies rather than tests, into three tiers. **On the branch** resolves for
+anyone. **Off-branch but held by a ref** resolves on the author's machine and nowhere else --
+a warning, not a failure, because a tagged sitting head is *meant* to be off-branch.
+**Reachable from no ref** is one `git gc --prune` from unresolvable.
+
+**Only the missing subject fails.** A rebase already happened and no edit recovers those
+commits; what is repairable is whether the citation still means anything without its SHA. So
+the durable form is a subject beside it -- `` `46944a92` "fix(shell): stop the search before the
+critical-error exit" `` -- which survives any rebase and is greppable. Failing on the tier
+itself would leave the gate permanently red on a state nobody can fix, and a gate that cannot
+reach zero is ignored at zero plus one.
+
+**What it cannot see**: whether the commit a SHA names is the commit the sentence means. A
+remap that rewrites a citation to a reachable but *wrong* commit passes cleanly, and this
+branch has had one do exactly that.
+
+**No lane, and the reason is not that nobody wired one.** The working area is gitignored, so a
+clone has nothing for it to read; a lane would run against an empty corpus and pass.
+`lanecheck.sh` carries that excuse and `docslint.sh` exempts the gate from check 5 above --
+both because the area is this gate's subject rather than a reference it leaks. It SKIPs rather
+than passing when the corpus is absent, which is what makes shipping it safe.
 
 ## Fuzzing
 
