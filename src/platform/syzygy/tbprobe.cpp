@@ -47,6 +47,7 @@
 #include "../../engine/search.h"
 #include "../../engine/types.h"
 #include "../../engine/basetypes.h"
+#include "../../engine/output_sink.h"
 // Kept: IsLittleEndian, read by reversed() below only where the compiler defines
 // neither __BYTE_ORDER__ nor _MSC_VER. Every tier tests/iwyu.sh compiles defines
 // __BYTE_ORDER__, so that arm is preprocessed away before IWYU sees it and the
@@ -55,7 +56,6 @@
 // name would vanish from the fall-back arm on the day that pragma goes, and no
 // lane builds a compiler that reaches the arm to report it.
 #include "../../engine/compiler.h"  // IWYU pragma: keep
-#include "../../shell/console.h"
 #include "../../engine/tb_source.h"
 #include "../../engine/searchoptions.h"
 
@@ -713,8 +713,17 @@ class TBTables {
     }
 
     void info() const {
-        sync_cout << "info string Found " << foundWDLFiles << " WDL and " << foundDTZFiles
-                  << " DTZ tablebase files (up to " << MaxCardinality << "-man)." << sync_endl;
+        // Through the engine's output-sink seam, not the CLI's sync_cout. This
+        // was the second and last platform -> shell include, and it is one
+        // `info string` -- the shell's registered sink IS sync_cout, so the
+        // synchronisation this used to get directly it now gets through the
+        // seam. Reached only from Tablebases::init, long after engine.cpp
+        // registers the sink, and the default prints unsynchronised rather than
+        // discarding if it somehow is not.
+        std::ostringstream ss;
+        ss << "info string Found " << foundWDLFiles << " WDL and " << foundDTZFiles
+           << " DTZ tablebase files (up to " << MaxCardinality << "-man).";
+        emit_line(ss.str());
     }
 
     void add(const std::vector<PieceType>& pieces);
