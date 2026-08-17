@@ -2276,11 +2276,12 @@ void SearchManager::check_time(Search::Worker& worker) {
     // When using nodes, ensure checking rate is not lower than 0.1% of nodes
     callsCnt = worker.limits.nodes ? std::min(512, int(worker.limits.nodes / 1024)) : 512;
 
-    static TimePoint lastInfoTime = now();
-
     TimePoint elapsed =
       tm.elapsed([&]() { return worker.host.workers.nodes_searched(worker.host.workers.ctx); });
     TimePoint tick    = worker.limits.startTime + elapsed;
+
+    if (lastInfoTime == 0)
+        lastInfoTime = tick;
 
     if (tick - lastInfoTime >= 1000)
     {

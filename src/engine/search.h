@@ -352,6 +352,23 @@ class SearchManager: public ISearchManager {
     Stockfish::TimeManagement tm;
     double                    originalTimeAdjust = -1;
     int                       callsCnt           = 0;
+
+    // The info-line throttle, per manager rather than per process. It was a
+    // function-local `static TimePoint lastInfoTime = now()` in check_time,
+    // which two concurrent searches would have shared: each would then decide
+    // its info cadence from the other's clock, and a wrong cadence is a
+    // plausible number rather than a fault.
+    //
+    // Zero means "no line emitted yet", which keeps the lazy semantics the
+    // static had -- initialising this to now() at construction instead would
+    // make the first check of the first search see the whole gap since the
+    // engine started and print immediately.
+    //
+    // It is also cheaper on a path check_time reaches once in every 512 nodes:
+    // a function-local static with a dynamic initialiser carries a
+    // thread-safe-initialisation guard tested on every call, and this is a
+    // member load beside callsCnt.
+    TimePoint lastInfoTime = 0;
     std::atomic_bool          ponder             = false;
 
     std::array<Value, 4> iterValue;
