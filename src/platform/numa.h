@@ -479,12 +479,30 @@ inline std::set<CpuIndex> get_process_affinity() {
 
 #if defined(__linux__) && !defined(__ANDROID__)
 
-inline static const auto STARTUP_PROCESSOR_AFFINITY = get_process_affinity();
+// `inline`, NOT `inline static`. At namespace scope `static` is internal
+// linkage and internal linkage beats `inline`, so the `static` spelling gives
+// every translation unit that sees this header its own copy AND its own dynamic
+// initialiser -- six copies on this tree, priced at 607,271 retired
+// instructions each. `get_process_affinity()` CPU_ALLOCs a 64K-CPU mask, calls
+// sched_getaffinity, and loops CPU_ISSET_S over MaxNumCpus, so a copy is not
+// cheap. Nor is `const auto` alone a fix: a const namespace-scope variable has
+// internal linkage by default and the bug returns under a different spelling.
+// SYSTEM_THREADS_NB above already has this right.
+inline const auto STARTUP_PROCESSOR_AFFINITY = get_process_affinity();
 
 #elif defined(_WIN64)
 
-inline static const auto STARTUP_PROCESSOR_AFFINITY = get_process_affinity();
-inline static const auto STARTUP_USE_OLD_AFFINITY_API =
+// `inline`, NOT `inline static`. At namespace scope `static` is internal
+// linkage and internal linkage beats `inline`, so the `static` spelling gives
+// every translation unit that sees this header its own copy AND its own dynamic
+// initialiser -- six copies on this tree, priced at 607,271 retired
+// instructions each. `get_process_affinity()` CPU_ALLOCs a 64K-CPU mask, calls
+// sched_getaffinity, and loops CPU_ISSET_S over MaxNumCpus, so a copy is not
+// cheap. Nor is `const auto` alone a fix: a const namespace-scope variable has
+// internal linkage by default and the bug returns under a different spelling.
+// SYSTEM_THREADS_NB above already has this right.
+inline const auto STARTUP_PROCESSOR_AFFINITY = get_process_affinity();
+inline const auto STARTUP_USE_OLD_AFFINITY_API =
   STARTUP_PROCESSOR_AFFINITY.likely_used_old_api();
 
 #endif
