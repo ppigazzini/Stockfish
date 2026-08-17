@@ -35,7 +35,6 @@
 #include "syzygy/tbprobe.h"
 #include "../engine/timeman.h"
 #include "../engine/types.h"
-#include "../shell/uci.h"
 
 #include "../engine/searchoptions.h"
 #include "numa_shared.h"
@@ -314,13 +313,11 @@ void ThreadPool::start_thinking(const SearchOptions&  options,
 
     Search::RootMoves rootMoves;
 
-    for (const auto& uciMove : limits.searchmoves)
-    {
-        auto move = UCIEngine::to_move(pos, uciMove);
-
-        if (move != Move::none())
-            rootMoves.emplace_back(move);
-    }
+    // Already resolved by the shell, under the same wait this call sits behind.
+    // Until 2026-08-17 these were UCI tokens and this loop parsed them, which is
+    // why the runtime included the CLI's header to start a search.
+    for (const auto& move : limits.searchmoves)
+        rootMoves.emplace_back(move);
 
     if (rootMoves.empty())
         for (const auto& m : MoveList<LEGAL>(pos))

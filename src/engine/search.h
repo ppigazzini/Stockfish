@@ -26,7 +26,6 @@
 #include <functional>
 #include <map>
 #include <memory>
-#include <string>
 #include <string_view>
 #include <vector>
 #include <cstring>
@@ -192,7 +191,14 @@ struct LimitsType {
 
     bool use_time_management() const { return time[WHITE] || time[BLACK]; }
 
-    std::vector<std::string> searchmoves;
+    // Resolved MOVES, not UCI tokens. The engine's limits type named a wire
+    // format until 2026-08-17, and the cost was structural rather than
+    // cosmetic: the only thing that could turn a token into a move was the
+    // CLI's parser, so platform/thread.cpp had to include shell/uci.h to run
+    // a search. Resolving in the shell removes the last platform -> shell
+    // edge. An unparseable token is dropped where it is parsed, and an empty
+    // list still means "search every legal move".
+    std::vector<Move> searchmoves;
     TimePoint                time[COLOR_NB], inc[COLOR_NB], npmsec, movetime, startTime;
     int                      movestogo, depth, mate, perft, infinite;
     u64                      nodes;
