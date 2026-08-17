@@ -91,6 +91,8 @@ to measure contention on.
 EOF
 }
 
+# shellcheck disable=SC2329
+# invoked by `trap cleanup EXIT INT TERM` below, which shellcheck cannot see
 cleanup() {
     [ "$KEEP" = "1" ] && { echo "kept: $WORK"; return; }
     for d in "$WORK"/*/; do
@@ -151,6 +153,8 @@ case " $THREADS " in *" 1 "*) ;; *) THREADS="1 $THREADS" ;; esac
 # ASCENDING, and this is load-bearing rather than cosmetic. The reference row is
 # read back as the first row of the summary, so `--threads "8 1"` would divide
 # every scaling figure by the 8-thread result and report it as efficiency.
+# shellcheck disable=SC2086
+# the split is deliberate: this expands a LIST into separate arguments
 THREADS=$(printf '%s\n' $THREADS | sort -n -u | tr '\n' ' ')
 
 OVER=""
@@ -198,6 +202,8 @@ run_once() {  # binary threads
 
 echo "npsthreads: arch=$ARCH comp=$COMP nodes=$NODES/position hash=${HASH}MB rounds=$ROUNDS"
 echo "npsthreads: base=$BASE_REV head=$HEAD_REV"
+# shellcheck disable=SC2086
+# the split is deliberate: this expands a LIST into separate arguments
 echo "npsthreads: threads:$(printf ' %s' $THREADS)   host has $NPROC"
 [ -n "$OVER" ] && echo "npsthreads: WARNING -- oversubscribed at$OVER; above $NPROC this measures the scheduler"
 echo
@@ -223,6 +229,8 @@ fi
 # thread-pool spin-up and faults in the whole hash, and neither belongs in a
 # reading; warming at 1 thread would leave both to be paid inside round 1 of the
 # widest sweep, which is the row most likely to be quoted.
+# shellcheck disable=SC2086
+# the split is deliberate: this expands a LIST into separate arguments
 WIDEST=$(printf '%s\n' $THREADS | sort -n | tail -1)
 run_once "$WORK/base/src/stockfish" "$WIDEST" > /dev/null || exit 1
 run_once "$WORK/head/src/stockfish" "$WIDEST" > /dev/null || exit 1

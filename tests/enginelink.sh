@@ -117,6 +117,8 @@ if grep -q 'plugin needed to handle lto object' "$BUILD/build.log" 2>/dev/null; 
     exit 2
 fi
 
+# shellcheck disable=SC2086
+# the split is deliberate: this expands a LIST into separate arguments
 n=$(echo $objs | wc -w)
 echo
 echo "== linking $n engine object(s) with a stub main and nothing else =="
@@ -131,6 +133,8 @@ ARCHFLAGS=$(cd "$BUILD/w/src" && make ARCH="$ARCH" config-sanity 2>/dev/null | g
 # those relative includes resolve to.
 mkdir -p "$BUILD/w/tests"
 cp tests/enginelink_main.cpp "$BUILD/w/tests/enginelink_main.cpp"
+# shellcheck disable=SC2086
+# the split is deliberate: this expands a LIST into separate arguments
 if ! ( cd "$BUILD/w/tests" && "$CXX" -std=c++17 -O1 -fno-exceptions $ARCHFLAGS -c \
        -o ../src/enginelink_stub.o enginelink_main.cpp ) > "$BUILD/stub.log" 2>&1; then
     echo "enginelink: SKIPPED -- the host would not compile" >&2
@@ -141,6 +145,8 @@ fi
 # The exit code decides, not the presence of a matched line. A link can fail for
 # reasons that produce no "undefined reference" at all -- a missing embedded net
 # fails in the assembler -- and reading only the grep would score that as clean.
+# shellcheck disable=SC2086
+# the split is deliberate: this expands a LIST into separate arguments
 ( cd "$BUILD/w/src" && "$CXX" -o engine-standalone $objs enginelink_stub.o -lpthread ) \
   > "$BUILD/link.log" 2>&1
 rc=$?
@@ -188,12 +194,16 @@ if [ "$rc" = 0 ]; then
     echo "== running it again, with a recognisable implementation registered =="
     mkdir -p "$BUILD/w/tests"
     cp tests/seams_main.cpp "$BUILD/w/tests/seams_main.cpp"
+    # shellcheck disable=SC2086
+    # the split is deliberate: this expands a LIST into separate arguments
     if ! ( cd "$BUILD/w/tests" && "$CXX" -std=c++17 -O1 -fno-exceptions $ARCHFLAGS -c \
            -o ../src/seams_stub.o seams_main.cpp ) > "$BUILD/seams_stub.log" 2>&1; then
         echo "enginelink: SKIPPED -- the substitution host would not compile" >&2
         tail -8 "$BUILD/seams_stub.log" >&2
         exit 2
     fi
+    # shellcheck disable=SC2086
+    # the split is deliberate: this expands a LIST into separate arguments
     if ! ( cd "$BUILD/w/src" && "$CXX" -o engine-seams $objs seams_stub.o -lpthread ) \
          > "$BUILD/seams_link.log" 2>&1; then
         echo "  the substitution host did NOT link:"

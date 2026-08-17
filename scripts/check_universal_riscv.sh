@@ -15,7 +15,7 @@ fi
 STOCKFISH_EXE=$1
 EXPECTED_BENCH=$2
 QEMU=${QEMU:-qemu-riscv64}
-export QEMU_LD_PREFIX=${QEMU_LD_PREFIX:-/usr/riscv64-linux-gnu}
+export QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/riscv64-linux-gnu}"
 
 EXTS=zba=true,zbb=true,zbs=true,zicond=true
 PAIRS="

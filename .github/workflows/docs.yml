@@ -28,6 +28,32 @@ jobs:
       - name: Lane coverage
         run: ./tests/lanecheck.sh
 
+      # Install the PIN rather than use the image's shellcheck. A lint's finding
+      # set is version-dependent: the runner ships 0.9.0, which reports a
+      # trap-invoked cleanup function as SC2317 where 0.11.0 reports SC2329, so
+      # suppressions written against one version do not apply under the other.
+      # Unpinned, this gate read 0 findings on a developer box and 65 here from
+      # the same tree.
+      #
+      # tests/shellcheck.version is the single owner of the number; the gate
+      # asserts against the same file and SKIPs if what it finds disagrees.
+      # Installed under resources/, which .gitignore covers and the gate looks
+      # in before PATH.
+      - name: Install the pinned shellcheck
+        run: |
+          v=$(tr -d ' \t\n' < tests/shellcheck.version)
+          mkdir -p resources/shellcheck
+          curl -fsSL --retry 3 \
+            "https://github.com/koalaman/shellcheck/releases/download/v$v/shellcheck-v$v.linux.x86_64.tar.xz" \
+            | tar -xJ -C resources/shellcheck --strip-components=1 "shellcheck-v$v/shellcheck"
+          resources/shellcheck/shellcheck --version
+
+      # Judges scope against the fork point, which is why the checkout above
+      # fetches full history: a shallow clone has none, and the gate then puts
+      # every script in scope rather than skipping.
+      - name: Shell lint
+        run: ./tests/shellcheck.sh
+
       # Put a net in src/ before the two building gates run: linkcheck.sh and
       # enginelink.sh copy src/*.nnue into their scratch copy so the build there
       # never reaches the network. Without this step each scratch build runs the
