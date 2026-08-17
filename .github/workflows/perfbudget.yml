@@ -37,16 +37,47 @@ jobs:
         working-directory: src
         run: make net
 
+      # On a pull request the base is the target branch's tip and the answer is
+      # unambiguous. On a PUSH it used to be HEAD~1, which measures the last
+      # commit of the push and silently drops the rest: a push of twelve commits
+      # got one covered lane between them, which is how the second defect
+      # campaign's whole close-out went through this gate.
+      #
+      # github.event.before is the tip the branch had BEFORE the push, so the
+      # push is measured whole. Two ways it is not usable, and both fall back to
+      # the fork point -- which is what perfcounters.sh and perfdecomp.sh already
+      # default to:
+      #
+      #   * all zeroes, on the first push to a new branch;
+      #   * unreachable, after a force-push rewrote it away.
+      #
+      # The fallback is a real base rather than a skip. A skip here would be
+      # reported as a pass by anything reading the exit code, and refish.yml
+      # asserts on unexpected skips precisely so that cannot happen quietly.
       - name: Resolve the two sides
         id: revs
         run: |
+          set -u
           if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
-            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
-            echo "head=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
           else
-            echo "base=HEAD~1" >> "$GITHUB_OUTPUT"
-            echo "head=HEAD"   >> "$GITHUB_OUTPUT"
+            base="${{ github.event.before }}"
+            head=HEAD
+            # Empty, or every character a zero: not a commit.
+            case "$base" in
+              ''|*[!0]*) ;;
+              *) base="" ;;
+            esac
+            if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+              base=$(git merge-base HEAD origin/master 2>/dev/null \
+                     || git merge-base HEAD master 2>/dev/null \
+                     || echo "HEAD~1")
+              echo "the push base was unusable; measuring against $base instead"
+            fi
           fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
 
       # Measure two tiers: a change can improve one and regress the other, and
       # callgrind implements no AVX-512 so the instruction axis stops at avx2.

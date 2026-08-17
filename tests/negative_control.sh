@@ -391,6 +391,64 @@ fi
 
 # --------------------------------------------------------------- depcheck
 
+row lanecheck-branchfilter static
+if selected lanecheck-branchfilter; then
+    echo "negative-control: lanecheck   -- a branch filter that excludes this branch"
+    # A branch filter is an unexpiring, invisible excuse: before this gate could
+    # read one, codeql.yml and clang-format.yml reported as reachable on a branch
+    # neither could ever start on. docs.yml is used here because it dispatches
+    # gates nothing else does, so cutting it off is visible downstream too.
+    # refish.yml, because NOTHING calls it: a workflow another one `uses:` stays
+    # reachable through its caller no matter what its own filters say, so
+    # mutating a called workflow would test nothing. This is also the umbrella
+    # that dispatches most gates here, so cutting it off is visible downstream.
+    mutate .github/workflows/refish.yml \
+        '  push:
+    branches:
+      - refish' \
+        '  push:
+    branches:
+      - no-such-branch'
+    if ./tests/lanecheck.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a workflow filtered off this branch read as reachable"
+        FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
+row lanecheck-stale-workflow-excuse static
+if selected lanecheck-stale-workflow-excuse; then
+    echo "negative-control: lanecheck   -- a workflow excuse that has stopped being true"
+    # The excuse list expires in BOTH directions, the same rule the script list
+    # follows. Giving stockfish.yml a trigger this branch matches must report the
+    # excuse as stale rather than quietly keeping it.
+    mutate .github/workflows/stockfish.yml \
+        '    branches:
+      - master
+      - tools
+      - github_ci' \
+        '    branches:
+      - master
+      - tools
+      - github_ci
+      - refish'
+    # Captured, then matched against a here-string. NOT `lanecheck.sh | grep -q`:
+    # under `set -o pipefail` grep exits at the first match, the producer dies of
+    # SIGPIPE, and pipefail propagates that status -- so a MATCH reads as no
+    # match and the row reports NOT DETECTED for a gate that worked. lanecheck.sh
+    # documents this trap in its own dispatched(); this row was written straight
+    # into it.
+    out=$(./tests/lanecheck.sh 2>&1)
+    if grep -q 'STALE EXCUSE: stockfish.yml' <<< "$out"; then
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    else
+        echo "  NOT DETECTED -- a reachable workflow kept its excuse"; FAIL=$((FAIL+1))
+    fi
+    restore
+fi
+
 row actionpins-guards static
 if selected actionpins-guards; then
     echo "negative-control: actionpins  -- a job with no deadline, a workflow with no floor"
