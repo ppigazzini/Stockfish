@@ -68,6 +68,8 @@ trap 'rm -rf "$WORK"' EXIT
 
 echo "leb128: $ARCH, $($CXX --version | head -1)"
 
+# shellcheck disable=SC2086
+# the split is deliberate: this expands a LIST into separate arguments
 if ! "$CXX" -std=c++17 -O2 -Wall -Wextra -Wshadow $ARCHFLAGS \
      -o "$WORK/leb128" tests/leb128_main.cpp > "$WORK/build.log" 2>&1; then
     echo "leb128: SKIPPED -- the fixture would not compile" >&2
@@ -83,6 +85,8 @@ RC=$?
 # right answer far more often than it produces a wrong one. The sanitized run is
 # what turns that into a report.
 if [ "$SAN" = yes ]; then
+    # shellcheck disable=SC2086
+    # $ARCHFLAGS is a flag LIST and must split into separate arguments.
     if "$CXX" -std=c++17 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
          $ARCHFLAGS -o "$WORK/leb128-san" tests/leb128_main.cpp > "$WORK/san.log" 2>&1; then
         echo "leb128: re-running under address+undefined ..."

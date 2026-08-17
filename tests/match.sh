@@ -117,6 +117,8 @@ WORK=$(mktemp -d) || exit 2
 # the two worktrees are gigabytes of build output and always go, the two logs
 # are kilobytes and are the only reason anyone re-reads a failed match.
 KEEP_LOGS=0
+# shellcheck disable=SC2329
+# invoked by `trap cleanup EXIT INT TERM` below, which shellcheck cannot see
 cleanup() {
     for d in "$WORK"/wt-*; do
         [ -d "$d" ] && git worktree remove --force "$d" >/dev/null 2>&1
@@ -199,6 +201,8 @@ if [ -n "$SYZYGY" ]; then
     ls "$SYZYGY"/*.rtbw >/dev/null 2>&1 \
         || { echo "match: SKIPPED -- --syzygy: no .rtbw in $SYZYGY -- run tests/tbfetch.sh" >&2; exit 2; }
     TB_OPT=(option.SyzygyPath="$SYZYGY")
+    # shellcheck disable=SC2012
+    # a gate-controlled corpus directory; the filenames are fixed and space-free
     echo "match: syzygy $SYZYGY ($(ls "$SYZYGY"/*.rtbw | wc -l) WDL tables)"
 fi
 

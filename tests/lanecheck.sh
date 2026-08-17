@@ -124,6 +124,8 @@ for w in .github/workflows/*.yml; do
     auto=$(sed 's/[[:space:]]*#.*$//' "$w" \
            | grep -cE '^[[:space:]]*(push|pull_request|pull_request_target|schedule|release):')
     manual=$(sed 's/[[:space:]]*#.*$//' "$w" | grep -cE '^[[:space:]]*workflow_dispatch:')
+    # shellcheck disable=SC2126
+    # grep -c exits 1 on a zero count; the COUNT is wanted here, not the status.
     called=$(grep -l "workflows/$b" .github/workflows/*.yml 2>/dev/null \
              | grep -v "/$b$" | wc -l)
     if [ "$auto" -gt 0 ] || [ "$called" -gt 0 ]; then

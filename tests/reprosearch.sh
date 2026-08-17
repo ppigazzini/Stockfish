@@ -61,6 +61,8 @@ EOF
 
 # to increase the likelihood of finding a non-reproducible case,
 # the allowed number of nodes are varied systematically
+# shellcheck disable=SC2006
+# upstream's line, left as found
 for i in `seq 1 20`
 do
 
