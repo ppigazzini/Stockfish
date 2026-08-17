@@ -182,7 +182,7 @@ static_assert(sizeof(Cluster) == 32, "Suboptimal Cluster size");
 // measured in megabytes. Transposition table consists
 // of clusters and each cluster consists of ClusterSize number of TTEntry.
 void TranspositionTable::resize(usize mbSize) {
-    arena().free(table);
+    arena_free(table);
 
     clusterCount  = mbSize * 1024 * 1024 / sizeof(Cluster);
     usize ttBytes = clusterCount * sizeof(Cluster);
@@ -191,7 +191,7 @@ void TranspositionTable::resize(usize mbSize) {
     // memory oversubscription
     bool hugePageHint = ttBytes >= parallel_for().numa_nodes() * arena().hugePageBytes * 8;
 
-    table = static_cast<Cluster*>(arena().alloc_hinted(ttBytes, hugePageHint));
+    table = static_cast<Cluster*>(arena_alloc_hinted(ttBytes, hugePageHint));
 
     if (!table)
     {

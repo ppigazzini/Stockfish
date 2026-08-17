@@ -82,7 +82,7 @@ struct TTWriter {
 class TranspositionTable {
 
    public:
-    ~TranspositionTable() { arena().free(table); }
+    ~TranspositionTable() { arena_free(table); }
 
     void resize(usize mbSize);  // Set TT size in MiB
     void clear();                 // Re-initialize memory, multithreaded
