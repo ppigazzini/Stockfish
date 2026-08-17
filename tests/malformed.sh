@@ -411,6 +411,8 @@ check_survives() {
 patch_bytes() {
     local file=$1; shift
     while [ $# -ge 2 ]; do
+        # shellcheck disable=SC2059
+        # the inner printf BUILDS the format string (\xNN); interpreting it is the point
         printf "$(printf '\\x%02x' "$2")" \
           | dd of="$file" bs=1 seek="$1" count=1 conv=notrunc 2>/dev/null
         shift 2

@@ -144,6 +144,8 @@ offenders=$(git ls-files 2>/dev/null | while read -r f; do
     grep -lF -- "$INTERNAL" "$f" 2>/dev/null
 done)
 if [ -n "$offenders" ]; then
+    # shellcheck disable=SC2001
+    # the substitution is line-anchored, which ${var//} cannot express
     echo "$offenders" | sed 's/^/  /'
     note "tracked file(s) reference $INTERNAL/, which a clone does not carry"
 else

@@ -27,6 +27,13 @@
 # SKIPPED leaves the status at 0, so read the skipped count and never the status
 # alone -- the run below prints it for that reason.
 
+# shellcheck disable=SC2016
+# Every mutation anchor in this file is source text quoted VERBATIM -- shell
+# stubs with $vars, markdown with backticks, YAML with ${{ }}. If any of it
+# expanded the anchor would not match the file it is meant to cut. That is the
+# file's entire design, so the directive is file-scoped rather than repeated
+# thirteen times.
+
 set -u
 set -o pipefail
 
@@ -56,6 +63,8 @@ restore() {
     done
     MUTATED=()
 }
+# shellcheck disable=SC2329
+# invoked by `trap cleanup EXIT INT TERM` below, which shellcheck cannot see
 cleanup() { restore; rm -rf "$BACKUP"; }
 trap cleanup EXIT INT TERM
 
@@ -378,6 +387,31 @@ if selected lanecheck; then
         echo "  ok, red (1)"; PASS=$((PASS+1))
     fi
     rm -f tests/zzz_unlaned.sh
+fi
+
+# --------------------------------------------------------------- shellcheck
+
+row shellcheck static
+if selected shellcheck; then
+    echo "negative-control: shellcheck  -- an unquoted expansion in an in-scope script"
+    # A NEW script, which is also the row's second job: the gate's scope rule
+    # says a file absent from the fork point is in scope, and this row is what
+    # proves it. The first version of shellcheck.sh got that backwards --
+    # `git diff BASE HEAD -- <untracked>` reports no difference because the path
+    # is on neither side, so the gate excused itself and reported clean over a
+    # set that did not contain it.
+    printf '#!/bin/bash\nd=$1\nls $d\n' > tests/zzz_lint.sh
+    chmod +x tests/zzz_lint.sh
+    out=$(./tests/shellcheck.sh 2>&1); rc=$?
+    if [ "$rc" = 1 ] && printf '%s' "$out" | grep -q 'zzz_lint\.sh'; then
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    elif [ "$rc" = 2 ]; then
+        echo "  SKIPPED -- shellcheck not available"
+    else
+        echo "  NOT DETECTED -- shellcheck.sh rc=$rc and did not name the new script"
+        FAIL=$((FAIL+1))
+    fi
+    rm -f tests/zzz_lint.sh
 fi
 
 # --------------------------------------------------------------- devcite

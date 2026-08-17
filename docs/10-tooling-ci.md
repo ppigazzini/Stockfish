@@ -1228,6 +1228,52 @@ sentence has become false. Three classes it will pass: a real symbol attributed 
 file, a list with the wrong count or order, and a behaviour described as absent from a build
 that has it. That half is yours.
 
+## `tests/shellcheck.sh`
+
+Lints the shell the gates are written in.
+
+```sh
+./tests/shellcheck.sh                  # 0 clean, 1 findings, 2 skipped
+```
+
+The tool is not a build dependency. The hosted image ships it, so the lane finds it on `PATH`;
+a developer box without it gets a SKIP naming where to put one, the way `iwyu.sh` does for its
+own toolchain.
+
+**8,446 lines of hand-written bash decide every claim this branch makes**, and until this landed
+no tool had read them. The pre-commit config lints, formats and type-checks the Python; the
+language the gates are actually written in had nothing.
+
+**Scope is by authorship, not by directory, and the rule maintains itself.** `tests/` and
+`scripts/` hold upstream's scripts as well as this branch's, and fixing a style finding in a
+file the branch has never touched buys nothing and costs a rebase conflict forever. But
+"upstream file" is the wrong line: the branch has already modified four of the five upstream
+scripts that had findings, so the conflict is already being paid there. So a script is in scope
+unless it is **byte-identical to the fork point** -- and a script absent from the fork point is
+in scope by definition, because the branch created it. The excuse evaporates the moment the
+branch touches the file, nothing is listed by name, and nothing has to be maintained.
+
+Findings in the excused set are **reported and not gated**. A real defect there belongs in the
+upstream defect register with a reproducer, not in a style sweep.
+
+**No baseline**, deliberately. Every other debt register here expires in both directions --
+`depcheck`'s, `linkcheck`'s, `lanecheck`'s excuses. A shellcheck baseline could not, in the one
+place where the findings are cheapest to fix. The in-scope set is held at zero and a suppression
+is a comment at the site:
+
+```sh
+# shellcheck disable=SC2086
+# $objs is an object LIST and must split into separate arguments.
+```
+
+The directive takes no trailing text on its own line, and it must sit before the whole command
+rather than before a continuation line. Two file-scoped directives exist, both where the
+property is genuinely file-wide: every SC2016 in `negative_control.sh` is a mutation anchor
+quoted verbatim, and every one in `devcite.sh` is a regex matching literal backticks.
+
+**What it cannot see**: whether a gate checks the thing it claims to. `negative_control.sh` is
+what proves a gate can fail, and a script can be shellcheck-clean and assert nothing.
+
 ## `tests/devcite.sh`
 
 Citation hygiene for the untracked working area. Five checks: every cited SHA is an ancestor of

@@ -74,6 +74,20 @@ repos:
         language: system
         files: '^(tests|scripts)/.*|^\.github/workflows/.*'
         pass_filenames: false
+      # The shell the gates are written in. It SKIPs (exit 2) when shellcheck is
+      # on neither PATH nor resources/, and pre-commit reads a non-zero status
+      # as a failure -- so the entry maps a skip back to success and says so on
+      # stdout. CI's lane is the authority and it runs on an image that ships
+      # the tool; this catches the same class before the commit exists.
+      - id: shell-lint
+        name: tests/shellcheck.sh
+        entry: >-
+          bash -c './tests/shellcheck.sh; rc=$?;
+          [ "$rc" = 2 ] && echo "SKIP: no shellcheck (./resources/shellcheck-setup.sh)" && exit 0;
+          exit "$rc"'
+        language: system
+        files: '^(tests|scripts)/.*\.sh$'
+        pass_filenames: false
       # An engine file reaching into the shell, or a baselined edge that no
       # longer happens. Cheap, and the commit that adds the include is the one
       # that should hear about it.

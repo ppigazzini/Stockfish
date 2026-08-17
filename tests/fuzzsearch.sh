@@ -139,6 +139,8 @@ ENGFLAGS=$(printf '%s' "$cxxline" \
 
 # Compiled from a tests/ beside src/, because the driver includes
 # ../src/engine/... exactly as it does in the repo.
+# shellcheck disable=SC2086
+# the split is deliberate: this expands a LIST into separate arguments
 if ! ( cd "$BUILD/w/tests" && "$CLANG" $ENGFLAGS \
        -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer \
        -c -o ../src/fuzz_search.o fuzz_search.cpp ) > "$BUILD/drv.log" 2>&1; then
@@ -147,6 +149,8 @@ if ! ( cd "$BUILD/w/tests" && "$CLANG" $ENGFLAGS \
     exit 2
 fi
 
+# shellcheck disable=SC2086
+# $objs is an object LIST and must split into separate arguments.
 if ! ( cd "$BUILD/w/src" && "$CLANG" -fsanitize=fuzzer,address,undefined \
        -o fuzz-search $objs fuzz_search.o ) > "$BUILD/link.log" 2>&1; then
     echo "fuzzsearch: the fuzzer did not link against engine/ alone:" >&2
@@ -163,6 +167,8 @@ echo "== fuzzing the search for ${SECONDS_TO_RUN}s (walk + depth-3 search, ASan+
 if [ -n "$CORPUS" ]; then
     mkdir -p "$CORPUS"
     corpusdir=$(cd "$CORPUS" && pwd)
+    # shellcheck disable=SC2012
+    # a gate-controlled corpus directory; the filenames are fixed and space-free
     echo "  corpus: $corpusdir ($(ls -1 "$corpusdir" 2>/dev/null | wc -l) inputs on entry)"
     ln -s "$corpusdir" "$BUILD/w/src/corpus"
 else
@@ -190,6 +196,8 @@ if [ "$rc" != 0 ]; then
     echo
     echo "  FINDING -- the fuzzer stopped with exit $rc:"
     grep -E 'ERROR:|SUMMARY:|runtime error:|Test unit written' "$BUILD/run.log" | head -12 | sed 's/^/    /'
+    # shellcheck disable=SC2012
+    # a gate-controlled corpus directory; the filenames are fixed and space-free
     crash=$(ls "$BUILD/w/src"/crash-* "$BUILD/w/src"/oom-* "$BUILD/w/src"/timeout-* 2>/dev/null | head -1)
     if [ -n "$crash" ]; then
         keep="$ROOT/fuzz-search-$(basename "$crash")"
@@ -210,6 +218,8 @@ if [ -z "$execs" ] || [ "$execs" -lt 1000 ]; then
     exit 2
 fi
 
+# shellcheck disable=SC2012
+# a gate-controlled corpus directory; the filenames are fixed and space-free
 [ -n "$CORPUS" ] && echo "  corpus: $(ls -1 "$CORPUS" 2>/dev/null | wc -l) inputs on exit"
 
 echo
