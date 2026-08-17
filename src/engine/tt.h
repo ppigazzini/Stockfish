@@ -86,7 +86,7 @@ struct TTWriter {
 class TranspositionTable {
 
    public:
-    ~TranspositionTable() { arena().free(table); }
+    ~TranspositionTable() { arena_free(table); }
 
     // Set TT size in MiB
     void resize(usize mbSize);

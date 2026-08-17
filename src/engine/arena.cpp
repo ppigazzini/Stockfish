@@ -20,6 +20,7 @@
 
 #include <cstdio>
 
+#include <atomic>
 #include "fatal.h"
 
 #include <cassert>
@@ -78,14 +79,31 @@ void default_free(void* p) {
 
 Arena current = {default_alloc, default_alloc_hinted, default_free};
 
+// Relaxed: the count is only ever compared against zero at setup cadence, and
+// no other state is published through it. Atomic rather than a plain integer
+// because the engine allocates from worker threads as well as the main one, and
+// a debug counter that races is a debug counter that lies.
+std::atomic<usize> liveBlocks{0};
+
 }  // namespace
 
 const Arena& arena() { return current; }
+
+void  arena_block_acquired() { liveBlocks.fetch_add(1, std::memory_order_relaxed); }
+void  arena_block_released() { liveBlocks.fetch_sub(1, std::memory_order_relaxed); }
+usize arena_live_blocks() { return liveBlocks.load(std::memory_order_relaxed); }
 
 void set_arena(const Arena& a) {
     // Setup cadence, so the check is free. A zero would make every hugePageHint
     // true rather than none of them, which is a wrong answer that still runs.
     assert(a.hugePageBytes != 0);
+
+    // The ordering invariant this header states, now enforced where it can be
+    // seen. Swapping the arena under a live block means that block is released
+    // through an allocator that did not produce it.
+    assert(arena_live_blocks() == 0
+           && "set_arena while a block from the previous arena is still live");
+
     current = a;
 }
 
