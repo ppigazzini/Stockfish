@@ -391,6 +391,27 @@ fi
 
 # --------------------------------------------------------------- depcheck
 
+row depcheck-friend static
+if selected depcheck-friend; then
+    echo "negative-control: depcheck    -- an engine header befriending a platform type"
+    # The edge that survived every zone gate this branch has. A forward
+    # declaration emits no symbol, so linkcheck and enginelink cannot see it, and
+    # it is not an include, so the three include rules cannot either. If this row
+    # ever goes NOT DETECTED the textual check has stopped being the only thing
+    # holding that boundary.
+    mutate src/engine/search.h \
+        '    friend struct HeadlessRunner;' \
+        '    friend class Stockfish::ThreadPool;
+    friend struct HeadlessRunner;'
+    if ./tests/depcheck.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- depcheck passed an engine friend naming a platform type"
+        FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 row depcheck-platform-shell static
 if selected depcheck-platform-shell; then
     echo "negative-control: depcheck    -- a platform file reaching into the shell"
