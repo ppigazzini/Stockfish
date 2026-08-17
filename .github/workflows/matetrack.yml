@@ -3,10 +3,16 @@
 name: Matetrack
 on:
   workflow_call:
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Matetrack:
     name: Matetrack
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
