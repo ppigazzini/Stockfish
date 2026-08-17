@@ -104,11 +104,29 @@ if ! command -v gh >/dev/null || ! gh auth status >/dev/null 2>&1; then
     echo "  SKIPPED -- no authenticated gh; the network half was not checked"
     echo "  (the three checks above ran and their result stands)"
 else
+    # THREE outcomes, not two. `2>/dev/null` on the call below used to collapse
+    # "upstream has no such tag" and "GitHub did not answer" into one empty
+    # string, and the empty string was reported as the first. With 62 uses and up
+    # to two calls each, a rate limit or a transient made this gate red without
+    # the tree changing -- a merge gate that flips is a coin flip, and a red run
+    # that clears on a re-run teaches the reader to re-run rather than to look.
+    #
+    # A 404 is upstream's answer and a finding. Anything else -- 403, 5xx, no
+    # network -- is a check that did not run, and this branch's rule is that a
+    # skip is not a pass. So they are counted separately and the count is printed
+    # whether or not it is zero.
+    unresolved=0
+    err=$(mktemp) || exit 2
+    trap 'rm -f "$err"' EXIT
     while IFS=$'\t' read -r action ver sha; do
         [ -n "$action" ] || continue
         base=$(printf '%s' "$action" | cut -d/ -f1-2)
-        real=$(gh api "repos/$base/commits/$ver" --jq .sha 2>/dev/null)
-        if [ -z "$real" ]; then
+        real=$(gh api "repos/$base/commits/$ver" --jq .sha 2>"$err")
+        if [ -z "$real" ] && ! grep -qE 'HTTP 404|Not Found' "$err"; then
+            printf '  unresolved %-34s %s -- %s\n' "$action" "$ver" \
+                   "$(tr -d '\n' < "$err" | cut -c1-60)"
+            unresolved=$((unresolved + 1))
+        elif [ -z "$real" ]; then
             echo "  UNKNOWN    $action  $ver -- no such tag upstream"
             note "$action claims $ver and upstream has no such tag"
         elif [ "$real" != "$sha" ]; then
@@ -125,6 +143,13 @@ else
             printf '  ok         %-34s %s\n' "$action" "$ver"
         fi
     done <<< "$(printf '%s' "$PAIRS" | sort -u)"
+
+    # Printed at zero too. A count that appears only when it is non-zero is a
+    # count nobody learns to look for.
+    echo "  unresolved: $unresolved (network or rate limit, not a verdict)"
+    if [ "$unresolved" -gt 0 ] && [ "$rc" = 0 ]; then
+        echo "  NOT a clean network half -- $unresolved pin(s) were not checked"
+    fi
 fi
 
 echo
