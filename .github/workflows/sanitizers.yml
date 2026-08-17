@@ -1,10 +1,16 @@
 name: Sanitizers
 on:
   workflow_call:
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Test-under-sanitizers:
     name: ${{ matrix.sanitizers.name }}
     runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 60
     env:
       COMPCXX: ${{ matrix.config.compiler }}
       COMP: ${{ matrix.config.comp }}
@@ -110,6 +116,7 @@ jobs:
   Malformed-input:
     name: Refuse a malformed file
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -149,6 +156,7 @@ jobs:
   Leb128-reader:
     name: Decode the network format, not the network file
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -178,6 +186,7 @@ jobs:
   Tablebase-PV:
     name: Bound the tablebase PV
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
