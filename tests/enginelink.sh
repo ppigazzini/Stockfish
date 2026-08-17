@@ -95,11 +95,25 @@ chmod +x "$BUILD/nolto"
 # directive whose path resolves against the directory make compiles in.
 git ls-files -z src scripts | tar --null -T - -cf - | ( mkdir -p "$BUILD/w" && tar -xf - -C "$BUILD/w" )
 cp src/*.nnue "$BUILD/w/src/" 2>/dev/null
+# engine/search_go.cpp is not in SRCS -- it is an engine entry point the product
+# never calls and this harness does. Built through the Makefile's harness-objs
+# target so it gets the identical flags, including this wrapper; the object lands
+# in src/ and the zone-of-stem loop below then picks it up like any other.
 if ! ( cd "$BUILD/w/src" && make -j"$JOBS" build ARCH="$ARCH" COMPCXX="$BUILD/nolto" ) \
      > "$BUILD/build.log" 2>&1; then
     echo "enginelink: SKIPPED -- the non-LTO build failed" >&2
     tail -5 "$BUILD/build.log" >&2
     exit 2
+fi
+
+# A FAILURE, not a skip: the build above succeeded, so the only way this fails is
+# that the harness source or the target is wrong, and that is a finding rather
+# than a missing tool.
+if ! ( cd "$BUILD/w/src" && make -j"$JOBS" harness-objs ARCH="$ARCH" COMPCXX="$BUILD/nolto" ) \
+     >> "$BUILD/build.log" 2>&1; then
+    echo "enginelink: the harness-only engine objects would not build" >&2
+    tail -5 "$BUILD/build.log" >&2
+    exit 1
 fi
 
 # Look the zone up from the STEM: `OBJS = $(notdir ...)` flattens every object
