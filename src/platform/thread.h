@@ -193,13 +193,6 @@ class ThreadPool {
     std::vector<std::unique_ptr<Thread>> threads;
     std::vector<NumaIndex>               boundThreadToNumaNode;
 
-    u64 accumulate(RelaxedAtomic<u64> Search::Worker::* member) const {
-
-        u64 sum = 0;
-        for (auto&& th : threads)
-            sum += (th->worker.get()->*member).load(std::memory_order_relaxed);
-        return sum;
-    }
 };
 
 }  // namespace Stockfish
