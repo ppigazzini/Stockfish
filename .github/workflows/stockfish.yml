@@ -14,10 +14,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Prerelease:
     if: github.repository == 'official-stockfish/Stockfish' && github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [Matrix, ARMCompilation, UniversalCompilation]
     outputs:
       release_tag: ${{ steps.prerelease_metadata.outputs.release_tag }}
@@ -113,6 +119,7 @@ jobs:
   Matrix:
     name: Prepare matrices
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}
       universal_matrix: ${{ steps.set-universal-matrix.outputs.universal_matrix }}

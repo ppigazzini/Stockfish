@@ -97,6 +97,44 @@ else
     echo "  ok"
 fi
 
+# ---- every job has a deadline, and every workflow a permission floor
+#
+# Both are properties of the workflow FILES, so they belong beside the pin checks
+# rather than in a gate of their own: this script already reads all of them.
+#
+# A job with no timeout-minutes inherits GitHub's six-hour default. This branch's
+# defect register is largely ways an engine fails to come back -- a setoption
+# during go infinite, a movetime of zero, a crafted LEB128 net -- and the lanes
+# that would hit one had no deadline at all.
+#
+# A workflow with no permissions block takes whatever the repository default
+# grants. The floor is declared at WORKFLOW level so a job added later inherits
+# it; a job needing more declares it and that grant wins.
+echo
+echo "== every job has a deadline, every workflow a permission floor =="
+gaps=0
+for w in .github/workflows/*.yml; do
+    [ -f "$w" ] || continue
+    body=$(sed 's/[[:space:]]*#.*$//' "$w")
+    # A job that only `uses:` a reusable workflow cannot carry timeout-minutes,
+    # so the anchor is runs-on: exactly the jobs that CAN have one.
+    want=$(printf '%s\n' "$body" | grep -cE '^[[:space:]]{4}runs-on:')
+    have=$(printf '%s\n' "$body" | grep -cE '^[[:space:]]{4}timeout-minutes:')
+    if [ "$want" -ne "$have" ]; then
+        echo "  $(basename "$w"): $want job(s) with runs-on, $have with timeout-minutes"
+        gaps=$((gaps + 1))
+    fi
+    if ! printf '%s\n' "$body" | grep -qE '^permissions:'; then
+        echo "  $(basename "$w"): no workflow-level permissions block"
+        gaps=$((gaps + 1))
+    fi
+done
+if [ "$gaps" -gt 0 ]; then
+    note "$gaps workflow(s) missing a deadline or a permission floor"
+else
+    echo "  ok"
+fi
+
 # ---- the SHA is the tag it claims, and optionally the tag is current
 echo
 echo "== each pin against its own claimed release =="

@@ -54,10 +54,16 @@ on:
 # and the stimulus is checked rather than assumed: 38 of 40 iterations put the
 # mutated bytes through the decoder and got an answer out of it. A lane that
 # refuses every fixture at the door is green and empty.
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Fuzz:
     name: ${{ matrix.harness }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -87,6 +93,7 @@ jobs:
   FuzzSearch:
     name: search (in-process, ASan+UBSan)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

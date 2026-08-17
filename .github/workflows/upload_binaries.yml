@@ -15,10 +15,16 @@ on:
       token:
         required: true
 
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: write
+
 jobs:
   Artifacts:
     name: ${{ matrix.config.name }} ${{ matrix.binaries }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       EXT: ${{ matrix.config.ext }}
       NAME: ${{ matrix.config.simple_name }}
