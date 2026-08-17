@@ -391,6 +391,35 @@ fi
 
 # --------------------------------------------------------------- depcheck
 
+row actionpins-unresolved static
+if selected actionpins-unresolved; then
+    echo "negative-control: actionpins  -- an unanswered API must not read as a verdict"
+    # An INVERSE row, like optiondefaults-rig: the property is not that the gate
+    # goes red, it is that a check which did not run cannot be reported as one
+    # that did. The gate used to run `gh api ... 2>/dev/null` and treat the empty
+    # result as "upstream has no such tag", so a rate limit produced a screenful
+    # of findings and the gate flipped without the tree changing.
+    if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
+        fake=$(mktemp -d)
+        printf '#!/bin/bash\ncase "$1" in\n  auth) exit 0 ;;\n  api) echo "gh: API rate limit exceeded (HTTP 403)" >&2; exit 1 ;;\nesac\n' \
+            > "$fake/gh"
+        chmod +x "$fake/gh"
+        out=$(PATH="$fake:$PATH" ./tests/actionpins.sh 2>&1)
+        if printf '%s' "$out" | grep -q 'unresolved: [1-9]'; then
+            if printf '%s' "$out" | grep -q 'no such tag upstream'; then
+                echo "  NOT DETECTED -- a 403 was reported as a missing tag"; FAIL=$((FAIL+1))
+            else
+                echo "  ok, red (1)"; PASS=$((PASS+1))
+            fi
+        else
+            echo "  NOT DETECTED -- the gate did not count the unanswered calls"; FAIL=$((FAIL+1))
+        fi
+        rm -rf "$fake"
+    else
+        echo "  SKIPPED -- no authenticated gh, so the network half does not run"
+    fi
+fi
+
 row depcheck-friend static
 if selected depcheck-friend; then
     echo "negative-control: depcheck    -- an engine header befriending a platform type"
