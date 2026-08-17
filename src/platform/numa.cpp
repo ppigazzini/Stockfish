@@ -28,7 +28,6 @@
 // does not, and dropping it fails the Windows GCC jobs with "'memset' is not a
 // member of 'std'" while every Linux build stays green.
 #include <assert.h>
-#include <cstdlib>
 #include <cstring>  // IWYU pragma: keep
 #include <map>
 #include <set>
