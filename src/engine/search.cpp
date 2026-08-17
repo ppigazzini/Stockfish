@@ -270,6 +270,23 @@ Search::Worker* Search::best_worker(const std::vector<Search::Worker*>& workers)
     return bestWorker;
 }
 
+// The field-for-field root install the pool used to perform through friendship.
+// Kept identical, including the order: rootPos.set() is given &rootState before
+// rootState is assigned, because set() clears the StateInfo fields a fen cannot
+// carry and the assignment below then fills them.
+void Search::Worker::set_root(const RootSetup& setup) {
+    limits           = *setup.limits;
+    nodes            = 0;
+    tbHits           = 0;
+    bestMoveChanges  = 0;
+    nmpMinPly        = 0;
+    rootDepth        = 0;
+    rootMoves        = *setup.rootMoves;
+    rootPos.set(setup.pos->fen(), setup.pos->is_chess960(), &rootState);
+    rootState = *setup.state;
+    tbConfig  = *setup.tbConfig;
+}
+
 void Search::Worker::ensure_network_replicated(const Eval::NNUE::Network& net) {
     // Call once the net is resident. A worker is legal before this but cannot
     // evaluate until it has run -- see the `network` member's declaration.
