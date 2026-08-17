@@ -76,7 +76,7 @@ BINDIR = $(PREFIX)/bin
 PGOBENCH = $(RUN_PREFIX) ./$(EXE) bench
 
 ### Source and object files
-SRCS = platform/text.cpp engine/arena.cpp engine/clock.cpp engine/fatal.cpp engine/host.cpp engine/search_go.cpp engine/output_sink.cpp engine/parallel.cpp engine/worker_set.cpp engine/tb_source.cpp engine/attacks.cpp shell/benchmark.cpp shell/console.cpp engine/bitboard.cpp engine/evaluate.cpp shell/main.cpp \
+SRCS = platform/text.cpp engine/arena.cpp engine/clock.cpp engine/fatal.cpp engine/host.cpp engine/output_sink.cpp engine/parallel.cpp engine/worker_set.cpp engine/tb_source.cpp engine/attacks.cpp shell/benchmark.cpp shell/console.cpp engine/bitboard.cpp engine/evaluate.cpp shell/main.cpp \
 	platform/misc.cpp engine/movegen.cpp engine/movepick.cpp engine/position.cpp \
 	engine/search.cpp platform/thread.cpp platform/numa.cpp engine/timeman.cpp engine/tt.cpp shell/uci.cpp shell/ucioption.cpp shell/tune.cpp platform/syzygy/tbprobe.cpp \
 	engine/nnue/nnue_accumulator.cpp engine/nnue/nnue_misc.cpp engine/nnue/network.cpp \
@@ -84,6 +84,25 @@ SRCS = platform/text.cpp engine/arena.cpp engine/clock.cpp engine/fatal.cpp engi
 	shell/engine.cpp engine/score.cpp platform/memory.cpp
 
 OTHER_SRCS = universal/entry_x86.cpp universal/entry_arm64.cpp universal/entry_riscv64.cpp universal/nnue_embed.cpp
+
+# Engine sources the PRODUCT does not reach. engine/search_go.cpp is the in-process
+# search entry point: no file under src/ includes its header, and its three callers
+# are tests/enginelink_main.cpp, tests/fuzz_search.cpp and tests/seams_main.cpp.
+#
+# Keeping it in SRCS cost nothing at run time -- LTO discards it whole, and
+# `nm -C stockfish | grep Search::go` is empty -- but it is compiled and handed to
+# the linker on every build, and SRCS is the list that says what the product is
+# made of. A source no product file can reach does not belong on it.
+#
+# The gates build it through this target rather than re-deriving the compiler
+# invocation, so the flags have one owner. A retyped build command is how
+# tests/iwyu.sh came to report something its own lane would not.
+HARNESS_SRCS = engine/search_go.cpp
+HARNESS_OBJS = $(notdir $(HARNESS_SRCS:.cpp=.o))
+
+# VPATH and the %.o rule below do the work: same CXXFLAGS, same ARCH, same
+# COMPCXX wrapper as the build the caller just ran.
+harness-objs: $(HARNESS_OBJS)
 
 HEADERS = platform/text.h engine/arena.h engine/clock.h engine/search_go.h engine/output_sink.h engine/parallel.h engine/worker_set.h engine/tb_source.h engine/attacks.h shell/benchmark.h shell/console.h engine/bitboard.h engine/evaluate.h platform/misc.h engine/movegen.h engine/movepick.h engine/history.h \
 		engine/nnue/nnue_misc.h engine/nnue/features/half_ka_v2_hm.h engine/nnue/features/full_threats.h \
@@ -1398,8 +1417,12 @@ icx-profile-use:
 	EXTRALDFLAGS='-fprofile-use ' \
 	all
 
-.depend: $(SRCS)
-	-@$(CXX) $(DEPENDFLAGS) -MM $(SRCS) > $@ 2> /dev/null
+# HARNESS_SRCS too, or `make harness-objs` after a header edit rebuilds nothing
+# and the gates link a stale object against a fresh engine. The gates always
+# build into a fresh worktree so they would not hit it; a developer re-running
+# the target in place would.
+.depend: $(SRCS) $(HARNESS_SRCS)
+	-@$(CXX) $(DEPENDFLAGS) -MM $(SRCS) $(HARNESS_SRCS) > $@ 2> /dev/null
 
 ifeq (, $(filter $(MAKECMDGOALS), help strip install clean net objclean profileclean format config-sanity))
 ifeq ($(UNIVERSAL_BUILD),false)
