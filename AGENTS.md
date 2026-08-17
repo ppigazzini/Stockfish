@@ -24,17 +24,16 @@ make -j profile-build ARCH=...       # PGO+LTO -- what actually ships, far slowe
 make help                            # every ARCH
 ```
 
-The Python gates need one dependency no build target installs. `tests/testing.py` imports
-`requests`, so on a fresh checkout without it the gate dies with `ModuleNotFoundError` -- it
-proves nothing rather than reporting a finding:
+The Python gates need no third-party package. They used to: `tests/testing.py` imported
+`requests` for one download, so a fresh checkout got `ModuleNotFoundError` from a gate that then
+proved nothing rather than reporting a finding. It is `urllib.request` now, so a bare `python3`
+is enough:
 
 ```sh
-uv sync                                                  # ruff, ty, pre-commit
-uv run --with requests python ../tests/instrumented.py --none ./stockfish   # from src/
-pre-commit install                                       # optional, hooks below
+uv sync                                       # ruff, ty, pre-commit -- for the hooks, not the gates
+python3 ../tests/instrumented.py --none ./stockfish        # from src/
+pre-commit install                            # optional, hooks below
 ```
-
-`pyproject.toml` declares it in a `gates` group, so `uv sync --group gates` works too.
 
 The net is downloaded by the `net` target, which `build` depends on. Run the binary from
 `src/`: it resolves `EvalFile` relative to the working directory, and a run from the repo root
