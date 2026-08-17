@@ -91,9 +91,57 @@ void         set_arena(const Arena& a);
 [[noreturn]] void arena_alloc_failed(usize bytes);
 [[noreturn]] void arena_size_overflow(usize num, usize elementSize);
 
-// Free functions, so a deleter can name one without capturing.
-inline void* arena_alloc(usize bytes) { return arena().alloc(bytes); }
-inline void  arena_free(void* p) { arena().free(p); }
+// Outstanding blocks taken from the CURRENT arena, so set_arena can refuse a
+// swap while one is live. Declared only in an asserts-enabled build: every
+// counter update below is inside #ifndef NDEBUG, so the shipped allocation path
+// is the bare indirect call it was and this costs nothing to ship.
+//
+// The header states the invariant -- "must never be called while anything
+// allocated from the previous arena is still live" -- and until this counter
+// existed nothing could see a violation. A block taken from one allocator and
+// released by another is heap corruption with no diagnostic, which is the one
+// failure on this seam that reports nothing at all.
+// Declared and defined unconditionally, and called only under !NDEBUG. Making
+// the SYMBOL's existence depend on NDEBUG instead splits the ABI between build
+// modes: a debug object then wants a symbol a release object does not define,
+// and mixing the two -- which `make build debug=yes` over an existing release
+// tree does, because the flag change alone does not force a rebuild -- fails to
+// link with a message about the counter rather than about the mode.
+//
+// Release still pays nothing: the call sites below are inside #ifndef NDEBUG, so
+// no call is emitted at all and the definitions are unreferenced.
+void  arena_block_acquired();
+void  arena_block_released();
+usize arena_live_blocks();
+
+// Free functions, so a deleter can name one without capturing. EVERY arena
+// operation goes through these three: a caller reaching arena() directly is a
+// block the counter never sees, which is how tt.cpp escaped it.
+inline void* arena_alloc(usize bytes) {
+    void* p = arena().alloc(bytes);
+#ifndef NDEBUG
+    if (p)
+        arena_block_acquired();
+#endif
+    return p;
+}
+
+inline void* arena_alloc_hinted(usize bytes, bool hugePageHint) {
+    void* p = arena().alloc_hinted(bytes, hugePageHint);
+#ifndef NDEBUG
+    if (p)
+        arena_block_acquired();
+#endif
+    return p;
+}
+
+inline void arena_free(void* p) {
+#ifndef NDEBUG
+    if (p)
+        arena_block_released();
+#endif
+    arena().free(p);
+}
 
 // Placement-new and destructor plumbing, parameterised on the allocator. Pure
 // pointer arithmetic with no OS in it.
