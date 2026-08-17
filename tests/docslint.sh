@@ -114,9 +114,33 @@ if [ "$missing" -gt 0 ]; then note "$missing undiscoverable gate(s)"; else echo 
 # file dangles for a reader exactly as a doc line does, and a clone carries
 # neither the internal area nor any way to know what was meant.
 head_check "5. no tracked file references the untracked working area"
+
+# The exemption list, and every entry states what makes it one. The rule this
+# check enforces is that nothing a clone RECEIVES may point at something the
+# clone does not GET -- so the exemptions are the files whose subject IS the
+# working area, for which naming it is the function rather than a leak.
+#
+#   .gitignore            declares it ignored; check 5's own assertion below
+#                         re-reads this file to prove the exemption is real
+#   tests/docslint.sh     this file, which has to name it to look for it
+#   tests/devcite.sh      a gate whose entire corpus is __DEV/*.md. It SKIPS
+#                         (exit 2) in a clone rather than passing on an empty
+#                         set, which is what makes it safe to ship
+#   tests/lanecheck.sh    carries devcite.sh's excuse, and the excuse has to say
+#                         WHY there is no lane -- "a clone carries nothing for it
+#                         to read" cannot be written without naming the area
+#   tests/negative_control.sh  three rows that create a throwaway page under it,
+#                         each guarded by `[ -d __DEV ]` and reported SKIPPED
+#                         otherwise
+#
+# A file added here without one of those properties is a leak wearing an
+# exemption. The test to apply: does it still do something useful in a clone?
 offenders=$(git ls-files 2>/dev/null | while read -r f; do
     [ -f "$f" ] || continue
-    case "$f" in .gitignore|tests/docslint.sh) continue ;; esac
+    case "$f" in
+        .gitignore|tests/docslint.sh|tests/devcite.sh|tests/lanecheck.sh|tests/negative_control.sh)
+            continue ;;
+    esac
     grep -lF -- "$INTERNAL" "$f" 2>/dev/null
 done)
 if [ -n "$offenders" ]; then

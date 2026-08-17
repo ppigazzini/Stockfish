@@ -48,6 +48,7 @@ EXCUSED=(
   "perfdecomp.sh	callgrind with the cache and branch simulators, roughly 50x; run by hand when a component moves"
   "perfdecomp.py	the decomposition half of perfdecomp.sh, invoked by it rather than run"
   "match.sh	plays games under a time control; a hosted runner is not idle, so it forfeits on time and scores the box"
+  "devcite.sh	checks citations in __DEV/, which is gitignored -- a clone carries nothing for it to read, so a lane would have an empty corpus and pass. Run by hand before quoting a figure out of those pages"
 )
 
 # An entry with no reason excuses a script while saying nothing, which is the
