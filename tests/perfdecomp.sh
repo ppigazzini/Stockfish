@@ -121,6 +121,8 @@ BASE_SHA=$(git rev-parse --short "$BASE") || exit 2
 HEAD_SHA=$(git rev-parse --short "$HEAD_REV") || exit 2
 
 WORK=$(mktemp -d) || exit 2
+# shellcheck disable=SC2329
+# invoked by `trap cleanup EXIT INT TERM` below, which shellcheck cannot see
 cleanup() {
     for d in "$WORK"/wt-*; do
         [ -d "$d" ] && git worktree remove --force "$d" >/dev/null 2>&1
@@ -173,6 +175,8 @@ if [ -n "$SYZYGY" ]; then
     # the sentence that said "4-man" was true when it was written and went false
     # the day a bigger corpus arrived. Block count scales with table size, so a
     # cost decomposed here bounds the same cost on anything bigger FROM BELOW.
+    # shellcheck disable=SC2012
+    # a gate-controlled corpus directory; the filenames are fixed and space-free
     CORPUS_MEN=$(ls "$SYZYGY"/*.rtbw | sed 's|.*/||; s|\.rtbw$||; s|v||' \
                  | awk '{ if (length($0) > m) m = length($0) } END { print m }')
     echo "perfdecomp: probing $(grep -cve '^setoption' "$BENCH_FILE") positions from $(basename "$FENS"), corpus ${CORPUS_MEN}-man ($SYZYGY)"
