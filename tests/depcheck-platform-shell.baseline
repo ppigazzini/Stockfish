@@ -1,0 +1,9 @@
+# platform -> shell include edges, baselined.
+#
+# EMPTY, and meant to stay that way. The one edge that existed --
+# platform/thread.cpp -> shell/uci.h -- was severed rather than recorded, because
+# a baseline is a debt register and this debt was payable the same afternoon it
+# was found. Recording it first would have bought a gate that could not fail for
+# the only case it was built for.
+#
+# Format matches the other two baselines: `<file> -> <header>`, one per line.

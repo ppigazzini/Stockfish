@@ -389,6 +389,28 @@ if selected lanecheck; then
     rm -f tests/zzz_unlaned.sh
 fi
 
+# --------------------------------------------------------------- depcheck
+
+row depcheck-platform-shell static
+if selected depcheck-platform-shell; then
+    echo "negative-control: depcheck    -- a platform file reaching into the shell"
+    # Written with TWO levels of `../`, deliberately. The rule resolves an include
+    # by basename through zone_of rather than by matching the path, and this row
+    # is what holds that: a rule anchored on `../shell` would pass this mutation
+    # while the edge is live. An audit of this tree made exactly that mistake and
+    # reported an existing edge as severed.
+    mutate src/platform/thread.cpp \
+        '#include "numa_shared.h"' \
+        '#include "numa_shared.h"
+#include "../../shell/console.h"'
+    if ./tests/depcheck.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- depcheck passed a live platform -> shell include"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 # --------------------------------------------------------------- shellcheck
 
 row shellcheck static
