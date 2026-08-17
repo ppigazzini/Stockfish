@@ -8,10 +8,16 @@ on:
 # so nothing is stored and nothing has to be reproduced across machines or
 # toolchains. An absolute instruction count is a property of the box as much as
 # of the code, so a baseline kept from an earlier run compares two boxes.
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Budget:
     name: Instruction budget (base vs head)
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     # A locality change can legitimately cost instructions -- upstream
     # ee72cf49f is the worked example, see docs/10-tooling-ci.md. This lane is
     # therefore informative on such a PR and authoritative on a refactor that

@@ -1,10 +1,16 @@
 name: IWYU
 on:
   workflow_call:
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Analyzers:
     name: Check includes
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: Stockfish/src

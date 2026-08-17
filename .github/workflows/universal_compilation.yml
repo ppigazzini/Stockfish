@@ -1,10 +1,16 @@
 name: Universal Compilation
 on:
   workflow_call:
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   UniversalLinux:
     name: Linux
     runs-on: ubuntu-22.04
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -65,6 +71,7 @@ jobs:
   UniversalWindows:
     name: Windows
     runs-on: windows-2022
+    timeout-minutes: 40
     defaults:
       run:
         shell: msys2 {0}
@@ -128,6 +135,7 @@ jobs:
   UniversalLinuxARM64:
     name: Linux arm64
     runs-on: ubuntu-22.04-arm
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -187,6 +195,7 @@ jobs:
   UniversalWindowsARM64:
     name: Windows arm64
     runs-on: windows-11-arm
+    timeout-minutes: 40
     defaults:
       run:
         shell: msys2 {0}
@@ -245,6 +254,7 @@ jobs:
   UniversalMacOS:
     name: macOS
     runs-on: macos-15
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -282,6 +292,7 @@ jobs:
   UniversalLinuxRISCV64:
     name: Linux riscv64
     runs-on: ubuntu-22.04
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
