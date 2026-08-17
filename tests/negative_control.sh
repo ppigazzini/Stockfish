@@ -391,6 +391,32 @@ fi
 
 # --------------------------------------------------------------- depcheck
 
+row actionpins-guards static
+if selected actionpins-guards; then
+    echo "negative-control: actionpins  -- a job with no deadline, a workflow with no floor"
+    mutate .github/workflows/docs.yml \
+        '    timeout-minutes: 10
+' \
+        ''
+    if ./tests/actionpins.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a job with no timeout passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+    mutate .github/workflows/docs.yml \
+        'permissions:
+  contents: read
+' \
+        ''
+    if ./tests/actionpins.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a workflow with no permissions block passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (2)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 row actionpins-unresolved static
 if selected actionpins-unresolved; then
     echo "negative-control: actionpins  -- an unanswered API must not read as a verdict"

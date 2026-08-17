@@ -5,10 +5,16 @@ on:
       matrix:
         type: string
         required: true
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Compilation:
     name: "Android build: ${{ matrix.config.name }} ${{ matrix.binaries }}"
     runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 20
     env:
       COMPCXX: ${{ matrix.config.compiler }}
       COMP: ${{ matrix.config.comp }}

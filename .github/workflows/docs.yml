@@ -10,10 +10,16 @@ on:
 # what the net fetch below is for. That copy is `git ls-files src scripts | tar`
 # into a mktemp directory, NOT a git worktree: it carries uncommitted edits to
 # tracked files and drops untracked ones, so `git worktree list` never shows it.
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Docs:
     name: Documentation and lane coverage
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -1,10 +1,16 @@
 name: Tests
 on:
   workflow_call:
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Test-Targets:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 50
     env:
       COMPCXX: ${{ matrix.config.compiler }}
       COMP: ${{ matrix.config.comp }}
