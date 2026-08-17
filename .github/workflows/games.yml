@@ -3,10 +3,16 @@
 name: Games
 on:
   workflow_call:
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Matetrack:
     name: Games
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     steps:
       - name: Checkout SF repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

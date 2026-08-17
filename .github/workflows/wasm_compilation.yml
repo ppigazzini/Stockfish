@@ -3,10 +3,16 @@ name: WASM Compilation
 on:
   workflow_call:
 
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   wasm:
     name: wasm (${{ matrix.arch }})
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
