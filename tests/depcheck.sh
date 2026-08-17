@@ -183,6 +183,48 @@ check_rule() {
     echo "depcheck: $n_known baselined $label edge(s)"
 }
 
+# ---------------------------------------------------------------- friends
+#
+# A fourth question, and the only one here that no include and no symbol can
+# answer. `friend class Stockfish::ThreadPool;` in engine/search.h named a
+# PLATFORM type from an engine header and granted it every private member of
+# Search::Worker. A forward declaration emits no symbol, so linkcheck.sh and
+# enginelink.sh are structurally blind to it; it is not an #include, so the three
+# rules above cannot see it either. It survived every zone gate this branch has.
+#
+# So it is checked TEXTUALLY, which is the only form available: extract the type
+# each `friend` names, ask where that type is declared, and refuse a declaration
+# outside engine/. A type declared in more than one zone is reported rather than
+# resolved, for the same reason zone_of refuses an ambiguous stem.
+echo
+echo "== engine friends that name a type from another zone =="
+friend_bad=0
+friend_n=0
+for f in $FILES; do
+    [ "$(zone_of_path "$f")" = engine ] || continue
+    case "$f" in *.h) : ;; *) continue ;; esac
+    while read -r ty; do
+        [ -n "$ty" ] || continue
+        friend_n=$((friend_n + 1))
+        # Every file that declares or defines it, anywhere under src/.
+        while read -r d; do
+            [ -n "$d" ] || continue
+            dz=$(zone_of_path "$d")
+            [ "$dz" = engine ] && continue
+            echo "  $(basename "$f") befriends $ty, declared in $d ($dz)"
+            friend_bad=$((friend_bad + 1))
+        done < <(git grep -lE "^[[:space:]]*(class|struct)[[:space:]]+$ty([[:space:]]*[:{;]|\$)" \
+                     -- 'src/*' 2>/dev/null)
+    done < <(grep -oE '^[[:space:]]*friend[[:space:]]+(class|struct)[[:space:]]+[A-Za-z_][A-Za-z_0-9:]*' "$f" 2>/dev/null \
+             | sed 's/.*[[:space:]]//; s/^.*:://')
+done
+if [ "$friend_bad" -gt 0 ]; then
+    echo "  a friend declaration is the one zone edge no symbol gate can see"
+    rc=1
+else
+    echo "  ok ($friend_n friend declaration(s), all naming engine types)"
+fi
+
 check_rule engine   shell    "$BASELINE"
 check_rule engine   platform "$BASELINE_PLATFORM"
 
