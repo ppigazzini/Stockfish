@@ -250,7 +250,7 @@ Engine::perft(const std::string& fen, Depth depth, bool isChess960) {
     return Benchmark::perft(fen, depth, isChess960);
 }
 
-void Engine::go(Search::LimitsType& limits) {
+void Engine::go(Search::LimitsType& limits, const std::vector<std::string>& searchmoves) {
     assert(limits.perft == 0);
 
     // Wait before touching searchOptions. Every Worker holds it as a
@@ -263,6 +263,18 @@ void Engine::go(Search::LimitsType& limits) {
     // use-after-free. The UCI specification says `go` arrives only when the
     // engine is idle; uci.cpp accepts one whenever it is sent.
     wait_for_search_finished();
+
+    // AFTER the wait, for the same reason searchOptions is assigned after it:
+    // to_move walks MoveList<LEGAL>(pos), and a search still running owns pos.
+    // An unparseable token is dropped, which is what the pool did with it
+    // before this moved; an empty result still means every legal move.
+    limits.searchmoves.clear();
+    for (const auto& token : searchmoves)
+    {
+        const Move m = UCIEngine::to_move(pos, token);
+        if (m != Move::none())
+            limits.searchmoves.push_back(m);
+    }
 
     verify_network();
 

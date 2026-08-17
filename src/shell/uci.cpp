@@ -193,7 +193,8 @@ void UCIEngine::loop() {
     } while (token != "quit" && cli.argc <= 1);  // The command-line arguments are one-shot
 }
 
-Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
+Search::LimitsType UCIEngine::parse_limits(std::istream& is,
+                                           std::vector<std::string>& searchmoves) {
     Search::LimitsType limits;
     std::string        token;
 
@@ -248,8 +249,10 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
     {
         if (token == "searchmoves")  // Needs to be the last command on the line
         {
+            // Not lowered here: UCIEngine::to_move lowers what it is given, and
+            // doing it twice was a leftover of the token living in LimitsType.
             while (is >> token)
-                limits.searchmoves.push_back(to_lower(token));
+                searchmoves.push_back(token);
             break;
         }
 
@@ -293,12 +296,13 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
 
 void UCIEngine::go(std::istringstream& is) {
 
-    Search::LimitsType limits = parse_limits(is);
+    std::vector<std::string> searchmoves;
+    Search::LimitsType       limits = parse_limits(is, searchmoves);
 
     if (limits.perft)
         perft(limits);
     else
-        engine.go(limits);
+        engine.go(limits, searchmoves);
 }
 
 void UCIEngine::bench(std::istream& args) {
@@ -330,7 +334,8 @@ void UCIEngine::bench(std::istream& args) {
                       << std::endl;
             if (token == "go")
             {
-                Search::LimitsType limits = parse_limits(is);
+                std::vector<std::string> searchmoves;
+                Search::LimitsType       limits = parse_limits(is, searchmoves);
 
                 if (limits.perft)
                     nodesSearched = perft(limits);
@@ -408,7 +413,8 @@ void UCIEngine::benchmark(std::istream& args) {
             // One new line is produced by the search, so omit it here
             std::cerr << "\rWarmup position " << cnt++ << '/' << NUM_WARMUP_POSITIONS;
 
-            Search::LimitsType limits = parse_limits(is);
+            std::vector<std::string> searchmoves;
+            Search::LimitsType       limits = parse_limits(is, searchmoves);
 
             // Run with silenced network verification
             engine.go(limits);
@@ -476,7 +482,8 @@ void UCIEngine::benchmark(std::istream& args) {
             // One new line is produced by the search, so omit it here
             std::cerr << "\rPosition " << cnt++ << '/' << numGoCommands;
 
-            Search::LimitsType limits = parse_limits(is);
+            std::vector<std::string> searchmoves;
+            Search::LimitsType       limits = parse_limits(is, searchmoves);
 
             // Run with silenced network verification
             engine.go(limits);

@@ -81,7 +81,10 @@ class Engine {
     std::variant<u64, PositionSetError> perft(const std::string& fen, Depth depth, bool isChess960);
 
     // non blocking call to start searching
-    void go(Search::LimitsType&);
+    // `searchmoves` are UCI tokens. They are resolved HERE rather than in
+    // uci.cpp because resolving reads the position, and the position is
+    // shared with a search that may still be running -- go() waits first.
+    void go(Search::LimitsType&, const std::vector<std::string>& searchmoves = {});
     // non blocking call to stop searching
     void stop();
 
