@@ -23,6 +23,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "engine.h"
 #include "../platform/misc.h"
@@ -48,7 +49,11 @@ class UCIEngine {
     static std::string to_lower(std::string str);
     static Move        to_move(const Position& pos, std::string str);
 
-    Search::LimitsType parse_limits(std::istream& is);
+    // The raw `searchmoves` tokens come back through the out-parameter rather
+    // than inside LimitsType, and they are resolved by Engine::go under the
+    // search lock. Resolving them HERE would read the position while the
+    // previous search may still be running.
+    Search::LimitsType parse_limits(std::istream& is, std::vector<std::string>& searchmoves);
 
     auto& engine_options() { return engine.get_options(); }
 
