@@ -12,9 +12,8 @@ import tempfile
 import threading
 import time
 import traceback
+import urllib.request
 from contextlib import redirect_stdout
-
-import requests
 
 CYAN_COLOR = "\033[36m"
 GRAY_COLOR = "\033[2m"
@@ -82,11 +81,40 @@ class Syzygy:
             with tempfile.TemporaryDirectory() as tmpdirname:
                 tarball_path = os.path.join(tmpdirname, f"{file}.tar.gz")
 
-                response = requests.get(url, stream=True)
-                response.raise_for_status()
-                with open(tarball_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
+                # urllib, not requests: this was the module's ONLY use of a
+                # third-party import, and the whole file dies at import time
+                # without it -- so a gate that merely imports this harness
+                # reported ModuleNotFoundError instead of a verdict, and two CI
+                # lanes carried a pip install to paper over it. copyfileobj does
+                # the chunked copy in C rather than a Python loop.
+                #
+                # urlopen raises on a non-2xx, so no separate status check is
+                # needed here. An error body written to the file instead would
+                # surface two statements later as "tarfile.ReadError: not a gzip
+                # file", naming the wrong thing.
+                #
+                # The API also wants a User-Agent and answers 403 without one;
+                # requests sent its own, urllib's default is thinner, so it is set
+                # here rather than left to the library.
+                request = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "stockfish-tests",
+                        "Accept": "application/vnd.github+json",
+                    },
+                )
+                with urllib.request.urlopen(request) as response, open(tarball_path, "wb") as f:
+                    shutil.copyfileobj(response, f)
+
+                # Check the magic before untarring. A truncated or substituted body
+                # is a download problem, and saying so beats a decompression error
+                # for a reader deciding whether the network or the corpus is at
+                # fault.
+                with open(tarball_path, "rb") as f:
+                    if f.read(2) != b"\x1f\x8b":
+                        raise RuntimeError(
+                            f"{url} did not return a gzip archive; the download failed"
+                        )
 
                 with tarfile.open(tarball_path, "r:gz") as tar:
                     tar.extractall(tmpdirname)
