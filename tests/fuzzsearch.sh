@@ -105,11 +105,23 @@ if ! ls "$BUILD/w/src"/*.nnue >/dev/null 2>&1; then
     exit 2
 fi
 
+# engine/search_go.cpp is not in SRCS -- it is an engine entry point the product
+# never calls and this harness does. Built through the Makefile's harness-objs
+# target so it gets the identical flags, including this wrapper; the object lands
+# in src/ and the zone-of-stem loop below then picks it up like any other.
 if ! ( cd "$BUILD/w/src" && make -j"$JOBS" build ARCH="$ARCH" COMP=clang COMPCXX="$BUILD/fzcxx" ) \
      > "$BUILD/build.log" 2>&1; then
     echo "fuzzsearch: SKIPPED -- the sanitized engine build failed" >&2
     tail -8 "$BUILD/build.log" >&2
     exit 2
+fi
+
+# See enginelink.sh: a failure here is a finding, not a missing tool.
+if ! ( cd "$BUILD/w/src" && make -j"$JOBS" harness-objs ARCH="$ARCH" COMP=clang \
+                                 COMPCXX="$BUILD/fzcxx" ) >> "$BUILD/build.log" 2>&1; then
+    echo "fuzzsearch: the harness-only engine objects would not build" >&2
+    tail -8 "$BUILD/build.log" >&2
+    exit 1
 fi
 
 objs=""
