@@ -50,5 +50,7 @@ if [ $# -gt 0 ]; then
    fi
 else
    # just report signature
+   # shellcheck disable=SC2086
+   # the split is deliberate: this expands a LIST into separate arguments
    echo $signature
 fi
