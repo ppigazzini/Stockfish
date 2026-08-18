@@ -199,25 +199,26 @@ inline int futility_depth(Value eval, Value beta) {
 
 }  // namespace
 
-Search::Worker::Worker(SharedState&                    sharedState,
-                       std::unique_ptr<ISearchManager> sm,
-                       usize                           threadId,
-                       usize                           numaThreadId,
-                       usize                           numaTotalThreads,
-                       HistoryBankIndex                bank) :
+Search::Worker::Worker(SharedState&     sharedState,
+                       ManagerSlot      sm,
+                       usize            threadId,
+                       usize            numaThreadId,
+                       usize            numaTotalThreads,
+                       HistoryBankIndex bank) :
     // Unpack the SharedState struct into member variables
     sharedHistory(sharedState.sharedHistories.at(bank)),
     continuationHistory(sharedHistory.continuationHistory()),
     threadIdx(threadId),
     numaThreadIdx(numaThreadId),
     numaTotal(numaTotalThreads),
-    manager(std::move(sm)),
+    manager(std::move(sm.owned)),
     options(sharedState.options),
     tt(sharedState.tt),
     host(sharedState.host),
     stopFlag(sharedState.stopFlag),
     increaseDepthFlag(sharedState.increaseDepthFlag),
-      refreshTable() {
+      refreshTable(),
+    mainManager(sm.main) {
     clear();
 }
 
