@@ -57,7 +57,8 @@ NumaConfig::NumaConfig() :
     highestCpuIndex(0),
     customAffinity(false) {
     const auto numCpus = SYSTEM_THREADS_NB;
-    add_cpu_range_to_node(NumaIndex{0}, CpuIndex{0}, numCpus - 1);
+    // Cannot collide: the config is empty here, so no cpu is already present.
+    (void) add_cpu_range_to_node(NumaIndex{0}, CpuIndex{0}, numCpus - 1);
 }
 
 NumaConfig::NumaConfig(EmptyNodeTag) :
@@ -158,8 +159,10 @@ NumaConfig NumaConfig::from_system_numa([[maybe_unused]] bool   respectProcessAf
                 for (usize c :
                      indices_from_shortened_string(*cpuIdsStr).value_or(std::vector<usize>{}))
                 {
+                    // sysfs lists each cpu under exactly one node, so no index
+                    // arrives twice.
                     if (is_cpu_allowed(c))
-                        cfg.add_cpu_to_node(n, c);
+                        (void) cfg.add_cpu_to_node(n, c);
                 }
             }
         }
@@ -167,9 +170,10 @@ NumaConfig NumaConfig::from_system_numa([[maybe_unused]] bool   respectProcessAf
 
     if (useFallback)
     {
+        // A strictly increasing loop over one node: each index is offered once.
         for (CpuIndex c = 0; c < SYSTEM_THREADS_NB; ++c)
             if (is_cpu_allowed(c))
-                cfg.add_cpu_to_node(NumaIndex{0}, c);
+                (void) cfg.add_cpu_to_node(NumaIndex{0}, c);
     }
 
 #elif defined(_WIN64)
@@ -191,7 +195,9 @@ NumaConfig NumaConfig::from_system_numa([[maybe_unused]] bool   respectProcessAf
             if (status != 0 && nodeNumber != std::numeric_limits<USHORT>::max()
                 && is_cpu_allowed(c))
             {
-                cfg.add_cpu_to_node(nodeNumber, c);
+                // c is (group, number) flattened, so the two nested loops
+                // enumerate each cpu exactly once.
+                (void) cfg.add_cpu_to_node(nodeNumber, c);
             }
         }
     }
@@ -289,9 +295,10 @@ NumaConfig NumaConfig::from_system([[maybe_unused]] const NumaAutoPolicy& policy
         NumaConfig cfg = empty();
 
 #if !((defined(__linux__) && !defined(__ANDROID__)) || defined(_WIN64))
-        // Fallback for unsupported systems.
+        // Fallback for unsupported systems: the same strictly increasing loop
+        // over one node as the Linux fallback, so each index is offered once.
         for (CpuIndex c = 0; c < SYSTEM_THREADS_NB; ++c)
-            cfg.add_cpu_to_node(NumaIndex{0}, c);
+            (void) cfg.add_cpu_to_node(NumaIndex{0}, c);
 #else
 
     #if defined(_WIN64)
@@ -380,7 +387,9 @@ NumaConfig NumaConfig::from_system([[maybe_unused]] const NumaAutoPolicy& policy
                         splitNodeIndex += 1;
                         lastProcGroupIndex = procGroupIndex;
                     }
-                    splitCfg.add_cpu_to_node(splitNodeIndex, c);
+                    // splitCfg starts empty and cfg's nodes are disjoint sets,
+                    // so no cpu reaches this twice.
+                    (void) splitCfg.add_cpu_to_node(splitNodeIndex, c);
                 }
                 splitNodeIndex += 1;
             }
@@ -781,7 +790,9 @@ NumaConfig NumaConfig::from_l3_info(std::vector<L3Domain>&& domains, usize bundl
                 const NumaIndex dn = n++;
                 for (CpuIndex cpu : d.cpus)
                 {
-                    cfg.add_cpu_to_node(dn, cpu);
+                    // The domains were merged into disjoint sets above and each
+                    // gets its own node index, so no cpu is offered twice.
+                    (void) cfg.add_cpu_to_node(dn, cpu);
                 }
             }
         }
