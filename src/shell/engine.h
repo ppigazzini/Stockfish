@@ -106,7 +106,7 @@ class Engine {
     void set_on_update_no_moves(std::function<void(const InfoShort&)>&&);
     void set_on_update_full(std::function<void(const InfoFull&)>&&);
     void set_on_iter(std::function<void(const InfoIter&)>&&);
-    void set_on_bestmove(std::function<void(std::string_view, std::string_view)>&&);
+    void set_on_bestmove(std::function<void(const Search::BestMove&)>&&);
     void set_on_start(std::function<void()>&&);
     void set_on_verify_network(std::function<void(std::string_view)>&&);
 

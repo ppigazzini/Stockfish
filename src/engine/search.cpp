@@ -315,7 +315,7 @@ void Search::Worker::start_searching() {
     {
         main_manager()->updates.onUpdateNoMoves(
           {0, {rootPos.checkers() ? -VALUE_MATE : VALUE_DRAW, rootPos}});
-        main_manager()->updates.onBestmove(move_to_uci(Move::none()), "");
+        main_manager()->updates.onBestmove({move_to_uci(Move::none()), ""});
         return;
     }
 
@@ -380,7 +380,7 @@ void Search::Worker::start_searching() {
         ponder = move_to_uci(bestThread->rootMoves[0].pv[1], rootPos.is_chess960());
 
     auto bestmove = move_to_uci(bestThread->rootMoves[0].pv[0], rootPos.is_chess960());
-    main_manager()->updates.onBestmove(bestmove, ponder);
+    main_manager()->updates.onBestmove({bestmove, ponder});
 }
 
 // Main iterative deepening loop. It calls search() repeatedly with increasing

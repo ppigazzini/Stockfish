@@ -92,7 +92,7 @@ void UCIEngine::init_search_update_listeners() {
     engine.set_on_update_full(
       [this](const auto& i) { on_update_full(i, engine.get_options()["UCI_ShowWDL"]); });
     engine.set_on_start([]() {});
-    engine.set_on_bestmove([](const auto& bm, const auto& p) { on_bestmove(bm, p); });
+    engine.set_on_bestmove([](const Search::BestMove& bm) { on_bestmove(bm); });
     engine.set_on_verify_network([](const auto& s) { print_info_string(s); });
 }
 
@@ -385,7 +385,7 @@ void UCIEngine::benchmark(std::istream& args) {
     engine.set_on_update_full([](const auto&) {});
     engine.set_on_iter([](const auto&) {});
     engine.set_on_update_no_moves([](const auto&) {});
-    engine.set_on_bestmove([](const auto&, const auto&) {});
+    engine.set_on_bestmove([](const Search::BestMove&) {});
     engine.set_on_verify_network([](const auto&) {});
 
     Benchmark::BenchmarkSetup setup = Benchmark::setup_benchmark(args);
@@ -467,7 +467,7 @@ void UCIEngine::benchmark(std::istream& args) {
     });
 
     engine.set_on_bestmove(
-      [&totalTime, &elapsed, &nodes, &nodesSearched](const auto&, const auto&) {
+      [&totalTime, &elapsed, &nodes, &nodesSearched](const Search::BestMove&) {
           totalTime += Time::now() - elapsed;
           nodes += nodesSearched;
       });
@@ -693,10 +693,10 @@ void UCIEngine::on_iter(const Engine::InfoIter& info) {
     sync_cout << ss.str() << sync_endl;
 }
 
-void UCIEngine::on_bestmove(std::string_view bestmove, std::string_view ponder) {
-    sync_cout << "bestmove " << bestmove;
-    if (!ponder.empty())
-        std::cout << " ponder " << ponder;
+void UCIEngine::on_bestmove(const Search::BestMove& bm) {
+    sync_cout << "bestmove " << bm.bestmove;
+    if (!bm.ponder.empty())
+        std::cout << " ponder " << bm.ponder;
     std::cout << sync_endl;
 }
 
