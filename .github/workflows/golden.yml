@@ -52,3 +52,11 @@ jobs:
 
       - name: Compare the corpus
         run: ./tests/golden.sh
+
+      # Owns its own deadline, which is the whole gate: a wedged engine is a
+      # harness timeout to golden.sh and to instrumented.py, and a harness
+      # timeout is a rig fault rather than a detection. Four defects on this
+      # branch are "the engine does not come back" and nothing else here can
+      # express that class.
+      - name: Liveness
+        run: ./tests/liveness.sh
