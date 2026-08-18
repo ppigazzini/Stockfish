@@ -662,6 +662,38 @@ if selected devcite-fence; then
     fi
 fi
 
+# --------------------------------------------------------------- liveness
+
+row liveness
+if selected liveness; then
+    # Defect 3's fix, removed. UCIEngine::apply_idle stops the search before it
+    # waits for it; without the stop, the UCI reader thread waits on a search
+    # only that same thread could end, so `stop` and `quit` are never read
+    # again. The engine does not crash and returns no wrong answer -- it stops
+    # answering, which is the one failure every other gate here reads as its own
+    # timeout.
+    echo "negative-control: liveness    -- the wait that no longer stops the search"
+    mutate src/shell/uci.cpp \
+        '    engine.stop();
+    engine.wait_for_search_finished();
+    mutate();' \
+        '    engine.wait_for_search_finished();
+    mutate();'
+    if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
+        # A short deadline: the mutant wedges forever, so waiting the default 20s
+        # per case buys nothing and the row is run on every static sweep.
+        if DEADLINE=8 ./tests/liveness.sh >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- a wedged engine reported as answering"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+    else
+        restore; die "the liveness mutant did not compile"
+    fi
+    restore
+    ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
+fi
+
 # --------------------------------------------------------------- arena
 
 row arena-swap
