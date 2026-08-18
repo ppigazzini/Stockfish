@@ -158,6 +158,50 @@ if ! git check-ignore -q "$INTERNAL/" 2>/dev/null; then
     note "$INTERNAL/ is NOT gitignored -- check 5's exemption list is wrong"
 fi
 
+# ---------------------------------------------------------------- 6. selector
+
+# THE ONE COUNT THIS GATE CAN DERIVE. The header above admits that "a list with
+# the wrong count" is the rot it cannot see, and the performance-gate selector
+# is where that rot actually landed: AGENTS.md grew a sixth row for
+# npsthreads.sh and docs/10-tooling-ci.md kept saying "there are five of them
+# because there are five questions" over a five-row copy of the same table.
+#
+# Two tables, one subject, so the check is set equality on the gate column and
+# needs no prose parsing. It does NOT check the sentence above either table --
+# nothing here can -- but a numeral over a table only goes stale when the table
+# does, and this catches the table.
+head_check "6. the two copies of the performance-gate selector agree"
+
+selector_gates() {
+    # From the header row to the first line that is not a table row. Column 2 is
+    # the gate; a row may name more than one (npsab.sh "and probably fishtest"),
+    # so every .sh token in that column counts.
+    awk -F'|' '
+        /^\| the change claims \| gate \| why \|/ { intable = 1; next }
+        intable && !/^\|/                            { exit }
+        intable && $3 ~ /\.sh/ {
+            n = split($3, tok, /[^A-Za-z0-9_.\/]+/)
+            for (i = 1; i <= n; i++)
+                if (tok[i] ~ /\.sh$/) { sub(/^.*\//, "", tok[i]); print tok[i] }
+        }
+    ' "$1" | sort -u
+}
+
+sel_agents=$(selector_gates AGENTS.md)
+sel_page=$(selector_gates docs/10-tooling-ci.md)
+
+if [ -z "$sel_agents" ] || [ -z "$sel_page" ]; then
+    note "one of the two selector tables was not found -- its header row moved"
+elif [ "$sel_agents" != "$sel_page" ]; then
+    echo "  only in AGENTS.md:"
+    comm -23 <(echo "$sel_agents") <(echo "$sel_page") | sed 's/^/    /'
+    echo "  only in docs/10-tooling-ci.md:"
+    comm -13 <(echo "$sel_agents") <(echo "$sel_page") | sed 's/^/    /'
+    note "the selector tables disagree -- and the sentence above each states a count"
+else
+    echo "  ok, $(echo "$sel_agents" | grep -c .) gate(s) in both"
+fi
+
 echo
 if [ "$FAIL" = "0" ]; then echo "docslint: clean"; else echo "docslint: FINDINGS"; fi
 exit "$FAIL"
