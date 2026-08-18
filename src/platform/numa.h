@@ -632,13 +632,19 @@ class NumaConfig {
     // Both return true if successful, and false when a cpu is already present.
     // Strong guarantee on failure: the structure is left unmodified.
     //
+    // [[nodiscard]] because most callers discard the answer and each does so
+    // for its own reason -- a system enumeration that cannot repeat an index, a
+    // merge over disjoint domains, an empty config that nothing can collide
+    // with. Those reasons were nowhere in the code. Discarding now takes a
+    // (void) and a line saying which one applies.
+    //
     // Defined in numa.cpp with the rest of the construction path. Every caller
     // is a builder -- from_string, from_system_numa, from_l3_info -- and every
     // one of them runs before the first search, so an inline body here was
     // paying every includer of this header for a call nothing hot makes.
-    bool add_cpu_to_node(NumaIndex n, CpuIndex c);
+    [[nodiscard]] bool add_cpu_to_node(NumaIndex n, CpuIndex c);
 
-    bool add_cpu_range_to_node(NumaIndex n, CpuIndex cfirst, CpuIndex clast);
+    [[nodiscard]] bool add_cpu_range_to_node(NumaIndex n, CpuIndex cfirst, CpuIndex clast);
 
     // nullopt when any component of the string does not parse. The user policy
     // refuses the whole string on it; the sysfs readers below take what parsed.
