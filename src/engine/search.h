@@ -73,7 +73,12 @@ struct RootPVMoves: public std::vector<Move> {
 };
 
 struct PVMoves {
-    Move  moves[MAX_PLY + 1];
+    // The bound and the array it bounds, written once. They were two separate
+    // spellings of MAX_PLY + 1 -- the array's and the assert's -- and nothing
+    // made them agree.
+    static constexpr usize Capacity = MAX_PLY + 1;
+
+    Move  moves[Capacity];
     usize length = 0;
 
     Move*       begin() { return moves; }
@@ -90,7 +95,7 @@ struct PVMoves {
     void clear() { length = 0; }
 
     void push_back(Move move) {
-        assert(length < MAX_PLY + 1);
+        assert(length < Capacity);
         moves[length++] = move;
     }
 
@@ -534,7 +539,7 @@ class Worker {
     template<NodeType nodeType>
     Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
 
-    int reduction(bool i, Depth d, int mn, int delta) const;
+    int reduction(bool improving, Depth depth, int moveCount, int delta) const;
 
     TimePoint elapsed() const;
 
