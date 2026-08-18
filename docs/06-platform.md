@@ -7,6 +7,10 @@ Everything the engine needs from the operating system: aligned and large-page al
 topology and thread binding, cross-process shared memory, native threads with a chosen stack
 size, and runtime ISA dispatch.
 
+This page owns the mechanism. Why a `Search::Worker` takes a `HistoryBankIndex` rather than a
+topology handle, and what the search sees of any of it, is
+[04-multithreading.md](04-multithreading.md)'s.
+
 It is the largest per-platform surface in the tree and the one `bench` exercises least: a
 single-threaded run on one node touches the allocator and nothing else here. `numa.h` alone is
 the largest header in `src/`, and `shm.h` plus `shm_unix.h` come to more again:
