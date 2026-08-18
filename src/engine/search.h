@@ -27,6 +27,7 @@
 #include <map>
 #include <memory>
 #include <string_view>
+#include <utility>
 #include <vector>
 #include <cstring>
 
@@ -307,7 +308,7 @@ struct Skill {
 
 // SearchManager manages the search from the main thread. It is responsible for
 // keeping track of the time, and storing data strictly related to the main thread.
-class SearchManager: public ISearchManager {
+class SearchManager final: public ISearchManager {
    public:
     using UpdateShort    = std::function<void(const InfoShort&)>;
     using UpdateFull     = std::function<void(const InfoFull&)>;
@@ -380,10 +381,44 @@ class SearchManager: public ISearchManager {
     const UpdateContext& updates;
 };
 
-class NullSearchManager: public ISearchManager {
+class NullSearchManager final: public ISearchManager {
    public:
+    // NEVER CALLED. search.cpp's only check_time() call site is guarded by
+    // is_mainthread(), so a non-main worker's manager is reached for nothing but
+    // its destructor. The Null Object Pattern is supposed to REPLACE that branch;
+    // here the branch and the null object both exist, which is why B13.4 is
+    // titled the way it is. The hierarchy stays -- removing it is a taste
+    // argument and this programme's position on those is that they need a
+    // number -- but a reader should not credit it with work it is not doing.
     void check_time(Search::Worker&) override {}
 };
+
+// A manager and the typed view of it, paired at the only point where the type
+// is still known.
+//
+// THE DOWNCAST THIS REPLACES WAS UNCHECKED IN A RELEASE BUILD.
+// Worker::main_manager() was a static_cast down the hierarchy guarded by an
+// assert on threadIdx, and -DNDEBUG is what ships: a Worker that was not thread
+// 0 returned a SearchManager* aimed at a NullSearchManager, whose members do not
+// exist. Reading time out of it is a plausible number from an object that never
+// held one.
+//
+// The pairing cannot be got wrong here because there is no constructor that
+// takes both halves. thread.cpp chooses on a statically known branch, and the
+// factory for each arm is the only thing that fills `main`.
+struct ManagerSlot {
+    std::unique_ptr<ISearchManager> owned;
+    SearchManager*                  main;  // aliases `owned`, or null. Not an owner.
+};
+
+inline ManagerSlot make_main_manager(const SearchManager::UpdateContext& updates) {
+    auto  owned = std::make_unique<SearchManager>(updates);
+    auto* typed = owned.get();
+    return {std::move(owned), typed};
+}
+
+inline ManagerSlot make_null_manager() { return {std::make_unique<NullSearchManager>(), nullptr}; }
+
 
 // Everything a Worker needs to be given a root position, as one argument.
 //
@@ -414,12 +449,7 @@ Worker* best_worker(const std::vector<Worker*>& workers);
 class Worker {
     friend Worker* best_worker(const std::vector<Worker*>& workers);
    public:
-    Worker(SharedState&,
-           std::unique_ptr<ISearchManager>,
-           usize,
-           usize,
-           usize,
-           HistoryBankIndex);
+    Worker(SharedState&, ManagerSlot, usize, usize, usize, HistoryBankIndex);
 
     // Called at instantiation to initialize reductions tables.
     // Reset histories, usually before a new game.
@@ -450,11 +480,14 @@ class Worker {
     u64 nodes_searched() const { return u64(nodes); }
     u64 tb_hits() const { return u64(tbHits); }
 
-    // Only the main thread has a real one; the assert is the contract and
-    // NDEBUG deletes it, which is B13.4's subject rather than this commit's.
+    // Null on every worker but the main one, which is the contract. The assert
+    // states it and NDEBUG deletes it -- but what NDEBUG leaves behind is now a
+    // null dereference rather than a SearchManager* that points at a
+    // NullSearchManager, so the failure is a fault at the call rather than a
+    // plausible number from the wrong object.
     SearchManager* main_manager() const {
-        assert(threadIdx == 0);
-        return static_cast<SearchManager*>(manager.get());
+        assert(mainManager != nullptr);
+        return mainManager;
     }
 
     // Public because they need to be updatable by the stats
@@ -514,7 +547,14 @@ class Worker {
     // Reductions lookup table initialized at startup
     std::array<int, MAX_MOVES> reductions;  // [depth or moveNumber]
 
-    // The main thread has a SearchManager, the others have a NullSearchManager
+    // The main thread has a SearchManager, the others have a NullSearchManager.
+    //
+    // KEEP THIS EIGHT BYTES. It is a plain unique_ptr and not the ManagerSlot the
+    // constructor takes, because every member below it is on the per-node path --
+    // `tt`, `host`, `stopFlag` -- and storing the pair here shifted all of them by
+    // eight. That cost clang -O3 +0.1053% of the search on a change whose whole
+    // effect was supposed to be a devirtualised call. The typed half lives at the
+    // end of the class instead, where nothing hot sits behind it.
     std::unique_ptr<ISearchManager> manager;
 
     Tablebases::Config tbConfig;
@@ -572,6 +612,12 @@ class Worker {
     // `friend` in engine/ may name a type outside this zone.
     friend struct HeadlessRunner;
     friend class SearchManager;
+
+    // LAST ON PURPOSE, and read once per `go` rather than per node. It aliases
+    // `manager` on thread 0 and is null everywhere else; ManagerSlot is what
+    // makes the two agree, and it is a constructor parameter rather than a
+    // member for the layout reason stated above.
+    SearchManager* mainManager;
 };
 
 struct ConthistBonus {

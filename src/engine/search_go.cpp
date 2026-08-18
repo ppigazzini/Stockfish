@@ -140,8 +140,7 @@ void build_workers(Context& c, usize n) {
     for (usize i = 0; i < n; ++i)
         c.workers.push_back(make_arena_unique<Worker>(
           *c.shared,
-          i == 0 ? std::unique_ptr<ISearchManager>(std::make_unique<SearchManager>(c.updates))
-                 : std::unique_ptr<ISearchManager>(std::make_unique<NullSearchManager>()),
+          i == 0 ? make_main_manager(c.updates) : make_null_manager(),
           i, i, n, HistoryBankIndex(0)));
 
     // Every Worker carries its own refresh cache and the new ones have none.
@@ -311,7 +310,7 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
     // whole seconds on a search that should take milliseconds.
     //
     // This is ThreadPool::clear's reset plus start_thinking's two per-go fields.
-    SearchManager& mgr           = *static_cast<SearchManager*>(main.main_manager());
+    SearchManager& mgr           = *main.main_manager();
     mgr.ponder                   = false;
     mgr.stopOnPonderhit          = false;
     mgr.callsCnt                 = 0;

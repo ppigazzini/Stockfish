@@ -48,12 +48,12 @@ namespace Stockfish {
 
 // Constructor launches the thread and waits until it goes to sleep
 // in idle_loop(). Note that 'searching' and 'exit' should be already set.
-Thread::Thread(Search::SharedState&                    sharedState,
-               std::unique_ptr<Search::ISearchManager> sm,
-               usize                                   n,
-               usize                                   numaN,
-               usize                                   totalNumaCount,
-               OptionalThreadToNumaNodeBinder          binder) :
+Thread::Thread(Search::SharedState&           sharedState,
+               Search::ManagerSlot            sm,
+               usize                          n,
+               usize                          numaN,
+               usize                          totalNumaCount,
+               OptionalThreadToNumaNodeBinder binder) :
     idx(n),
     idxInNuma(numaN),
     totalNuma(totalNumaCount),
@@ -249,10 +249,11 @@ void ThreadPool::set(const NumaConfig&                           numaConfig,
             const usize     threadId      = threads.size();
             const NumaIndex numaId        = doBindThreads ? boundThreadToNumaNode[threadId] : 0;
             auto            create_thread = [&]() {
-                auto manager = threadId == 0
-                                          ? std::unique_ptr<Search::ISearchManager>(
-                                   std::make_unique<Search::SearchManager>(updateContext))
-                                          : std::make_unique<Search::NullSearchManager>();
+                // The branch is statically typed on both arms, and the typed
+                // half travels with the owner from here rather than being
+                // recovered by a cast at every read.
+                auto manager = threadId == 0 ? Search::make_main_manager(updateContext)
+                                             : Search::make_null_manager();
 
                 // When not binding threads we want to force all access to happen
                 // from the same NUMA node, because in case of NUMA replicated memory
