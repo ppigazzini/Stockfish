@@ -448,7 +448,7 @@ class Worker {
 
     TTMoveHistory    ttMoveHistory;
     SharedHistories& sharedHistory;
-    ContinuationHistory (&continuationHistory)[2][2];
+    ContinuationHistoryBlock& continuationHistory;
 
    private:
     bool iterative_deepening();
