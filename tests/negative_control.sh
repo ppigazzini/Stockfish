@@ -1456,6 +1456,107 @@ if selected b13-dirtythreat; then
     rm -f /tmp/nc_b13_dt.cpp
 fi
 
+row b20-conthist static
+if selected b20-conthist; then
+    # The continuation-history quadrant, which was two bools as ARRAY
+    # SUBSCRIPTS -- no parameter name to read against, and [capture][inCheck]
+    # read a real table and returned plausible statistics. This row is what
+    # makes the accessor a guarantee rather than a convention: the swap must be
+    # rejected AND both legal spellings must still compile, so a header that
+    # merely stopped compiling cannot satisfy it.
+    echo "negative-control: b20 [conth] -- a transposed history quadrant must not compile"
+    ok=1
+    printf '#include "history.h"\nusing namespace Stockfish;\nContinuationHistory& f(ContinuationHistoryBlock& b) { return b(Capture::No, InCheck::No); }\n' \
+        > /tmp/nc_b20_conthist.cpp
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b20_conthist.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the subscripts were accepted transposed"; ok=0
+    fi
+    printf '#include "history.h"\nusing namespace Stockfish;\nContinuationHistory& f(ContinuationHistoryBlock& b) { return b(InCheck::Yes, Capture::No); }\nContinuationHistory& g(ContinuationHistoryBlock& b) { return b(InCheck::No, Capture::Yes); }\n' \
+        > /tmp/nc_b20_conthist.cpp
+    if ! ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b20_conthist.cpp ) >/dev/null 2>&1; then
+        echo "  RIG FAULT -- the legal forms do not compile either"; ok=0
+    fi
+    if [ "$ok" = 1 ]; then echo "  ok, rejected by the compiler"; PASS=$((PASS+1));
+    else FAIL=$((FAIL+1)); fi
+    rm -f /tmp/nc_b20_conthist.cpp
+fi
+
+row b20-rootprobe static
+if selected b20-rootprobe; then
+    # root_probe's two adjacent flags. Both were bool, so the only thing
+    # separating them was argument position: rule50 inverted changes the
+    # verdict a table gives, rankDTZ inverted changes whether DTZ ranking
+    # happens at all.
+    echo "negative-control: b20 [rootp] -- a root-probe flag of the wrong kind must not compile"
+    ok=1
+    printf '#include "tb_source.h"\nusing namespace Stockfish::Tablebases;\nRule50 f() { return RankDTZ::Yes; }\n' \
+        > /tmp/nc_b20_rootprobe.cpp
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b20_rootprobe.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a RankDTZ was accepted where Rule50 was declared"; ok=0
+    fi
+    # And a bare bool, which is what both parameters used to be.
+    printf '#include "tb_source.h"\nusing namespace Stockfish::Tablebases;\nRule50 f(bool b) { return b; }\n' \
+        > /tmp/nc_b20_rootprobe.cpp
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b20_rootprobe.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a bare bool was accepted as Rule50"; ok=0
+    fi
+    printf '#include "tb_source.h"\nusing namespace Stockfish::Tablebases;\nRule50 f(bool b) { return Rule50(b); }\nRankDTZ g() { return RankDTZ::No; }\n' \
+        > /tmp/nc_b20_rootprobe.cpp
+    if ! ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b20_rootprobe.cpp ) >/dev/null 2>&1; then
+        echo "  RIG FAULT -- the legal forms do not compile either"; ok=0
+    fi
+    if [ "$ok" = 1 ]; then echo "  ok, rejected by the compiler"; PASS=$((PASS+1));
+    else FAIL=$((FAIL+1)); fi
+    rm -f /tmp/nc_b20_rootprobe.cpp
+fi
+
+row b20-powtwo static
+if selected b20-powtwo; then
+    # SharedHistories masks a key with size - 1, so a count that is not a power
+    # of two masks to an index the array does not hold. The guard used to be an
+    # assert, and -DNDEBUG is what ships. PowerOfTwo is the parameter now, and
+    # its only constructor is private.
+    echo "negative-control: b20 [pow2]  -- an unrounded thread count must not compile"
+    ok=1
+    printf '#include "history.h"\nusing namespace Stockfish;\nSharedHistories f() { return SharedHistories(6); }\n' \
+        > /tmp/nc_b20_powtwo.cpp
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b20_powtwo.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a raw count was accepted"; ok=0
+    fi
+    printf '#include "history.h"\nusing namespace Stockfish;\nSharedHistories f() { return SharedHistories(PowerOfTwo::ceil(6)); }\n' \
+        > /tmp/nc_b20_powtwo.cpp
+    if ! ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b20_powtwo.cpp ) >/dev/null 2>&1; then
+        echo "  RIG FAULT -- the rounded form does not compile either"; ok=0
+    fi
+    if [ "$ok" = 1 ]; then echo "  ok, rejected by the compiler"; PASS=$((PASS+1));
+    else FAIL=$((FAIL+1)); fi
+    rm -f /tmp/nc_b20_powtwo.cpp
+fi
+
+row b20-bank static
+if selected b20-bank; then
+    # HistoryBankIndex and NumaIndex were both usize, so the distinction the
+    # header argues for in six lines of prose -- an index into the engine's own
+    # map, not a handle on the host's topology -- was held by the prose alone.
+    # The two declarations of the map disagreed on which one keyed it and
+    # nothing said anything.
+    echo "negative-control: b20 [bank]  -- a bare usize must not become a bank index"
+    ok=1
+    printf '#include "history.h"\nusing namespace Stockfish;\nHistoryBankIndex f(usize n) { return n; }\n' \
+        > /tmp/nc_b20_bank.cpp
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b20_bank.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the implicit conversion was accepted"; ok=0
+    fi
+    printf '#include "history.h"\nusing namespace Stockfish;\nHistoryBankIndex f(usize n) { return HistoryBankIndex(n); }\n' \
+        > /tmp/nc_b20_bank.cpp
+    if ! ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b20_bank.cpp ) >/dev/null 2>&1; then
+        echo "  RIG FAULT -- the named form does not compile either"; ok=0
+    fi
+    if [ "$ok" = 1 ]; then echo "  ok, rejected by the compiler"; PASS=$((PASS+1));
+    else FAIL=$((FAIL+1)); fi
+    rm -f /tmp/nc_b20_bank.cpp
+fi
+
 row b5-swap
 if selected b5-swap; then
     # What the type does NOT buy, recorded as a test so no page can imply
