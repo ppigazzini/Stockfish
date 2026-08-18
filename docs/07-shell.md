@@ -21,8 +21,23 @@ transport.
 
 ## The composition root
 
-`engine.cpp` is also where the engine's seams are filled. The engine declares each hook and
-reads it through a getter; nothing outside this file calls a setter.
+`engine.cpp` is also where the engine's seams are filled. The engine declares each hook, this
+file fills it, and `host.cpp` takes **one const snapshot** of the filled set. The snapshot is
+the thing that travels: `SharedState` carries it as a `const Host&` and each `Worker` unpacks it
+at construction. Nothing outside this file writes a seam.
+
+**The snapshot is taken once, in `resize_threads`, and that is the only site.** It sits after
+the `set_parallel_for` and `set_worker_set` calls and before `threads.set` builds the Workers,
+because a Worker binds the snapshot for the life of the pool: taken one line earlier it would
+hold the inline parallel-for and the refusing worker set, and the search would run, report no
+workers and return a plausible number.
+
+**A seam's target can change afterwards without a new snapshot**, because what a `Host` holds is
+function pointers and a `ctx`, not the state behind them. `SyzygyPath`'s handler calls
+`Tablebases::init`, which reloads the tables the tablebase seam reads through its `ctx`; the
+pointers are the same pointers and no Worker has to be rebuilt. **Changing which function a
+seam calls is the thing that needs a fresh snapshot**, and today only pool construction does
+that.
 
 ```cpp
 // src/engine/output_sink.h -- the engine declares the seam.
