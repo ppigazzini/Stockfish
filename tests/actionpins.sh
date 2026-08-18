@@ -153,13 +153,48 @@ else
     # network -- is a check that did not run, and this branch's rule is that a
     # skip is not a pass. So they are counted separately and the count is printed
     # whether or not it is zero.
+    # A TAG IS IMMUTABLE, SO ITS SHA IS CACHEABLE, and that is what makes the
+    # rate limit stop being this gate's problem. 62 uses is 62 calls on a cold
+    # run and most of an unauthenticated hour's budget for one gate; on a warm
+    # one it is zero. The cache lives in resources/, the scratch directory
+    # .gitignore covers wholesale, so it cannot reach a commit -- the same
+    # arrangement the shellcheck and IWYU toolchains use.
+    #
+    # The assumption is the one the whole pinning scheme already rests on: a
+    # release tag names one commit forever. If upstream force-moved a tag, this
+    # would keep answering with the old SHA -- and a moved tag is the LIES case,
+    # which is upstream's bug rather than a pin's. Delete the file to re-ask.
+    CACHE=$ROOT/resources/actionpins-cache.tsv
+    declare -A CACHED=()
+    if [ -r "$CACHE" ]; then
+        while IFS=$'\t' read -r key val; do
+            [ -n "$key" ] && [ -n "$val" ] && CACHED["$key"]=$val
+        done < "$CACHE"
+    fi
+    mkdir -p "$(dirname "$CACHE")" 2>/dev/null
+
     unresolved=0
+    hits=0
+    # The loop below walks DISTINCT (action, version) pairs, not uses: 65 uses of
+    # 14 pins is 14 questions. Reporting hits against the use count would make a
+    # fully warm cache read as 14 of 65 and look like a hole.
+    distinct=$(printf '%s' "$PAIRS" | sort -u | grep -c .)
     err=$(mktemp) || exit 2
     trap 'rm -f "$err"' EXIT
     while IFS=$'\t' read -r action ver sha; do
         [ -n "$action" ] || continue
         base=$(printf '%s' "$action" | cut -d/ -f1-2)
-        real=$(gh api "repos/$base/commits/$ver" --jq .sha 2>"$err")
+        if [ -n "${CACHED[$base@$ver]:-}" ]; then
+            real=${CACHED[$base@$ver]}
+            : > "$err"
+            hits=$((hits + 1))
+        else
+            real=$(gh api "repos/$base/commits/$ver" --jq .sha 2>"$err")
+            # Only a resolved answer is worth keeping. An empty one is the
+            # unresolved case below, and caching it would make one transient
+            # permanent.
+            [ -n "$real" ] && printf '%s\t%s\n' "$base@$ver" "$real" >> "$CACHE"
+        fi
         if [ -z "$real" ] && ! grep -qE 'HTTP 404|Not Found' "$err"; then
             printf '  unresolved %-34s %s -- %s\n' "$action" "$ver" \
                    "$(tr -d '\n' < "$err" | cut -c1-60)"
@@ -184,6 +219,9 @@ else
 
     # Printed at zero too. A count that appears only when it is non-zero is a
     # count nobody learns to look for.
+    # Printed so a run that asked GitHub nothing cannot be mistaken for one that
+    # asked and was answered.
+    echo "  resolved from cache: $hits of $distinct pin(s) (delete $CACHE to re-ask)"
     echo "  unresolved: $unresolved (network or rate limit, not a verdict)"
     if [ "$unresolved" -gt 0 ] && [ "$rc" = 0 ]; then
         echo "  NOT a clean network half -- $unresolved pin(s) were not checked"
