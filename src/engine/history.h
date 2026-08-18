@@ -254,23 +254,53 @@ struct ContinuationHistoryBlock {
 // engine only has to name the group it was put in. So this is an index into the
 // engine's own map, not a handle on the host's topology: a worker never asks
 // what a NUMA node is, and nothing here can be used to find out.
-using HistoryBankIndex = usize;
+//
+// Scoped, because the value both producers hand over is a NumaIndex and that
+// alias is also usize. With this an alias the distinction above held in prose
+// alone; with it an enum the two sites that turn a node number into a bank
+// number have to say so.
+enum class HistoryBankIndex : usize {
+};
+
+// A count the caller has already rounded up.
+//
+// SharedHistories sizes both its tables as a multiple of the count and indexes
+// them by masking a key with `size - 1`, which selects a row inside the array
+// only while the size is a power of two. Any other count masks to an index the
+// array does not hold -- and an assert used to be the only thing that said so,
+// in a build that does not ship. The constructor takes this instead, and the
+// only way to make one is to round.
+class PowerOfTwo {
+   public:
+    static constexpr PowerOfTwo ceil(usize count) {
+        usize p = 1;
+        while (p < count)
+            p <<= 1;
+        return PowerOfTwo(p);
+    }
+
+    constexpr operator usize() const { return value; }
+
+   private:
+    constexpr explicit PowerOfTwo(usize v) :
+        value(v) {}
+
+    usize value;
+};
 
 // One bank of histories, shared by every worker the host put in the same group.
 // WHICH workers those are is not this struct's business -- see HistoryBankIndex
 // above. The host groups to keep a bank off a remote node; the engine holds the
 // bank and never asks what the grouping meant.
 //
-// PASS A POWER OF TWO. Both tables are sized as a multiple of the count and
-// indexed by masking a key with `size - 1`, which selects a row inside the array
-// only while the size is a power of two. Any other count masks to an index the
-// array does not hold, and the assert below is the only thing that says so.
+// The count has to be a power of two, and PowerOfTwo above is what says so --
+// this used to be a comment in capitals over a parameter that took any usize,
+// with an assert underneath it that -DNDEBUG removes.
 struct SharedHistories {
-    SharedHistories(usize threadCount) :
+    explicit SharedHistories(PowerOfTwo threadCount) :
         correctionHistory(threadCount),
         continuationHistoryBlock(make_arena_unique<ContinuationHistoryBlock>()),
         pawnHistory(threadCount) {
-        assert((threadCount & (threadCount - 1)) == 0 && threadCount != 0);
         sizeMinus1         = correctionHistory.get_size() - 1;
         pawnHistSizeMinus1 = pawnHistory.get_size() - 1;
     }

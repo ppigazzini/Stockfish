@@ -178,7 +178,10 @@ class Engine {
 
     Search::SearchManager::UpdateContext  updateContext;
     std::function<void(std::string_view)> onVerifyNetwork;
-    std::map<NumaIndex, SharedHistories>  sharedHists;
+    // Keyed by HistoryBankIndex, which is what SharedState binds it as. It was
+    // declared NumaIndex here and HistoryBankIndex there, and both were usize,
+    // so the two declarations disagreed and nothing said anything.
+    std::map<HistoryBankIndex, SharedHistories> sharedHists;
 
     // Keep this DECLARED LAST, for the mirror of the reason the arena installer
     // is declared first. Members are destroyed in reverse declaration order, and
