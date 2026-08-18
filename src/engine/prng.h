@@ -51,7 +51,7 @@ class PRNG {
     }
 
    public:
-    PRNG(u64 seed) :
+    explicit PRNG(u64 seed) :
         s(seed) {
         assert(seed);
     }
