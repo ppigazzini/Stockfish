@@ -146,28 +146,42 @@ constexpr IntType ceil_to_multiple(IntType n, IntType base) {
 // Utility to read an integer (signed or unsigned, any size)
 // from a stream in little-endian order. We swap the byte order after the read if
 // necessary to return a result with the byte ordering of the compiling machine.
-// A short read leaves `result` untouched and the value is returned anyway.
-// Every caller tests the stream immediately and discards it, so nothing reads
-// it today.
 //
-// IT IS NOT ZEROED, and the reason is measured rather than argued. `result = 0`
-// here costs 12.8M startup instructions under gcc -- 1.7% of the 731M the
-// LEB128 decoder spends -- because it perturbs what gets inlined in this
-// header, not because the store is expensive. The row stays on the latent list
-// with that number attached; closing it needs a formulation that does not
-// touch this translation unit's codegen, not a keyword.
+// THE BUFFER IS ZEROED, THE RESULT IS NOT, and the difference is the whole
+// point. A short read writes fewer than sizeof(IntType) bytes and sets failbit;
+// the bytes it did not reach keep whatever was in the storage, so reading the
+// object back is an indeterminate-value read. Zeroing a byte array before the
+// read makes those bytes 0 with no branch and no test of the stream, which is
+// what a test would have cost -- `stream`'s operator bool calls fail(), and
+// fail() lives in the VIRTUAL base basic_ios, so reaching it needs a vtable
+// vbase offset. gcount() is a plain member of basic_istream and would have been
+// cheaper, but neither is needed.
+//
+// The register's reason for leaving this alone was wrong. It recorded the value
+// as harmless because "every caller tests the stream immediately and discards
+// it" -- `read_leb_128` does not. It takes this result as `bytes_left` and
+// spends it as a byte budget before it looks at the stream at all.
+//
+// One array serves both arms, which is where the gcc win comes from:
+// `IsLittleEndian` is a runtime bool, not a constant, so reading into `&result`
+// on one arm compiled two `stream.read` call sites. Zeroing the RESULT was
+// measured and rejected -- `result = 0` costs 12.8M startup instructions under
+// gcc, 1.7% of the 731M this header's LEB128 decoder spends, by perturbing what
+// gets inlined here.
 template<typename IntType>
 inline IntType read_little_endian(std::istream& stream) {
+    u8 u[sizeof(IntType)] = {};
+
+    stream.read(reinterpret_cast<char*>(u), sizeof(IntType));
+
     IntType result;
 
     if (IsLittleEndian)
-        stream.read(reinterpret_cast<char*>(&result), sizeof(IntType));
+        std::memcpy(&result, u, sizeof(IntType));
     else
     {
-        u8                            u[sizeof(IntType)];
         std::make_unsigned_t<IntType> v = 0;
 
-        stream.read(reinterpret_cast<char*>(u), sizeof(IntType));
         for (usize i = 0; i < sizeof(IntType); ++i)
             v = (v << 8) | u[sizeof(IntType) - i - 1];
 
