@@ -1259,7 +1259,7 @@ below it -- the file is first-match-wins.
 
 ## `tests/docslint.sh`
 
-Five mechanical checks over this documentation set:
+Six mechanical checks over this documentation set:
 
 1. every markdown link resolves;
 2. every `src/`, `tests/`, `scripts/` or `.github/` path named in prose exists;
@@ -1268,7 +1268,15 @@ Five mechanical checks over this documentation set:
 4. every script in `tests/` and `scripts/` is named by some page, because a gate nobody can
    discover is a gate nobody runs;
 5. no **tracked** file references the untracked working area; the exemption list is in the
-   script, and every entry on it is a file whose *subject* is that area.
+   script, and every entry on it is a file whose *subject* is that area;
+6. the two copies of the performance-gate selector table -- `AGENTS.md`'s and this page's --
+   name the same gates.
+
+Check 6 is the one count this gate can derive, and it exists because the header above admits
+that "a list with the wrong count" is the rot it cannot see. That rot landed here: `AGENTS.md`
+grew a sixth row for `npsthreads.sh` and this page's copy kept five, under a sentence saying
+there were five because there were five questions. Set equality on the gate column needs no
+prose parsing and no numeral kept in step, and the numeral only goes stale when the table does.
 
 Check 5 sweeps every tracked file rather than every page, and that scope is load-bearing: a
 source comment or a workflow file dangles for a reader exactly as a doc line does. Check 2
@@ -1320,7 +1328,8 @@ The tool is not a build dependency. The hosted image ships it, so the lane finds
 a developer box without it gets a SKIP naming where to put one, the way `iwyu.sh` does for its
 own toolchain.
 
-**8,446 lines of hand-written bash decide every claim this branch makes**, and until this landed
+**Nearly ten thousand lines of hand-written bash decide every claim this branch makes** --
+`cat tests/*.sh scripts/*.sh | wc -l` is 9,959 today, against 8,446 when this landed -- and until it did
 no tool had read them. The pre-commit config lints, formats and type-checks the Python; the
 language the gates are actually written in had nothing.
 

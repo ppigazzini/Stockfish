@@ -23,7 +23,12 @@ Almost every domain quantity here is in the first tier: `Color`, `Square`, `File
 Direction)` exists as a named operation rather than as integer addition.
 
 `Move` is a third shape: a class over a `u16` with an `explicit` raw constructor and named
-accessors, so a raw 16-bit value does not become a move without a visible cast.
+accessors, so a raw 16-bit value does not become a move without a visible cast. `DirtyThreat`
+is the same shape over a `u32` and for the same reason -- `position.cpp` reads
+`dt_template.raw()` into `_mm512_set1_epi32`, so the raw form is a real part of the type's use
+and the constructor stays; it just stops being a *conversion*. What the keyword does not buy is
+the five-argument constructor beside it, which takes two `Piece`s and two `Square`s and will
+transpose either pair in silence. That is the boundary below, and no keyword addresses it.
 
 **A plain alias is documentation, not a type.** `Value`, `Key`, `Bitboard` and `Depth` are
 aliases, and a `Key` where a `Bitboard` belongs compiles silently.
