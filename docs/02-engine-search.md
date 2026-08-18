@@ -156,10 +156,26 @@ next call on.
 
 ## What a worker is given
 
-`Search::SharedState` is everything a `Search::Worker` is built from, and it names no host type:
-a `const SearchOptions&` snapshot, the transposition table, the shared history banks, and the
-two `std::atomic<bool>&` flags every worker watches. The worker resolves the rest through the
-seams in [00-architecture.md](00-architecture.md).
+`Search::SharedState` is everything a `Search::Worker` is built from. Six members: a
+`const SearchOptions&` snapshot, the transposition table, the shared history banks, a
+**`const Host&`**, and the two `std::atomic<bool>&` flags every worker watches. The seams are in
+[00-architecture.md](00-architecture.md); what this page owns is what the search does with them.
+
+**The `Host` does not stop here.** `Worker` holds no `SharedState` -- it unpacks one at
+construction, and `host` is unpacked with the rest onto `Worker::host`, which is the whole point
+of carrying it. A reference member's binding is fixed at construction, so a handle that reached
+only `SharedState` would leave every node dereferencing through the pool's copy; unpacked, the
+compiler can hoist the address out of the node loop. `search.h`'s own comment states it.
+
+**The lifetime rule follows from the copy.** A `SharedState` is copied by value into
+`ThreadPool::set` and dropped there, so every referent it holds must outlive the *Workers*, not
+the pool. That is the same rule `shell/engine.h` states for the option snapshot, for the same
+reason, and it is a third constraint on declaration order in that file.
+
+The shape is affordable because of where the seams sit on the clock. Only the tablebase source
+is on the node path; the worker set is second, at one node in 512 through `check_time`; the
+other five are setup or info-line cadence. A seam whose cadence is a search rather than a node
+costs nothing measurable however it is reached.
 
 **A worker is legal before a network exists.** `Engine` sizes the pool while `EvalFile` is still
 empty, so `Worker::network` is a `const Eval::NNUE::Network*` that starts null and
