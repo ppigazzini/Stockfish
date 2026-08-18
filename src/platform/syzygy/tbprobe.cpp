@@ -90,11 +90,11 @@ int probe_dtz(Position&, ProbeState* result) {
     return 0;
 }
 
-bool root_probe(Position&, Search::RootMoves&, bool, bool, const std::function<bool()>&) {
+bool root_probe(Position&, Search::RootMoves&, Rule50, RankDTZ, const std::function<bool()>&) {
     return false;
 }
 
-bool root_probe_wdl(Position&, Search::RootMoves&, bool) { return false; }
+bool root_probe_wdl(Position&, Search::RootMoves&, Rule50) { return false; }
 
 Config rank_root_moves(
   const SearchOptions&, Position&, Search::RootMoves&, bool, const std::function<bool()>&) {
@@ -2270,8 +2270,8 @@ int Tablebases::probe_dtz(Position& pos, ProbeState* result) {
 // A return value false indicates that not all probes were successful.
 bool Tablebases::root_probe(Position&                    pos,
                             Search::RootMoves&           rootMoves,
-                            bool                         rule50,
-                            bool                         rankDTZ,
+                            Rule50                       rule50,
+                            RankDTZ                      rankDTZ,
                             const std::function<bool()>& time_abort) {
 
     ProbeState result = OK;
@@ -2283,7 +2283,7 @@ bool Tablebases::root_probe(Position&                    pos,
     // Check whether a position was repeated since the last zeroing move.
     bool rep = pos.has_repeated();
 
-    int dtz, bound = rule50 ? (MAX_DTZ / 2 - 100) : 1;
+    int dtz, bound = rule50 == Rule50::Apply ? (MAX_DTZ / 2 - 100) : 1;
 
     // Probe and rank each move
     for (auto& m : rootMoves)
@@ -2297,7 +2297,7 @@ bool Tablebases::root_probe(Position&                    pos,
             WDLScore wdl = -probe_wdl(pos, &result);
             dtz          = dtz_before_zeroing(wdl);
         }
-        else if ((rule50 && pos.is_draw(1)) || pos.is_repetition(1))
+        else if ((rule50 == Rule50::Apply && pos.is_draw(1)) || pos.is_repetition(1))
         {
             // In case a root move leads to a draw by repetition or 50-move rule,
             // we set dtz to zero. Note: since we are only 1 ply from the root,
@@ -2322,9 +2322,10 @@ bool Tablebases::root_probe(Position&                    pos,
 
         // Better moves are ranked higher. Certain wins are ranked equally.
         // Losing moves are ranked equally unless a 50-move draw is in sight.
-        int r    = dtz > 0 ? (dtz + cnt50 <= 99 && !rep ? MAX_DTZ - (rankDTZ ? dtz : 0)
-                                                        : MAX_DTZ / 2 - (dtz + cnt50))
-                 : dtz < 0 ? (-dtz * 2 + cnt50 < 100 ? -MAX_DTZ - (rankDTZ ? dtz : 0)
+        const int rank = rankDTZ == RankDTZ::Yes ? dtz : 0;
+        int       r    = dtz > 0 ? (dtz + cnt50 <= 99 && !rep ? MAX_DTZ - rank
+                                                              : MAX_DTZ / 2 - (dtz + cnt50))
+                 : dtz < 0 ? (-dtz * 2 + cnt50 < 100 ? -MAX_DTZ - rank
                                                      : -MAX_DTZ / 2 + (-dtz + cnt50))
                            : 0;
         m.tbRank = r;
@@ -2348,7 +2349,7 @@ bool Tablebases::root_probe(Position&                    pos,
 // This is a fallback for the case that some or all DTZ tables are missing.
 //
 // A return value false indicates that not all probes were successful.
-bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, bool rule50) {
+bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, Rule50 rule50) {
 
     static const int WDL_to_rank[] = {-MAX_DTZ, -MAX_DTZ + 101, 0, MAX_DTZ - 101, MAX_DTZ};
 
@@ -2370,7 +2371,7 @@ bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, boo
         // and scored as drawn, and rank_root_moves then zeroed the cardinality
         // and stopped probing during the search. A repetition is a draw under
         // either setting, which is why only the clock half takes the flag.
-        if ((rule50 && pos.is_draw(1)) || pos.is_repetition(1))
+        if ((rule50 == Rule50::Apply && pos.is_draw(1)) || pos.is_repetition(1))
             wdl = WDLDraw;
         else
             wdl = -probe_wdl(pos, &result);
@@ -2382,7 +2383,7 @@ bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, boo
 
         m.tbRank = WDL_to_rank[wdl + 2];
 
-        if (!rule50)
+        if (rule50 == Rule50::Ignore)
             wdl = wdl > WDLDraw ? WDLWin : wdl < WDLDraw ? WDLLoss : WDLDraw;
         m.tbScore = WDL_to_value[wdl + 2];
     }
@@ -2393,7 +2394,7 @@ bool Tablebases::root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, boo
 Config Tablebases::rank_root_moves(const SearchOptions&            options,
                                    Position&                    pos,
                                    Search::RootMoves&           rootMoves,
-                                   bool                         rankDTZ,
+                                   RankDTZ                      rankDTZ,
                                    const std::function<bool()>& time_abort) {
     Config config;
 
@@ -2418,17 +2419,18 @@ Config Tablebases::rank_root_moves(const SearchOptions&            options,
     if (config.cardinality >= pos.count<ALL_PIECES>() && !pos.can_castle(ANY_CASTLING))
     {
         // Use DTZ to rank the moves if checkmate is the only zeroing move
-        rankDTZ = rankDTZ || pos.dtz_is_dtm();
+        if (rankDTZ == RankDTZ::No && pos.dtz_is_dtm())
+            rankDTZ = RankDTZ::Yes;
 
         // Rank moves using DTZ tables, bail out if time_abort flags zeitnot
         config.rootInTB =
-          root_probe(pos, rootMoves, options.syzygy50MoveRule, rankDTZ, time_abort);
+          root_probe(pos, rootMoves, Rule50(options.syzygy50MoveRule), rankDTZ, time_abort);
 
         if (!config.rootInTB && !time_abort())
         {
             // DTZ tables are missing; try to rank moves using WDL tables
             dtz_available   = false;
-            config.rootInTB = root_probe_wdl(pos, rootMoves, options.syzygy50MoveRule);
+            config.rootInTB = root_probe_wdl(pos, rootMoves, Rule50(options.syzygy50MoveRule));
         }
     }
 
