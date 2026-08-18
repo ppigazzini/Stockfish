@@ -58,7 +58,7 @@ using Value = int;
 // such that the recipient does not need to know whether the binding happened or not.
 class OptionalThreadToNumaNodeBinder {
    public:
-    OptionalThreadToNumaNodeBinder(NumaIndex n) :
+    explicit OptionalThreadToNumaNodeBinder(NumaIndex n) :
         numaConfig(nullptr),
         numaId(n) {}
 
