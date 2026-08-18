@@ -2050,9 +2050,10 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     return bestValue;
 }
 
-int Search::Worker::reduction(bool i, Depth d, int mn, int delta) const {
-    int reductionScale = reductions[d] * reductions[mn];
-    return reductionScale - delta * 577 / rootDelta + !i * reductionScale * 197 / 512 + 982;
+int Search::Worker::reduction(bool improving, Depth depth, int moveCount, int delta) const {
+    int reductionScale = reductions[depth] * reductions[moveCount];
+    return reductionScale - delta * 577 / rootDelta + !improving * reductionScale * 197 / 512
+         + 982;
 }
 
 // elapsed() returns the time elapsed since the search started. If the
