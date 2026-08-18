@@ -102,11 +102,6 @@ struct StatsEntry {
     }
 };
 
-enum StatsType {
-    NoCaptures,
-    Captures
-};
-
 template<typename T, int D, usize... Sizes>
 using Stats = MultiArray<StatsEntry<T, D>, Sizes...>;
 
@@ -225,7 +220,31 @@ using CorrectionHistory = typename Detail::CorrHistTypedef<T>::type;
 
 using TTMoveHistory = StatsEntry<i16, 8192>;
 
+// The two subscripts of ContinuationHistoryBlock, as types rather than as
+// bools. Both indices are one bit, both subscripts are spelled the same way,
+// and [capture][inCheck] compiles, reads a real table and returns plausible
+// statistics -- a silently worse search that no assert, no bound and no
+// diagnostic can see, only the bench anchor. Distinct types leave the
+// transposition no spelling.
+enum class InCheck : bool {
+    No,
+    Yes
+};
+
+enum class Capture : bool {
+    No,
+    Yes
+};
+
+// The quadrant is reachable only through an accessor that names both
+// subscripts. The table stays [2][2] and the accessor inlines to the same two
+// subscripts: this buys a diagnostic, not a layout.
 struct ContinuationHistoryBlock {
+    ContinuationHistory& operator()(InCheck inCheck, Capture capture) {
+        return table[usize(inCheck)][usize(capture)];
+    }
+
+   private:
     ContinuationHistory table[2][2];
 };
 
@@ -256,7 +275,7 @@ struct SharedHistories {
         pawnHistSizeMinus1 = pawnHistory.get_size() - 1;
     }
 
-    auto& continuationHistory() { return continuationHistoryBlock->table; }
+    ContinuationHistoryBlock& continuationHistory() { return *continuationHistoryBlock; }
 
     usize get_size() const { return sizeMinus1 + 1; }
 
