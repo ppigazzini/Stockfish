@@ -90,7 +90,7 @@ Tablebases::WDLScore tb_probe_wdl(void*, Position& pos, Tablebases::ProbeState* 
 }
 int tb_max_cardinality(void*) { return Tablebases::MaxCardinality; }
 Tablebases::Config tb_rank_root(void*, const SearchOptions& o, Position& pos,
-                                Search::RootMoves& rm, bool rankDTZ,
+                                Search::RootMoves& rm, Tablebases::RankDTZ rankDTZ,
                                 const std::function<bool()>& abort) {
     return Tablebases::rank_root_moves(o, pos, rm, rankDTZ, abort);
 }
