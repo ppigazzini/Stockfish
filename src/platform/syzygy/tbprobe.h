@@ -56,15 +56,15 @@ WDLScore probe_wdl(Position& pos, ProbeState* result);
 int      probe_dtz(Position& pos, ProbeState* result);
 bool     root_probe(Position&                    pos,
                     Search::RootMoves&           rootMoves,
-                    bool                         rule50,
-                    bool                         rankDTZ,
+                    Rule50                       rule50,
+                    RankDTZ                      rankDTZ,
                     const std::function<bool()>& time_abort);
-bool     root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, bool rule50);
+bool     root_probe_wdl(Position& pos, Search::RootMoves& rootMoves, Rule50 rule50);
 Config   rank_root_moves(
     const SearchOptions&            options,
     Position&                    pos,
     Search::RootMoves&           rootMoves,
-    bool                         rankDTZ    = false,
+    RankDTZ                      rankDTZ    = RankDTZ::No,
     const std::function<bool()>& time_abort = []() { return false; });
 
 }  // namespace Stockfish::Tablebases
