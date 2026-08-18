@@ -50,8 +50,16 @@ std::atomic_bool stop, increaseDepth;
 and every shared counter is a `RelaxedAtomic<u64>` (`src/engine/basetypes.h`), summed on demand:
 
 ```cpp
-u64 accumulate(RelaxedAtomic<u64> Search::Worker::* member) const;
+u64 nodes_searched() const;   // ThreadPool
+u64 tb_hits() const;
 ```
+
+**Two explicit loops rather than one `accumulate` over a pointer-to-member**, which is what this
+used to be. The counters became private when `Worker` stopped befriending `ThreadPool`, so the
+aggregation reads them through accessors -- and a *pointer* to one of those is a runtime value
+the compiler need not devirtualise, where a direct call inlines to the same relaxed load the
+member access was. `nodes_searched()` is reached from `check_time`, which runs once in every 512
+nodes and then loops over every thread, so it is not a path to hand an indirect call.
 
 **The races are intentional and are typed rather than avoided.** A transposition entry can be
 read while another thread writes it, and a torn entry is possible. Making that safe would
@@ -76,6 +84,16 @@ changes -- creating a thread per search would put thread creation on the move la
 `ThreadPool::start_thinking` copies the root position into every worker, hands each the same
 limits, and releases them together. Every worker gets its own copy of the position and its
 own `StateInfo` chain, because `do_move` mutates both.
+
+**The setup job is handed over as one pointer, and that is a heap allocation avoided.** The five
+things a worker needs to be given a root position travel as a `RootSetup` -- a bundle of
+pointers, which it must stay. `run_custom_job` takes a `std::function<void()>`, and libstdc++
+holds a callable inline only while it fits a **16-byte buffer**; a closure over the five
+referents is 48 bytes, so each worker's setup job became an `operator new` and a matching free.
+One pair per thread per `go`, on the move-latency path, before any thread starts searching.
+Capturing one pointer to the bundle plus the thread pointer is 16 bytes and fits. The bundle
+lives on the caller's frame and every job reading it has finished by the wait that follows,
+which is the same lifetime the references had.
 
 `stop` is the one flag everything watches. Time management, a `stop` command, and a thread
 finding a mate all set it.

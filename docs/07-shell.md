@@ -73,6 +73,15 @@ would hand a host-allocated block to the engine's fallback `free` -- heap corrup
 diagnostic. A seam that owns memory is unregistered on a different schedule from one that owns a
 callback, and this is the one place the two rules meet.
 
+**And the rule has an assertion behind it now.** `arena.h`'s `arena_alloc` / `arena_free`
+wrappers count blocks acquired and released, and `set_arena` asserts the count is zero before it
+swaps -- so replacing an allocator
+while it still owns memory fails loudly rather than corrupting a heap on some later free. The
+counters exist unconditionally and only the call sites are `#ifndef NDEBUG`: whether a symbol
+*exists* must not depend on `NDEBUG`, or a release build and a debug build of the same tree
+disagree about the ABI, and `make build debug=yes` over a release tree stops linking. A release
+build emits no counting at all -- verified by `objdump`, not by reading.
+
 The seams are function pointers rather than closures, so a host that needs per-instance state
 passes it as the `void* ctx` the struct carries -- the worker set uses the pool itself, which
 spares it a global of its own. The parallel-for has no `ctx` and so needs one: `hostPool` in
