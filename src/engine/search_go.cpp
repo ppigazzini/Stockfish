@@ -81,7 +81,7 @@ Context* context() {
         // One NUMA node, one worker. The token defaults to index 0 and the map
         // must carry that entry: Worker's first initialiser reaches it through
         // sharedHistories.at(), which throws if the entry is absent.
-        c->sharedHistories.try_emplace(HistoryBankIndex(0), 1);
+        c->sharedHistories.try_emplace(HistoryBankIndex(0), PowerOfTwo::ceil(1));
 
         // Exercise the arena AND the parallel-for: resize allocates through the
         // former and clears through the latter, which runs inline when no host
@@ -104,15 +104,6 @@ Context* context() {
     return ctx;
 }
 
-// A loop rather than ThreadPool's msb form, which would pull bitboard.h in for
-// one call made once per rebuild.
-usize next_power_of_two(usize count) {
-    usize p = 1;
-    while (p < count)
-        p <<= 1;
-    return p;
-}
-
 // (Re)build the workers and the SharedState they share.
 //
 // The histories are sized from the worker count and indexed by masking with
@@ -131,7 +122,7 @@ void build_workers(Context& c, usize n) {
     c.workers.clear();
 
     c.sharedHistories.clear();
-    c.sharedHistories.try_emplace(HistoryBankIndex(0), next_power_of_two(n));
+    c.sharedHistories.try_emplace(HistoryBankIndex(0), PowerOfTwo::ceil(n));
 
     c.shared = std::make_unique<SharedState>(c.options, c.tt, c.sharedHistories, c.stop,
                                              c.increaseDepth, c.host);
