@@ -220,6 +220,23 @@ so it is not the file boundary either.
 So: move templates whose instantiations all live in one unit; leave non-template bodies in the
 header unless the measurement says otherwise.
 
+**Do not read for candidates by eye -- let the compiler name them.** A template instantiated in
+one translation unit leaves a weak symbol in exactly one object file, so build with LTO off and
+ask which weak symbols have a single definer:
+
+```sh
+for o in *.o; do nm --defined-only -C "$o" | awk -v o="$o" '$2=="W"||$2=="V"{   $1="";$2="";print o"	"substr($0,3)}'; done   | awk -F'	' '{c[$2]++; own[$2]=$1} END{for (k in c) if (c[k]==1) print own[k]"	"k}'
+```
+
+`tests/textequal.sh` shows how to get LTO-free objects: `EXTRACXXFLAGS=-fno-lto` does not work,
+because `src/Makefile` appends `-flto` after it, so the gates build through a `COMPCXX` wrapper
+that strips the flag.
+
+A single definer makes a template a candidate and nothing more. Ask three questions before
+moving one: is it on the per-node path, does an explicit instantiation pin argument types a
+future caller would have to add to, and does anything but the file it already lives beside
+include the header?
+
 ### Which lane is binding
 
 `perfbudget.sh` runs at plain `-O3` or with `--pgo`, and on header restructuring the two do
