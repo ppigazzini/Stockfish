@@ -16,6 +16,7 @@ Stdlib only. No pip install, no venv.
 """
 
 import argparse
+import ast
 import os
 import queue
 import re
@@ -64,6 +65,12 @@ class Engine:
 
     def __init__(self, binary=DEFAULT_BIN, echo=False, transcript=None):
         self.binary = Path(binary).resolve()
+        # The Makefile writes stockfish.exe on Windows and this default carries
+        # no suffix, so an msys2 run died naming a path that was right except
+        # for four characters. Fall back rather than branch on the platform:
+        # the question is which file is there, not which OS this is.
+        if not self.binary.exists() and self.binary.with_suffix(".exe").exists():
+            self.binary = self.binary.with_suffix(".exe")
         if not self.binary.exists():
             die(f"no binary at {self.binary} -- run: cd src && make -j build ARCH=x86-64-avx2")
         self.echo = echo
@@ -430,6 +437,114 @@ def cmd_perft(a):
     return 1 if fails else 0
 
 
+def _arith(node, i):
+    """Evaluate the integer arithmetic reprosearch.sh writes, and nothing else.
+
+    NOT eval(). The expression is read out of a shell script, and eval() on
+    anything read from a file is a code path with no bound on what it will run.
+    This walks five operators and one name; everything else is a hard error, so
+    a reprosearch.sh that grows an expression this cannot handle stops the gate
+    rather than being silently executed by it.
+    """
+    if isinstance(node, ast.Expression):
+        return _arith(node.body, i)
+    if isinstance(node, ast.Constant) and isinstance(node.value, int):
+        return node.value
+    if isinstance(node, ast.Name) and node.id == "i":
+        return i
+    if isinstance(node, ast.BinOp):
+        lhs, rhs = _arith(node.left, i), _arith(node.right, i)
+        op = type(node.op)
+        if op is ast.Mult:
+            return lhs * rhs
+        if op is ast.FloorDiv:
+            return lhs // rhs
+        if op is ast.Pow:
+            return lhs**rhs
+        if op is ast.Add:
+            return lhs + rhs
+        if op is ast.Sub:
+            return lhs - rhs
+    die(f"reprosearch.sh's node budget is not arithmetic this evaluates: {ast.dump(node)}")
+
+
+def cmd_repro(a):
+    """Run tests/reprosearch.sh's check without expect.
+
+    The claim is that a search repeats: the same `go nodes N` from the same
+    position must retire the same count whether or not a ucinewgame preceded
+    it, so across the gate's four searches every distinct count appears an
+    EVEN number of times. An odd one is state carried across ucinewgame.
+
+    The node budgets and the command sequence are READ OUT OF reprosearch.sh,
+    never copied here, for the reason cmd_perft states: a second transcription
+    is a second thing to rot. What is parsed is the loop bound, the arithmetic
+    that makes each round's budget, and the `send` lines of the expect script
+    in the order they appear.
+    """
+    src = (REPO / "tests" / "reprosearch.sh").read_text()
+
+    m = re.search(r"for i in `seq 1 (\d+)`", src)
+    if not m:
+        die("could not find reprosearch.sh's round count")
+    rounds = int(m.group(1))
+
+    m = re.search(r"nodes=\$\(\((.+?)\)\)", src)
+    if not m:
+        die("could not find reprosearch.sh's node budget expression")
+    # Bash and Python agree on ** and on left-to-right * and /; the one
+    # difference is that bash's / truncates, so it becomes //.
+    try:
+        budget = ast.parse(m.group(1).replace("/", "//"), mode="eval")
+    except SyntaxError:
+        die(f"could not parse reprosearch.sh's node budget: {m.group(1)}")
+
+    # The expect heredoc, in order. `position` and `ucinewgame` set the state,
+    # `go nodes` is the measurement. Every line is taken and then filtered,
+    # rather than matched by prefix: expect's heredoc escapes the dollar as
+    # `\$nodes` and ends each command with a literal `\n`, and a prefix pattern
+    # that stops at the first backslash silently captures `go nodes ` with no
+    # budget at all -- which the engine answers by exiting.
+    seq = []
+    for raw in re.findall(r'^\s*send "([^"]*)"', src, re.M):
+        cmd = raw.replace("\\n", "").replace("\\$", "$").strip()
+        if cmd.startswith(("position", "ucinewgame", "go nodes")):
+            seq.append(cmd)
+    if not seq:
+        die("could not parse reprosearch.sh's command sequence")
+    if sum(c.startswith("go nodes") for c in seq) < 2:
+        die(f"reprosearch.sh has fewer than two searches to compare: {seq}")
+
+    print(f"repro: {rounds} rounds, {len(seq)} commands per round, budget = {m.group(1)}")
+
+    fails = 0
+    with Engine(a.bin, echo=a.verbose) as eng:
+        eng.send("uci")
+        for i in range(1, rounds + 1):
+            nodes = _arith(budget, i)
+            counts = {}
+            for cmd in seq:
+                out = eng.send(cmd.replace("$nodes", str(nodes)), timeout=a.timeout)
+                for ln in out:
+                    for n in re.findall(r"\bnodes (\d+)", ln):
+                        counts[n] = counts.get(n, 0) + 1
+            # An empty round compared nothing, and the even test is vacuously
+            # satisfied by it -- which is the failure reprosearch.sh records
+            # having been bitten by.
+            if not counts:
+                print(f"  FAIL {nodes:>10} nodes -- the engine reported no node counts")
+                fails += 1
+                continue
+            odd = sorted(k for k, v in counts.items() if v % 2)
+            if odd:
+                print(f"  FAIL {nodes:>10} nodes -- odd counts: {', '.join(odd)}")
+                fails += 1
+            elif a.verbose:
+                print(f"  OK   {nodes:>10} nodes -- {len(counts)} distinct, all even")
+    print(f"repro: {rounds - fails}/{rounds} rounds reproducible")
+    return 1 if fails else 0
+
+
 def cmd_during(a):
     """Send commands to a LIVE search and require the engine to still answer.
 
@@ -536,6 +651,10 @@ def main():
     )
     s.add_argument("--timeout", type=float, default=900.0)
     s.set_defaults(fn=cmd_perft)
+
+    s = sub.add_parser("repro", help="tests/reprosearch.sh's check, without needing expect")
+    s.add_argument("--timeout", type=float, default=120.0)
+    s.set_defaults(fn=cmd_repro)
 
     s = sub.add_parser("during", help="send commands to a live search; detect a wedge")
     s.add_argument("--search", default="go infinite")

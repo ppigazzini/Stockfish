@@ -966,6 +966,35 @@ if selected reprosearch; then
     ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
 fi
 
+row repro-driver
+if selected repro-driver; then
+    # The same mutation as the row above, through the driver instead of expect.
+    #
+    # THIS ROW EXISTS BECAUSE THE ONE ABOVE SKIPS. reprosearch.sh needs expect,
+    # this box has none, and a control that reports SKIPPED forever has never
+    # shown that anything can go red -- which is the confusion this file exists
+    # to prevent one level up. `uci_driver.py repro` reads its rounds, its node
+    # budgets and its command sequence out of reprosearch.sh, so the two cannot
+    # drift, and it needs nothing but python3. That is also what makes it the
+    # check a Windows or ARM runner can carry.
+    echo "negative-control: repro [drv] -- ucinewgame leaves the TT warm"
+    mutate src/shell/engine.cpp \
+        '    tt.clear();
+    threads.clear();' \
+        '    threads.clear();'
+    if ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1; then
+        if ( cd src && python3 ../tests/uci_driver.py repro ) >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- node counts still repeated across ucinewgame"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+    else
+        restore; die "the repro-driver mutant did not compile"
+    fi
+    restore
+    ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1
+fi
+
 # ------------------------------------------------------------------- iwyu
 
 row iwyu
