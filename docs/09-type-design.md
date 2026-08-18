@@ -100,7 +100,9 @@ done
 
 `./tests/negative_control.sh b5-keyspace` runs the same three probes as a gate row, plus the
 legal form -- because a row that only checked the rejections would pass if the header stopped
-compiling at all.
+compiling at all. `b13-colour` is the same shape for `NonPawnKey<Color>`, and `b13-dirtythreat`
+for the `explicit` on `DirtyThreat(u32)`: each requires the illegal form to be refused **and**
+the legal ones to build.
 
 The algebra is deliberately tiny: produce, store, pass, compare against a key of the same
 space, mask to an index, truncate to a tag. **There is no `operator^`.** Keys are *built* by
@@ -115,15 +117,23 @@ A public xor would therefore let any space absorb any other's material -- the mi
 exists to prevent. Construction stays on the raw `u64` inside `position.cpp`, which is the only
 file that reads one, and the type begins at the accessors.
 
-Three limits. **Masking does not distinguish spaces**: `key & mask` yields an index for any of
+Two limits. **Masking does not distinguish spaces**: `key & mask` yields an index for any of
 them, because that is how the history tables are indexed, so a swap at an indexing site still
-compiles. **The two non-pawn keys share `NonPawnKey`**, one type for both colours, so
-`non_pawn_key(WHITE)` where `non_pawn_key(BLACK)` was meant compiles -- the type separates
-spaces, and the colour is an argument, not a space. And **the transposition key is a bare
-`Key`**: `posKey` is live across `search()`, which is the shape the cost rule below warns
-about, so wrapping it is an experiment to re-run with `tests/perfbudget.sh --pgo` under both
-compilers rather than a tidy-up to apply. The guarantee that matters survives anyway, since
-passing a typed key where the bare one belongs is still rejected.
+compiles. And **the transposition key is a bare `Key`**: `posKey` is live across `search()`,
+which is the shape the cost rule below warns about, so wrapping it is an experiment to re-run
+with `tests/perfbudget.sh --pgo` under both compilers rather than a tidy-up to apply. The
+guarantee that matters survives anyway, since passing a typed key where the bare one belongs is
+still rejected.
+
+**The colour used to be a third**, and it is the one that shows what the fix costs. The two
+non-pawn keys shared `NonPawnKey`, so `non_pawn_key(WHITE)` where `BLACK` was meant compiled --
+the type separated spaces and the colour was an argument. `KeySpace` has `NonPawnWhite` and
+`NonPawnBlack` now and `NonPawnKey<Color>` picks between them by adding the colour to the first,
+which a `static_assert` holds adjacent. **The reader lost a parameter rather than gaining one**:
+`HistoryBundle::nonpawn_correction` was already `template<Color c>` and already selected the
+matching field with `if constexpr`, so the key side was the half that had not been discriminated
+yet. `tests/negative_control.sh`'s `b13-colour` row requires the swap to be rejected and both
+legal forms to compile.
 
 **`using Key = u64` is the transposition key alone**, reached through `key()` and
 `prefetch_key()`. `Bitboard` is the same underlying type, so a transposition key where a
