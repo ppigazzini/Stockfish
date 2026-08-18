@@ -1,0 +1,156 @@
+name: Platform battery
+
+# WHAT THIS PROVES. That the engine SEARCHES CORRECTLY on a target that is not
+# x86-64 Linux -- the same node counts, the same movegen, the same UCI answers.
+#
+# WHY IT EXISTS. `arm_compilation.yml`, `universal_compilation.yml` and
+# `wasm_compilation.yml` prove the tree BUILDS elsewhere, and `tests.yml` runs
+# `signature.sh` on Windows arm64, Windows Mingw, macOS, Android, ppc64 and
+# loongarch64 -- so the bench anchor already travels. Nothing else does.
+# `perft.sh`, `reprosearch.sh`, `instrumented.py` and `malformed.sh` are
+# x86-64-Linux-only, and the three subsystems this branch changed most -- shm,
+# numa, thread_native -- are the three that diverge most across platforms.
+#
+# It runs BEFORE the header decompositions rather than after, so that anything
+# it finds later is attributable to them rather than pre-existing.
+#
+# WHAT IT CANNOT SEE. Performance. Every figure is per-host by construction and
+# a second host's numbers would not pool with the first's; this lane asserts
+# behaviour and nothing else.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  Battery:
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 45
+    # COMPCXX names the compiler BINARY and COMP its family, both as job env,
+    # which is how tests.yml drives the same targets. Passing COMP= on the make
+    # line instead is what broke the Windows arm64 build: the Makefile answers
+    # COMP=clang with CXX=x86_64-w64-mingw32-clang++ whenever the target is
+    # Windows, and there is no such binary in an arm64 msys. COMPCXX overrides
+    # it, and the Makefile reads both straight out of the environment.
+    env:
+      COMPCXX: ${{ matrix.config.compiler }}
+      COMP: ${{ matrix.config.comp }}
+    strategy:
+      # Two targets that fail for different reasons. Stopping the second
+      # because the first went red would hide which of the two it was.
+      fail-fast: false
+      matrix:
+        config:
+          - name: Linux arm64 GCC
+            os: ubuntu-22.04-arm
+            compiler: g++
+            comp: gcc
+            shell: bash
+            python: python3
+            # Native ARM with a full toolchain, so the two checks that need one
+            # run here and only here.
+            full: true
+          - name: Windows 11 arm64 Clang
+            os: windows-11-arm
+            compiler: clang++
+            comp: clang
+            msys_sys: clangarm64
+            msys_env: clang-aarch64-clang
+            shell: msys2 {0}
+            # msys2 ships the interpreter as `python`; there is no python3 on
+            # PATH, and the driver is most of what this target runs.
+            python: python
+            full: false
+    defaults:
+      run:
+        working-directory: src
+        shell: ${{ matrix.config.shell }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The bench anchor is read out of the commit history, so the history
+          # has to be there.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # `python` is the load-bearing addition: two of the four checks below are
+      # the driver, which is what makes them portable in the first place.
+      - name: Setup msys and install required packages
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        with:
+          msystem: ${{ matrix.config.msys_sys }}
+          install: mingw-w64-${{ matrix.config.msys_env }} make git python
+
+      - name: Download the used network from the fishtest framework
+        run: make net
+
+      - name: Extract the bench number from the commit history
+        run: |
+          # See tests.yml for why this is one `git log` and an anchored regex,
+          # captured before it is matched rather than piped into `grep -m1`.
+          history=$(git log --format=%b)
+          benchref=$(grep -m1 -oE '^Bench: *[1-9][0-9]{5,7}$' <<< "$history" | grep -oE '[0-9]+' || true)
+          [ -n "$benchref" ] || { echo "no Bench: footer found in the history"; exit 1; }
+          echo "benchref=$benchref" >> "$GITHUB_ENV"
+          echo "Reference bench: $benchref"
+
+      - name: Build
+        run: make -j4 build ARCH=armv8
+
+      - name: Bench signature
+        run: ../tests/signature.sh "$benchref"
+
+      # The driver rather than perft.sh and reprosearch.sh: both of those drive
+      # the engine through `expect`, which is not the thing being tested and is
+      # one more dependency per target. The driver speaks UCI directly and reads
+      # its positions, counts, rounds and node budgets OUT OF those two scripts,
+      # so a change to either reaches this lane without being copied into it.
+      - name: Movegen, without expect
+        run: ${{ matrix.config.python }} ../tests/uci_driver.py perft
+
+      - name: Search reproducibility, without expect
+        run: ${{ matrix.config.python }} ../tests/uci_driver.py repro
+
+      # THE LAST TWO ARE LINUX-ONLY AND THE REASONS DIFFER. malformed.sh builds
+      # under AddressSanitizer and UBSan, and Mingw-w64 ships no runtime for
+      # either. instrumented.py is upstream's harness and no lane has ever run
+      # it off Linux, so putting it on a new target in the same commit that adds
+      # the target would leave two things to explain if it went red.
+      #
+      # What the Windows half therefore asserts is the anchor and the driver:
+      # the bench signature, the movegen, and that the search repeats across
+      # ucinewgame. That is the part carried by plain subprocess pipes, which is
+      # what makes it portable in the first place.
+      - name: UCI surface
+        if: matrix.config.full
+        run: ${{ matrix.config.python }} ../tests/instrumented.py --none ./stockfish
+
+      # NINE OF THE SIXTEEN FIXTURES ARE BUILT FROM A REAL 3-MAN TABLE, so
+      # without the corpus the gate exits 2 -- SKIPPED, which is a step failure
+      # here and should be: seven refusals out of sixteen is not the claim this
+      # lane makes. golden.yml caches the same way and for the same reason;
+      # keyed on the fetch script, since its stem list is what decides what
+      # lands in the directory.
+      - name: Cache the 3-man tablebases
+        if: matrix.config.full
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/syzygy-3man
+          key: syzygy-3man-${{ hashFiles('tests/tbfetch.sh') }}
+
+      - name: Fetch the 3-man tablebases
+        if: matrix.config.full
+        working-directory: ${{ github.workspace }}
+        run: ./tests/tbfetch.sh --men 3
+
+      # --arch, because malformed.sh defaults to x86-64-avx2 and answers an
+      # arm64 host with `unrecognized command-line option -msse2`.
+      - name: Malformed tablebase refusal
+        if: matrix.config.full
+        working-directory: ${{ github.workspace }}
+        run: ./tests/malformed.sh --arch armv8
