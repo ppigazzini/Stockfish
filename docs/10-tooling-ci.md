@@ -185,6 +185,41 @@ callgrind implements no AVX-512 and dies on the first instruction it does not kn
 instruction axis stops at avx2/bmi2 -- below the tier a player builds. The script refuses
 such an `--arch` rather than producing a number.
 
+### Moving a body out of a header is not free, and its size barely matters
+
+**This is the trap a decomposition walks into, and it was measured on this tree.** Take a
+function that is defined in a header, move it into a `.cpp`, and the compiler must now emit it
+where before it could inline it away. That is a change to the whole-program inliner's budget,
+and with LTO on the budget is global -- so what comes back different is not the moved code but
+whatever the inliner decided to stop inlining elsewhere, which on this tree is
+`Search::Worker::search`.
+
+| what moved | search, gcc 13.3 `x86-64-avx2` |
+|---|---|
+| A/A control, same revision both sides | +286 Ir |
+| two once-per-process functions out of `shm_unix.h` | **+175,341 Ir (+0.0133%)** |
+| a whole 137-line mapper out of `tbprobe.cpp` | **+303,067 Ir (+0.0229%)** |
+
+Neither change moves code the bench executes -- the bench opens no tablebase and reads no
+shared-memory root -- and `textequal.sh` with LTO off reports **no symbol body changed** across
+the second one. Folding that mapper back into a single translation unit left the cost unchanged,
+so it is not the file boundary either.
+
+**Three consequences for anyone restructuring a header here.**
+
+1. **Measure the bench list even when the change has nothing to do with it.** A slice whose
+   claim is about tablebase code still has to answer for a workload that never opens one.
+2. **The gate's tolerance is a noise allowance, not a budget.** 0.0133% passes and is still six
+   hundred times the A/A floor. A refactor that spends it has spent something.
+3. **Templates are the exception, and the reason is precise.** A template must be visible where
+   it is *instantiated*, not everywhere its class is named -- so a member template whose
+   instantiations all live in one translation unit can move into that unit and the compiler sees
+   the same code in the same place. Moving two such templates out of `numa.h` read flat or
+   better in all six cells.
+
+So: move templates whose instantiations all live in one unit; leave non-template bodies in the
+header unless the measurement says otherwise.
+
 ### Which lane is binding
 
 `perfbudget.sh` runs at plain `-O3` or with `--pgo`, and on header restructuring the two do
