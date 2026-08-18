@@ -81,7 +81,11 @@ inline Bitboard reverse_bb(Bitboard bb) {
 // word in one instruction: AArch64 (rbit) and 64-bit LoongArch (bitrev.d), both
 // selected by USE_HYPERBOLA_QUINT above.
 // See https://www.chessprogramming.org/Hyperbola_Quintessence
-struct Magic {
+// Named for what it is rather than for the slot it fills. `Magic` used to name
+// this and the multiply-and-shift layout below, selected by a macro, so the
+// name did not identify the type: a grep returned two structurally different
+// objects, and a debugger showed whichever the build chose.
+struct HyperbolaMagic {
     // For rooks: file attacks, rank attacks. For bishops: diagonal/antidiagonal
     Bitboard mask1, mask2;
 
@@ -96,6 +100,8 @@ struct Magic {
         return hyperbola(s, occupied, mask1) | hyperbola(s, occupied, mask2);
     }
 };
+
+using Magic = HyperbolaMagic;
 
 const Magic& magic(Square s, PieceType pt);
 
@@ -154,8 +160,9 @@ extern const std::array<DualMagic, SQUARE_NB> DualMagics;
 inline const DualMagic&                       dual_magic(Square s) { return DualMagics[s]; }
 
 #else
-// Magic holds all magic bitboards relevant data for a single square
-struct Magic {
+// BitboardMagic holds all magic bitboards relevant data for a single square.
+// See HyperbolaMagic above for why the two layouts have two names.
+struct BitboardMagic {
     Bitboard  mask;
     Bitboard* attacks;
     Bitboard  magic;
@@ -171,10 +178,15 @@ struct Magic {
         return (lo * unsigned(magic) ^ hi * unsigned(magic >> 32)) >> shift;
     }
 
+    // Takes a Square it does not use, to match HyperbolaMagic::attacks_bb.
+    // The attribute is honest and the parameter is still interface shaped by a
+    // macro.
     Bitboard attacks_bb([[maybe_unused]] Square s, Bitboard occupied) const {
         return attacks[index(occupied)];
     }
 };
+
+using Magic = BitboardMagic;
 
 const Magic& magic(Square s, PieceType pt);
 
