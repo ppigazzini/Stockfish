@@ -189,3 +189,28 @@ ls -l src/stockfish src/*.nnue
 
 **The engine resolves `EvalFile` relative to the working directory.** Running from anywhere
 but `src/` finds no external net and produces an unrelated but entirely plausible number.
+
+### Reading the file is a hot path, and the loader is written like one
+
+`nnue_common.h`'s `read_little_endian<IntType>` runs once per weight of every affine layer, so
+what looks like a four-line helper is the inner loop of a net load. Two properties of it are
+deliberate and neither is obvious.
+
+**The bytes land in a `u8[]` and the result is `memcpy`'d out.** `IsLittleEndian` is a runtime
+bool rather than a constant, so reading straight into the result on one arm compiled *two*
+`stream.read` call sites; one array serves both, and the arms differ only in how they assemble
+it.
+
+**That array is zero-initialised and the result is not.** A short read writes fewer bytes than
+asked and sets `failbit`, leaving whatever the storage held -- and reading the object back is
+then an indeterminate-value read. Zeroing a byte array before the read makes those bytes 0 with
+no branch and no test of the stream, which is what a test would have cost: `stream`'s
+`operator bool` calls `fail()`, and `fail()` lives in the **virtual** base `basic_ios`, so
+reaching it needs a vtable vbase-offset traversal. `gcount()` is a plain member of
+`basic_istream` and would have been cheaper; neither is needed.
+
+The reason to care is not tidiness. `read_leb_128` takes this result as `bytes_left` and spends
+it as a byte budget **before** it looks at the stream, so on a truncated net the decode loop was
+bounded by an indeterminate number. Zeroing the *result* instead was measured twice and rejected
+twice, at 2.9M search instructions and 12.8M startup instructions -- it perturbs what gets
+inlined in this header. Zeroing the buffer is a different shape and pays for itself under gcc.
