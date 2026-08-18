@@ -299,6 +299,15 @@ binary, which carries its stamp.
 
 A green run narrows what `perfbudget.sh` has to catch. It does not replace it.
 
+**It proves nothing about a change to a SIGNATURE**, which is the limit to know before reaching
+for it on a typing change. A parameter's type is part of the mangled name, so replacing a `bool`
+parameter with a scoped enum renames every symbol that mentions it -- including the ones a caller
+instantiated, `std::stable_sort`'s comparator chain among them. The gate matches bodies by name,
+so each renamed symbol appears once under *only in base* and once under *only in head*, and its
+body is never compared. Typing two `bool` parameters in one prototype renamed 14 symbols here and
+left the verdict at DIFFERS with nothing established either way. Use `perfbudget.sh` for those;
+`textequal.sh` answers only for changes that keep every signature byte-for-byte.
+
 **The trailing run of alignment padding is dropped from each symbol**, and the word trailing is
 load-bearing. objdump attributes the nops that align the NEXT function to the end of the current
 one, so adding or removing a function anywhere shifts what follows it against a 16-byte boundary
