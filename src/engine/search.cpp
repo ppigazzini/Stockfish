@@ -836,8 +836,8 @@ void Search::Worker::clear() {
     captureHistory.fill(-742);
 
     // Each thread is responsible for clearing their part of shared history
-    sharedHistory.correctionHistory.clear_range(-5, numaThreadIdx, numaTotal);
-    sharedHistory.pawnHistory.clear_range(-1338, numaThreadIdx, numaTotal);
+    sharedHistory.correctionHistory.clear_range(-5, {numaThreadIdx, numaTotal});
+    sharedHistory.pawnHistory.clear_range(-1338, {numaThreadIdx, numaTotal});
 
     ttMoveHistory = 0;
 
@@ -865,7 +865,7 @@ void Search::Worker::clear() {
     else
     {
         constexpr usize rows           = 2 * 2 * PIECE_NB;
-        const auto [rowStart, rowEnd]  = shared_slice(rows, numaThreadIdx, numaTotal);
+        const auto [rowStart, rowEnd]  = shared_slice(rows, {numaThreadIdx, numaTotal});
 
         usize row = 0;
         for (InCheck inCheck : {InCheck::No, InCheck::Yes})

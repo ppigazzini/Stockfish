@@ -48,15 +48,25 @@ static_assert((PAWN_HISTORY_BASE_SIZE & (PAWN_HISTORY_BASE_SIZE - 1)) == 0,
 static_assert((CORRHIST_BASE_SIZE & (CORRHIST_BASE_SIZE - 1)) == 0,
               "CORRHIST_BASE_SIZE has to be a power of 2");
 
-// Cut [0, count) into numaTotal contiguous slices and return the half-open
-// bounds of slice threadIdx. The whole range is covered only when every index
-// in [0, numaTotal) asks exactly once with the same numaTotal; a missing index
-// leaves its slice untouched. A slice is empty when numaTotal exceeds count,
+// Which worker of how many is asking for a slice. Two adjacent usizes as
+// parameters, transposed, hand every worker a different slice and clear a
+// different part of the table -- and the slice arithmetic keeps working, so
+// nothing refuses it. They travel as one value with two names instead.
+struct WorkerShare {
+    usize index;
+    usize total;
+};
+
+// Cut [0, count) into share.total contiguous slices and return the half-open
+// bounds of slice share.index. The whole range is covered only when every index
+// in [0, share.total) asks exactly once with the same total; a missing index
+// leaves its slice untouched. A slice is empty when the total exceeds count,
 // which partitions the range just as correctly.
-inline std::pair<usize, usize> shared_slice(usize count, usize threadIdx, usize numaTotal) {
-    assert(threadIdx < numaTotal);
-    return {u64(threadIdx) * count / numaTotal,
-            threadIdx + 1 == numaTotal ? count : u64(threadIdx + 1) * count / numaTotal};
+inline std::pair<usize, usize> shared_slice(usize count, WorkerShare share) {
+    assert(share.index < share.total);
+    return {u64(share.index) * count / share.total,
+            share.index + 1 == share.total ? count
+                                           : u64(share.index + 1) * count / share.total};
 }
 
 // StatsEntry is the container of various numerical statistics. We use a class
@@ -118,12 +128,12 @@ struct DynStats {
         data = make_arena_unique<T[]>(size);
     }
     // Fill this thread's slice of the array with `value` -- not with zero; the
-    // histories start at a tuned non-zero level. The slice is cut from threadIdx
-    // and numaTotal alone, so the whole array is cleared only when every index
-    // in [0, numaTotal) calls exactly once with the same numaTotal; a missing
-    // index leaves that range holding the previous game's statistics.
-    void clear_range(int value, usize threadIdx, usize numaTotal) {
-        auto [start, end] = shared_slice(size, threadIdx, numaTotal);
+    // histories start at a tuned non-zero level. The slice is cut from the share
+    // alone, so the whole array is cleared only when every index in
+    // [0, share.total) calls exactly once with the same total; a missing index
+    // leaves that range holding the previous game's statistics.
+    void clear_range(int value, WorkerShare share) {
+        auto [start, end] = shared_slice(size, share);
 
         while (start < end)
             data[start++].fill(value);
