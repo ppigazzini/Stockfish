@@ -321,6 +321,25 @@ if selected docslint-internal; then
     restore
 fi
 
+row docslint-selector static
+if selected docslint-selector; then
+    echo "negative-control: docslint    -- the two selector tables out of step"
+    # Drop the row from the PAGE, not from AGENTS.md. That is the direction the
+    # defect actually took: the six axes were added to AGENTS.md and the page's
+    # copy kept five, under a sentence saying there were five because there were
+    # five questions.
+    mutate docs/10-tooling-ci.md \
+        '| "this scales" | `tests/npsthreads.sh` | every other axis runs one thread, so a contention change is invisible to all five |
+' \
+        ''
+    if ./tests/docslint.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a selector table missing an axis passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 row fingerprint
 if selected fingerprint; then
     if ! command -v valgrind >/dev/null; then
