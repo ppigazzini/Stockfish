@@ -57,6 +57,21 @@ enum WDLScore {
     WDLWin         = 2,   // Win
 };
 
+// The two flags a root probe takes, as types rather than as adjacent bools.
+// They were `bool rule50, bool rankDTZ` in root_probe's parameter list, where
+// the only thing distinguishing them was position: transposing them compiles,
+// and both inversions are silent -- rule50 changes the verdict a table gives,
+// rankDTZ changes whether DTZ ranking happens at all.
+enum class Rule50 : bool {
+    Ignore,
+    Apply
+};
+
+enum class RankDTZ : bool {
+    No,
+    Yes
+};
+
 // Possible states after a probing operation
 enum ProbeState {
     FAIL              = 0,   // Probe failed (missing file table)
@@ -94,7 +109,7 @@ struct TbSource {
                               const SearchOptions&         options,
                               Position&                    pos,
                               Search::RootMoves&           rootMoves,
-                              bool                         rankDTZ,
+                              RankDTZ                      rankDTZ,
                               const std::function<bool()>& time_abort);
 };
 
