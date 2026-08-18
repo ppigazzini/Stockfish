@@ -90,6 +90,10 @@ jobs:
     name: WASM compilation
     if: ${{ always() }}
     uses: ./.github/workflows/wasm_compilation.yml
+  PlatformBattery:
+    name: Platform battery
+    if: ${{ always() }}
+    uses: ./.github/workflows/platformbattery.yml
   ARMCompilation:
     name: Android builds
     needs: [Matrix]
