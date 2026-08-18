@@ -95,7 +95,7 @@ Context* context() {
         c->updates.onUpdateNoMoves = [](const InfoShort&) {};
         c->updates.onUpdateFull    = [](const InfoFull&) {};
         c->updates.onIter          = [](const InfoIteration&) {};
-        c->updates.onBestmove      = [](std::string_view, std::string_view) {};
+        c->updates.onBestmove      = [](const BestMove&) {};
         c->updates.onStart         = []() {};
 
         return c;
