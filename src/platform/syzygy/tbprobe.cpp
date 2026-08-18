@@ -322,6 +322,21 @@ static_assert(SymCount == usize(1) << 12,
 //
 // NoFastLen cannot collide with a length, which is base64[]'s own index and so
 // below 64: maxSymLen is refused at 64 or above.
+//
+// TWELVE IS NEAR A KNEE, NOT A ROUND NUMBER. The fill below takes a length only
+// while `i + minSymLen <= lenTabBits`, so the cap decides how much of the
+// alphabet gets a one-load answer and how much falls to the scan. Measured on
+// the 5-man corpus, where a typical table is minSymLen 5 and maxSymLen 18, the
+// share of buckets left NoFastLen is 22% at 12 bits, 41% at 10 and 72% at 8 --
+// and an escape is an unpredictable branch, which is the whole thing this table
+// exists to remove. Taking the cap to 8 measured 2.5x the mispredicts and 12%
+// more instructions in this reader for 39% fewer L1 read misses.
+//
+// Shrinking the ENTRY instead of the bucket count keeps the coverage exactly and
+// still loses: four bits hold the index (minSymLen is refused at 0, so the
+// largest is LenTabMaxBits - 1), and two buckets per byte measured 26% fewer
+// read misses at 27% more instructions, because the nibble extract is about four
+// instructions in a loop whose body is about twenty. Do not re-derive either.
 constexpr int LenTabMaxBits = 12;
 constexpr u8  NoFastLen     = 0xFF;
 
