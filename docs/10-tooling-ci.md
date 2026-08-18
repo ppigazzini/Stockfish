@@ -85,7 +85,7 @@ passes.
 
 These answer "does it still cost the same?", which no value gate above can.
 
-**There are five of them because there are five questions.** Picking the wrong one produces a
+**There are six of them because there are six questions.** Picking the wrong one produces a
 confident wrong verdict, so pick by what the change CLAIMS:
 
 | the change claims | gate | why |
@@ -95,6 +95,7 @@ confident wrong verdict, so pick by what the change CLAIMS:
 | "this is faster" (an optimisation) | `tests/npsab.sh`, and probably fishtest | the instruction axis can report the wrong sign -- see below |
 | "this moved no cache line" | `tests/perfcounters.sh` | the only axis that measures a miss or a mispredict on the hardware, and the only counting axis that runs above AVX2 |
 | "and if it did, where?" | `tests/perfdecomp.sh` | per-component instructions, misses and mispredicts; deterministic, and a model |
+| "this scales" | `tests/npsthreads.sh` | every other axis runs one thread, so a contention change is invisible to all five |
 
 The last two divide one question between them. `perfcounters.sh` measures the hardware and
 cannot say which code moved; `perfdecomp.sh` says which code moved and is measuring a simulator.
@@ -1904,12 +1905,17 @@ naming it in upstream's orchestrator is neither upstreamable nor removable once 
 the same reusable lanes, so the two umbrellas cannot drift, and it adds the one gate
 `stockfish.yml` has no reason to carry -- the static half of the negative control.
 
-Three of the six by-hand gates have a reason a lane cannot fix: `npsab.sh`, `match.sh` and
-`perfcounters.sh` need an idle box or a PMU, and a hosted runner is neither. `fingerprint.sh`
-and `perfdecomp.sh` are callgrind and deterministic, so their excuse is cost rather than
-capability, and the rows of `negative_control.sh` that build the engine are the same. **Say
-which of the two it is when reading that list**, because "cannot run here" and "nobody wired
-it" look identical in a directory listing.
+Five of the seven by-hand gates have a reason a lane cannot fix. `npsab.sh`, `match.sh` and
+`npsthreads.sh` need an idle box -- `npsthreads.sh` needs real cores besides, and a hosted
+runner has two shared vCPUs, so a scaling curve taken there describes the hypervisor.
+`perfcounters.sh` needs a PMU, which a virtualised runner does not expose. `devcite.sh` reads the
+untracked working area, so a clone gives it an empty corpus and it would pass by having nothing
+to read -- the worst of the five, because that one looks green.
+
+`fingerprint.sh` and `perfdecomp.sh` are callgrind and deterministic, so their excuse is cost
+rather than capability, and the rows of `negative_control.sh` that build the engine are the
+same. **Say which of the two it is when reading that list**, because "cannot run here" and
+"nobody wired it" look identical in a directory listing.
 
 `fuzz.yml` hangs off the cron rather than the umbrella because it is not a merge gate. A
 workflow with only a `workflow_call` trigger and no caller is in the same position -- it cannot
