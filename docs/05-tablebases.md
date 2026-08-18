@@ -116,11 +116,18 @@ experiment and measure it: a per-length table that reads as free costs 5% when t
 materialises the address instead of folding it, and freeing a register gets it spent elsewhere
 rather than banked.
 
-**Neither cache-aware gate can probe, and that is a gap rather than a decision.**
-`tests/perfcounters.sh` and `tests/perfdecomp.sh` both drive the bench list, so the two axes
-that see a cache miss or a mispredict have no lane on the workload that reaches this code --
-the hole `perfbudget.sh --syzygy` closed for instructions, still open one axis over. A change
-here that trades footprint for instructions has to be measured by hand until a lane exists:
+**Both cache-aware gates can probe.** `tests/perfcounters.sh --syzygy DIR` and
+`tests/perfdecomp.sh --syzygy DIR` load the tables and search a position list that reaches this
+code, so a change here that trades footprint for instructions is measured on the axis that can
+see the trade rather than on the one that reports it with the wrong sign:
+
+```sh
+../tests/perfdecomp.sh   --syzygy resources/syzygy-345-plus5   # per-component Ir and misses
+../tests/perfcounters.sh --syzygy resources/syzygy-345-plus5   # the PMU, all tiers
+```
+
+The hand recipe below is what this page said to use before those options existed, and it is kept
+only because a reader may need one component in isolation rather than the gate's whole table:
 
 ```sh
 valgrind --tool=callgrind --cache-sim=yes --branch-sim=yes ./stockfish bench 16 1 14 <f> depth

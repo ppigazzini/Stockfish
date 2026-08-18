@@ -357,19 +357,28 @@ The hottest files reach no seam at all. Of the rest:
 
 - `tt.cpp` touches `arena()` and `parallel_for()` only in `resize` and `clear` -- allocation and
   the parallel wipe, never the probe path.
-- In `search.cpp` the only seam on the per-node path is `tb_source().probe_wdl`, and
-  `tbConfig.cardinality` short-circuits before it, so an engine with no tablebases never reaches
-  the call.
-- `worker_set()` is reached per node only through `check_time`, which decrements a counter and
-  returns on every call but one in at most 512.
+- In `search.cpp` the only seam on the per-node path is the tablebase probe, spelled
+  `host.tb.probe_wdl(host.tb.ctx, pos, &err)` and appearing once, and `tbConfig.cardinality`
+  short-circuits before it, so an engine with no tablebases never reaches the call.
+- The worker set is reached per node only through `check_time`, which decrements a counter and
+  returns on every call but one in at most 512. It is spelled `host.workers` and read in eleven
+  places, but the other ten are the root, the pool handoff and the info line.
+
+**The command above and the spellings differ, and both are current.** The getters it greps for
+survive in the seam definition units and in the composition root that takes the snapshot, which
+is what makes it a live check rather than one that reports a number by matching nothing; a
+`Worker` reaches the same seams through its unpacked `const Host&`, which is why the file names
+above spell them `host.<seam>`.
 
 **The limit.** With `SyzygyPath` set, `probe_wdl` is a live indirect call where upstream made a
 direct one, and **`bench` cannot see it** -- the bench list never probes, so a measurement there
 measures the guard rather than the call. Every performance gate in
 [10-tooling-ci.md](10-tooling-ci.md) drives `bench` by default, so none of them sets a
-`SyzygyPath` and none of them costs this seam. `perfbudget.sh --syzygy DIR` is the exception
-and the answer: it measures a probing workload instead of the bench list. A change to this seam
-or to the reader behind it quotes that cell, because every other cell is blind to it.
+`SyzygyPath` and none of them costs this seam. `--syzygy DIR` is the answer, and three gates
+take it -- `perfbudget.sh` for instructions, `perfdecomp.sh` and `perfcounters.sh` for the two
+axes that see a miss or a mispredict. Each swaps the bench list for a probing workload. A change
+to this seam or to the reader behind it quotes those cells, because every gate run without the
+option is blind to it.
 
 ### The include graph
 
@@ -423,8 +432,10 @@ including it. Four edges decide most of that closure:
   `RelaxedAtomic` and `mul_hi64` in `engine/basetypes.h`, `PRNG` in `engine/prng.h`,
   `sf_always_inline` and `stringify` in `engine/compiler.h`, which is the compiler header.
   The string helpers `platform/numa.h` needs are `platform/text.h`, and that matters because
-  `engine/search.h` includes `numa.h`: point `numa.h` at the drawer and every file including
-  `search.h` gets `CommandLine` and the logger, which no grep for a direct include reveals.
+  `numa.h` is a header the pool and the composition root include: point it at the drawer and
+  every file reaching it transitively gets `CommandLine` and the logger, which no grep for a
+  direct include reveals. **Not because `search.h` includes it** -- `search.h` names no NUMA
+  type at all, which the check above prints as nothing and this paragraph once contradicted.
 
   Both directions are cheap to check, and the second needs `-H` rather than grep:
 

@@ -5,6 +5,10 @@
 
 Audience: threading and NUMA.
 
+This page owns why the search is shaped around replication. The mechanism that replicates --
+`NumaConfig`, the policy parser, the shared mapping -- is
+[06-platform.md](06-platform.md)'s, and neither page repeats the other.
+
 ## Lazy SMP
 
 Every thread runs the same iterative deepening loop on the same root position. Nothing splits
