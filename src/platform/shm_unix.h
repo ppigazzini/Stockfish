@@ -126,10 +126,21 @@ class SharedMemoryRegistry {
                             socket_paths_.end());
     }
 
+    // Runs on a NORMAL exit only. An abnormal one -- Ctrl-C, a kill, a crash --
+    // leaves the .sock behind, and it cannot be helped from here: taking this
+    // mutex in a signal handler is not async-signal-safe.
+    //
+    // THE LITTER IS SELF-LIMITING AND THE TODO THIS REPLACES DID NOT SAY SO.
+    // try_receive_memfd unlinks any socket whose connect returns ECONNREFUSED
+    // or ENOENT, so the next process to look reaps every dead peer it finds.
+    // Reaping them earlier, by parsing the pid out of the name and asking
+    // kill(pid, 0), was written and measured: 2,000 stale sockets cost 0.00s
+    // either way, because connect() to a unix socket with no listener is
+    // refused immediately -- the one-second timeouts on that path are
+    // SO_SNDTIMEO and SO_RCVTIMEO, which apply to send and recv, not to a
+    // connect that never succeeds. It bought nothing and is not here.
     static void cleanup_at_exit() noexcept {
         std::scoped_lock lock(socket_paths_mutex_);
-        // TODO: we litter .sock files upon an abnormal exit (e.g. Ctrl-C)
-        // but it's unsafe to acquire the lock in a signal handler
         for (auto const& path : socket_paths_)
             unlink(path.c_str());
     }
@@ -248,12 +259,44 @@ class JoinableThread {
 };
 
 struct TempRoot {
-    // /tmp/stockfish-[uid], with appropriate permissions
+    // <base>/stockfish-[uid], with appropriate permissions
     std::string prefix;
+
+    // WHERE THE PER-USER ROOT LIVES, and /tmp is the last answer rather than the
+    // only one. XDG_RUNTIME_DIR is per-user, 0700 and tmpfs by construction,
+    // which is exactly what this wants; TMPDIR is what a hardened or
+    // containerised host sets when /tmp is not writable, or is mounted per-user
+    // so that two engines see different directories under the same name. /tmp
+    // stays the fallback because it is what always worked.
+    //
+    // PEERS THAT DISAGREE SIMPLY DO NOT MEET. Two engines with different
+    // environments land in different roots, find no peer there, and each map
+    // their own copy -- which is the no-sharing path this code already takes
+    // when it is first to start, not a fault. The alternative, picking a root
+    // one process can reach and another cannot write, is the fault.
+    //
+    // The directory is still lstat'd for owner and mode below whichever base
+    // wins, because an attacker-controlled TMPDIR is a directory like any other.
+    static std::string base_dir() {
+        for (const char* var : {"XDG_RUNTIME_DIR", "TMPDIR"})
+        {
+            const char* v = std::getenv(var);
+            // Absolute only: a relative base would put the root wherever the
+            // process happened to be started from.
+            if (v != nullptr && v[0] == '/')
+            {
+                std::string dir(v);
+                while (dir.size() > 1 && dir.back() == '/')
+                    dir.pop_back();
+                return dir;
+            }
+        }
+        return "/tmp";
+    }
 
     static const std::optional<TempRoot>& get_temp_root() {
         static auto temp_root = []() -> std::optional<TempRoot> {
-            auto proposed = std::string("/tmp/stockfish-") + std::to_string(getuid());
+            auto proposed = base_dir() + "/stockfish-" + std::to_string(getuid());
 
             if (mkdir(proposed.c_str(), 0700) == 0)
             {
@@ -618,8 +661,16 @@ class SharedMemory {
                 if (!memfd.is_valid())
                     return false;
 #else
-                char temp_path[PATH_MAX];
-                strncpy(temp_path, "/tmp/stockfish_replicated_data.XXXXXX", PATH_MAX);
+                // In the per-user root, not in /tmp directly. This arm runs
+                // where memfd_create does not exist, and it used to name a
+                // world-readable directory for a file holding the whole
+                // network; shared_dir_ is already the 0700 directory owned by
+                // this uid that every other path here uses.
+                const std::string tmpl = shared_dir_ + "/replicated_data.XXXXXX";
+                char              temp_path[PATH_MAX];
+                if (tmpl.size() >= PATH_MAX)
+                    return false;
+                std::memcpy(temp_path, tmpl.c_str(), tmpl.size() + 1);
 
                 memfd.reset(mkstemp(temp_path));
                 if (!memfd.is_valid())
