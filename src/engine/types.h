@@ -121,6 +121,15 @@ enum Color : u8 {
     COLOR_NB = 2
 };
 
+// One key type per colour, so a transposed argument has no spelling. The space
+// is picked by adding the colour to the first of the two, which the enum's own
+// comment requires them to be adjacent for -- a constant fold, not a branch.
+template<Color C>
+using NonPawnKey = TypedKey<KeySpace(u8(KeySpace::NonPawnWhite) + u8(C))>;
+
+static_assert(u8(KeySpace::NonPawnBlack) == u8(KeySpace::NonPawnWhite) + u8(BLACK),
+              "NonPawnKey maps Color to KeySpace by addition and needs them adjacent");
+
 enum CastlingRights : u8 {
     NO_CASTLING,
     WHITE_OO,
@@ -313,7 +322,7 @@ struct DirtyThreat {
     static constexpr int PcOffset           = 20;
 
     DirtyThreat() { /* don't initialize data */ }
-    DirtyThreat(u32 raw) :
+    explicit DirtyThreat(u32 raw) :
         data(raw) {}
     DirtyThreat(Piece pc, Piece threatened_pc, Square pc_sq, Square threatened_sq, bool add) {
         data = (u32(add) << 31) | (pc << PcOffset) | (threatened_pc << ThreatenedPcOffset)
