@@ -1742,18 +1742,31 @@ and a clean run means "this sequence found nothing" rather than "the bound holds
 
 ## `tests/uci_driver.py`
 
-Drive the engine over UCI without tripping the stdin-EOF trap. An operator
-harness, not a lane -- `lanecheck.sh` excuses it on the grounds that every check
-it can make is owned by a gate that *is* dispatched.
+Drive the engine over UCI without tripping the stdin-EOF trap.
+
+**It used to be an operator harness that no lane ran**, excused on the grounds
+that every check it could make was owned by a gate that *is* dispatched. That
+stopped being true when `platformbattery.yml` landed: `perft.sh` and
+`reprosearch.sh` both drive the engine through `expect`, which does not travel
+to every target, and the driver is what carries those two checks to Windows and
+ARM. It is dispatched now and `lanecheck.sh` carries no excuse for it.
 
 ```sh
 python3 tests/uci_driver.py smoke          # 15 surfaces, exit 0 or 1, ~2s
 python3 tests/uci_driver.py bench          # and compare to the anchor in git log
 python3 tests/uci_driver.py perft --full   # tests/perft.sh's list, without expect
+python3 tests/uci_driver.py repro          # tests/reprosearch.sh's, without expect
 python3 tests/uci_driver.py during --then 'setoption name Hash value 32'
 python3 tests/uci_driver.py go --depth 14 --threads 4 --syzygy tests/syzygy
 python3 tests/uci_driver.py raw 'position startpos' 'go movetime 500'
 ```
+
+**`perft` and `repro` read their inputs out of the shell gates they replace**,
+never out of a copy: the positions and expected counts come from `perft.sh`'s
+own `run_test` lines, and the round count, node budgets and command sequence
+from `reprosearch.sh`'s loop and its expect heredoc. A change to either reaches
+the driver without anybody porting it, which is what stops a second
+transcription becoming a second thing to rot.
 
 **The trap it exists for.** The engine is a REPL on stdin. A shell pipe closes
 stdin as the last command is written, the UCI loop reads EOF, and it quits
@@ -1849,6 +1862,7 @@ comments rather than blocks.
 | `golden.yml` | `golden.sh` -- the recorded command outputs |
 | `docs.yml` | `docslint.sh`, `lanecheck.sh`, then `buildcoverage.sh`, `depcheck.sh`, `linkcheck.sh`, `enginelink.sh` |
 | `fuzz.yml` | nightly: the `uci`, `net` and `shm` harnesses, and `fuzzsearch.sh` |
+| `platformbattery.yml` | the functional battery on Linux arm64 and Windows arm64 -- the signature, the movegen and search reproducibility on both; the UCI surface and `malformed.sh` on Linux only |
 
 `docs.yml` builds, despite the name: `linkcheck.sh` and `enginelink.sh` both compile the tree.
 The zone checks live there rather than in a lane of their own so a reader looking for one finds
@@ -1856,6 +1870,26 @@ the others beside it.
 
 `tests/perft.sh` and `tests/reprosearch.sh` run at exactly one step of `tests.yml`, gated on
 the 64-bit configurations, after an avx2 build.
+
+**That step is x86-64 Linux and nothing else, which is what `platformbattery.yml` is for.** The
+compile matrix runs `signature.sh` on Windows arm64, Windows Mingw-w64, macOS, Android, ppc64
+and loongarch64, so the bench anchor already travels; movegen, search reproducibility, the UCI
+surface and the malformed-table refusal did not. The battery carries the movegen and the
+reproducibility check through `tests/uci_driver.py`, which speaks UCI directly, needs no
+`expect`, and is plain subprocess pipes -- which is what makes it portable at all.
+
+**Two checks stop at the Linux target and the reasons differ.** `malformed.sh` builds under
+AddressSanitizer and UBSan and Mingw-w64 ships no runtime for either. `instrumented.py` is
+upstream's harness and no lane has ever run it off Linux, so putting it on a new target in the
+same commit that adds the target would leave two things to explain if it went red. Both are
+stated in the lane rather than left as silent gaps.
+
+It runs on two arm64 targets rather than a wide matrix because it is answering one question --
+does this engine SEARCH correctly off x86-64 -- and because the three subsystems this branch
+changed most, `shm`, `numa` and `thread_native`, are the three that diverge most across
+platforms. **It asserts behaviour and never performance**: every figure on
+`PERFORMANCE.md` is per-host by construction and a second host's numbers would not pool with
+the first's.
 
 ### Reachability
 
@@ -1878,6 +1912,8 @@ flowchart LR
     SF --> PB["perfbudget.yml"]
     SF --> D["docs.yml"]
     SF --> GO["golden.yml"]
+    RF --> PBAT["platformbattery.yml"]
+    PBAT --> G8["signature.sh<br/>uci_driver.py perft<br/>uci_driver.py repro<br/>instrumented.py<br/>malformed.sh (Linux only)"]
     SF --> OTH["iwyu, games, matetrack, avx2_compilers,<br/>arm, wasm, universal, upload_binaries"]
     N(["nightly cron"]) --> FZ["fuzz.yml"]
     T --> G1["signature.sh<br/>perft.sh<br/>reprosearch.sh"]
@@ -1888,7 +1924,7 @@ flowchart LR
     PB --> G4["perfbudget.sh<br/>textequal.sh"]
     RF --> NC["negative_control.sh<br/>(static rows)"]
     RF --> OTH
-    L(["no trigger -- by hand only"]) --> G2["negative_control.sh<br/>(the rows that build)<br/>fingerprint.sh<br/>npsab.sh<br/>match.sh<br/>perfcounters.sh<br/>perfdecomp.sh"]
+    L(["no trigger -- by hand only"]) --> G2["negative_control.sh<br/>(the rows that build)<br/>fingerprint.sh<br/>npsab.sh<br/>npsthreads.sh<br/>match.sh<br/>perfcounters.sh<br/>perfdecomp.sh<br/>devcite.sh"]
     style G2 stroke-dasharray: 5 5
     style L stroke-dasharray: 5 5
 ```
