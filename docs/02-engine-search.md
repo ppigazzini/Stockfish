@@ -214,6 +214,30 @@ Worker 0 holds the `SearchManager` and is the main worker: only the main worker 
 depth cap and drives the aspiration loop. The rest hold a `NullSearchManager`, exactly as the
 pool builds them.
 
+**A `Worker` holds the manager twice, and the second one is the typed view.** `ManagerSlot`
+pairs the owning `unique_ptr<ISearchManager>` with a `SearchManager*` that is null on every
+worker but the main one, and `main_manager()` reads that pointer. It used to be a
+`static_cast` down the hierarchy guarded by an assert on `threadIdx`, and `-DNDEBUG` is what
+ships -- so a release build handed any other worker a `SearchManager*` aimed at a
+`NullSearchManager`, whose members do not exist. The pair is filled by `make_main_manager` or
+`make_null_manager` and by nothing else, at the one point where the type is still known, so the
+two halves cannot disagree.
+
+`Worker` stores the `unique_ptr` at its original offset and the typed pointer **last in the
+class**. That is deliberate: every member between them is on the per-node path, and storing the
+pair where the `unique_ptr` sat shifted all of them by eight bytes. A type that enforces an
+invariant does not have to be the storage layout.
+
+**Both implementations are `final`, and that is a codegen decision rather than a style one.**
+Nothing derives from either, and without it the compiler cannot prove what a `SearchManager*`
+points at: the call in `search()` was an indirect vtable dispatch at every one of its three
+inlined copies and is a direct call at all three now.
+
+**`NullSearchManager::check_time` is never called.** The only call site is guarded by
+`is_mainthread()` -- which is the branch the Null Object Pattern exists to remove, so here both
+the branch and the null object are present. The hierarchy stays because removing it is a taste
+argument, but do not credit it with work it is not doing.
+
 The heavy blocks are process-static and reused, so it is **not reentrant**: one search at a
 time, and two callers at once share one root position. Changing the worker count rebuilds them,
 which is not cheap -- a `Worker` embeds the NNUE refresh cache -- so alternating counts per call

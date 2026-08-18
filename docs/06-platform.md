@@ -68,32 +68,46 @@ is why the pairing is in the type rather than in a convention.
 
 ## `numa.h`, `numa.cpp` -- topology, binding and replication
 
-The largest single header in the tree, and it carries only half of `NumaConfig`: the cold half
-is in `numa.cpp`. The split is by temperature, not by subject -- everything that runs before the
-first search is in the `.cpp`, and what stays in the header is template-bound and cannot move,
-including the namespace-scope `STARTUP_PROCESSOR_AFFINITY` initializer, whose initialisation
-order is a property of living there.
+Still the largest single header in the tree at 970 lines, against `numa.cpp`'s 791 -- but the
+two are much closer than they were, and the split is by **who instantiates what** rather than by
+temperature.
 
-**That initializer runs once per translation unit, not once per process**, and it is the most
-expensive thing this header does:
+`NumaConfig`'s whole construction path is in the `.cpp`: both constructors, the three cpu-map
+helpers, and the two member templates that walk sysfs and the L3 topology. Those templates were
+the header's largest single occupant, and the rule that let them move is worth stating exactly,
+because the obvious reading of "template-bound" gets it wrong:
+
+> A template must be visible where it is **instantiated**, not everywhere its class is named.
+
+`from_system_numa` and `try_get_l3_aware_config` are instantiated at exactly one place --
+`NumaConfig::from_system`, in `numa.cpp` -- so they compile in the unit they moved into and the
+compiler sees the same code in the same place. Six perf cells read flat or better.
+
+What genuinely cannot follow is instantiated by consumers: `execute_on_numa_node`, which
+`thread.cpp` calls with two different callables, and `NumaReplicated<T>` /
+`LazyNumaReplicated<T>` / `NumaReplicationContext`, which `numa_shared.h` and `thread.h`
+instantiate. The one-line accessors stay too, for the ordinary reason -- a call is worse than an
+inline body for `num_cpus()`.
+
+**The namespace-scope affinity read is one copy per program, and it took a keyword to get
+there:**
 
 ```
-inline static const auto STARTUP_PROCESSOR_AFFINITY = get_process_affinity();
+inline const auto STARTUP_PROCESSOR_AFFINITY = get_process_affinity();
 ```
 
-`static` at namespace scope is internal linkage and it wins over `inline`, so every TU that sees
-the header gets its own copy and its own dynamic initialiser. `get_process_affinity()` `CPU_ALLOC`s
-a 64K-CPU mask, calls `sched_getaffinity`, and loops `CPU_ISSET_S` over `MaxNumCpus = 1024 * 64`.
-Priced on the instruction axis at roughly 607,000 retired instructions per copy:
+It used to be `inline static const auto`. `static` at namespace scope is internal linkage and it
+wins over `inline`, so every TU that saw the header got its own copy and its own dynamic
+initialiser -- three of them, at roughly 607,000 retired instructions each.
+`get_process_affinity()` `CPU_ALLOC`s a 64K-CPU mask, calls `sched_getaffinity`, and loops
+`CPU_ISSET_S` over `MaxNumCpus = 1024 * 64`. An *inline* const variable does not get internal
+linkage from its constness, so dropping the `static` leaves external linkage and one copy. The
+symbol goes from local `b` in three objects to a single weak `W`.
 
 ```sh
 cd src && for o in *.o; do nm -C "$o" 2>/dev/null | grep -q get_process_affinity && echo "$o"; done
 ./tests/perfbudget.sh --comp gcc <before> <after>   # read the startup column, not the search one
 ```
-
-Dropping the `static` -- `inline const auto`, which keeps external linkage because an *inline*
-const variable does not get internal linkage from its constness -- makes it one copy per program.
-Nothing has done that yet.
 
 ### Discovering the topology
 
@@ -180,6 +194,28 @@ executable's path is what distinguishes them.
   runs a thread to serve them, which is why `SIGPIPE` has to be handled: a client disappearing
   mid-write would otherwise kill the server process.
 - `memfd_create` is used where available and checked for at runtime rather than assumed.
+
+**Where the per-user root lives is an environment question, not a constant.** `TempRoot`
+proposes `<base>/stockfish-<uid>` at mode 0700 and reads the base from `XDG_RUNTIME_DIR`, then
+`TMPDIR`, then `/tmp`. The first is per-user, 0700 and tmpfs by construction, which is what this
+wants; the second is what a container or a hardened host sets when `/tmp` is not writable, or is
+mounted per-user so that two engines see different directories under one name. Absolute paths
+only, and whichever base wins the directory is still `lstat`'d for owner and mode -- an
+attacker-controlled `TMPDIR` is a directory like any other, and a root that fails the check is
+refused rather than used.
+
+**Peers that disagree about the environment do not meet**, and that is the intended behaviour:
+they land in different roots, find no peer, and each map their own copy, which is the no-sharing
+path the code already takes when it is first to start. Picking a root one process can reach and
+another cannot write would be the fault.
+
+**The `.sock` litter is self-limiting.** `cleanup_at_exit` runs on a normal exit only -- taking
+its mutex in a signal handler is not async-signal-safe -- so a Ctrl-C leaves the socket behind.
+The next process reaps it: `try_receive_memfd` unlinks any socket whose `connect` returns
+`ECONNREFUSED` or `ENOENT`. Reaping earlier by parsing the pid out of the name was measured at
+0.00s against 0.00s on 2,000 stale sockets, because a connect to a socket with no listener is
+refused immediately -- the one-second timeouts on that path are `SO_SNDTIMEO` and `SO_RCVTIMEO`,
+which apply to send and recv.
 
 ## `thread_native.h` -- threads with a chosen stack
 
