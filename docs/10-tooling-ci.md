@@ -1228,6 +1228,33 @@ sentence has become false. Three classes it will pass: a real symbol attributed 
 file, a list with the wrong count or order, and a behaviour described as absent from a build
 that has it. That half is yours.
 
+## `tests/liveness.sh`
+
+Asks one question of five cases: after a command sent mid-search, does the engine still answer?
+
+```sh
+./tests/liveness.sh [<binary>]     # 0 every case answered, 1 a case hung, 2 skipped
+DEADLINE=8 ./tests/liveness.sh     # the deadline is the gate; default 20s
+```
+
+**Every other gate here compares against a known-good answer and is therefore blind to a hang.**
+`golden.sh` compares text, `instrumented.py` looks for substrings, `signature.sh` counts nodes;
+to all three a wedged engine is the harness timing out, and a harness timeout is a rig fault
+rather than a detection. Four defects on this branch's register are exactly that class -- a
+`setoption` during `go infinite`, an `export_net` under live workers, a `go movetime 0`, and a
+critical error raised while workers sit inside a tablebase probe. None of them changes an
+answer; each stops there being one.
+
+So the deadline is not a detail of the gate, it is the gate. `tests/uci_driver.py during` owns
+it and reports HANG explicitly; this script is the case table.
+
+**A missing tablebase corpus SKIPs the cases that need one and says so**, and the run prints
+that a skip is not a pass. Dispatched by `golden.yml`, which already builds the engine and holds
+the corpus.
+
+**What it cannot see is a wrong answer** -- it reads neither the move, the score nor the node
+count. It is blind to everything a hang is not.
+
 ## `tests/shellcheck.sh`
 
 Lints the shell the gates are written in.
