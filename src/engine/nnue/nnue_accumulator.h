@@ -66,7 +66,7 @@ struct AccumulatorCaches {
     AccumulatorCaches() = default;
 
     template<typename Network>
-    AccumulatorCaches(const Network& network) {
+    explicit AccumulatorCaches(const Network& network) {
         clear(network);
     }
 
