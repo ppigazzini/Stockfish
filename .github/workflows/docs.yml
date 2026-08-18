@@ -78,6 +78,18 @@ jobs:
       - name: Dependency direction, by include
         run: ./tests/depcheck.sh
 
+      # A release tag names one commit forever, so the tag-to-SHA answers are
+      # cached and the network half stops spending 14 API calls a run on
+      # questions with permanent answers. That is what made this gate flake: a
+      # rate limit or a transient returned empty, and an empty answer used to be
+      # reported as a wrong pin. Keyed on the workflow files, so editing a pin
+      # takes a fresh cache.
+      - name: Cache the resolved action pins
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: resources/actionpins-cache.tsv
+          key: actionpins-${{ hashFiles('.github/workflows/*.yml') }}
+
       # Reads the workflow files and nothing else. The three properties it gates
       # -- SHA-pinned, version stated, one action one version -- need no network,
       # so the lane is deterministic; the release feed half skips without gh.
