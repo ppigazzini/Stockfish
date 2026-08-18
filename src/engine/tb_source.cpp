@@ -32,7 +32,7 @@ WDLScore no_probe(void*, Position&, ProbeState* result) {
         *result = FAIL;
     return WDLDraw;
 }
-Config no_rank(void*, const SearchOptions&, Position&, Search::RootMoves&, bool,
+Config no_rank(void*, const SearchOptions&, Position&, Search::RootMoves&, RankDTZ,
                const std::function<bool()>&) {
     return Config{};
 }

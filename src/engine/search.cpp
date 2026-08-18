@@ -2351,7 +2351,7 @@ void syzygy_extend_pv(const Host&               host,
             legalMoves.emplace_back(m);
 
         TB::Config config =
-          host.tb.rank_root_moves(host.tb.ctx, options, pos, legalMoves, false, time_abort);
+          host.tb.rank_root_moves(host.tb.ctx, options, pos, legalMoves, TB::RankDTZ::No, time_abort);
         RootMove&  rm     = *std::find(legalMoves.begin(), legalMoves.end(), pvMove);
 
         if (legalMoves[0].tbRank != rm.tbRank)
@@ -2423,7 +2423,7 @@ void syzygy_extend_pv(const Host&               host,
 
         // The winning side tries to minimize DTZ, the losing side maximizes it
         TB::Config config =
-          host.tb.rank_root_moves(host.tb.ctx, options, pos, legalMoves, true, time_abort);
+          host.tb.rank_root_moves(host.tb.ctx, options, pos, legalMoves, TB::RankDTZ::Yes, time_abort);
 
         // If DTZ is not available we might not find a mate, so we bail out
         if (!config.rootInTB || config.cardinality > 0)
