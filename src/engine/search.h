@@ -280,6 +280,18 @@ struct InfoIteration {
     usize            currmovenumber;
 };
 
+// The bestmove and the ponder move that follows it. A struct rather than two
+// adjacent string_view parameters, because the pair crossed a std::function
+// into a generic lambda -- untyped at the declaration, untyped through the
+// erased boundary and untyped at the consumer, so there was no point on the
+// path at which a transposition could be rejected. The other four callbacks in
+// UpdateContext already take a named struct or nothing; this is the one that
+// did not.
+struct BestMove {
+    std::string_view bestmove;
+    std::string_view ponder;
+};
+
 // Skill structure is used to implement strength limit. If we have a UCI_Elo,
 // we convert it to an appropriate skill level, anchored to the Stash engine.
 // This method is based on a fit of the Elo results for games played between
@@ -315,7 +327,7 @@ class SearchManager final: public ISearchManager {
     using UpdateShort    = std::function<void(const InfoShort&)>;
     using UpdateFull     = std::function<void(const InfoFull&)>;
     using UpdateIter     = std::function<void(const InfoIteration&)>;
-    using UpdateBestmove = std::function<void(std::string_view, std::string_view)>;
+    using UpdateBestmove = std::function<void(const BestMove&)>;
     using UpdateStart    = std::function<void()>;
 
     struct UpdateContext {
