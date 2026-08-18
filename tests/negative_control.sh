@@ -1360,6 +1360,52 @@ if selected b5-keyspace; then
     rm -f /tmp/nc_b5_key.cpp
 fi
 
+row b13-colour static
+if selected b13-colour; then
+    # The colour half of the key pairing. Before B13.2 the two non-pawn keys
+    # shared one type and the colour was an argument, so non_pawn_key(WHITE)
+    # where BLACK was meant compiled -- exactly what b5-swap below records as
+    # the limit of the typing. This row is the case that stopped being one, so
+    # it must go red on the swap AND green on both legal forms; a header that
+    # simply stopped compiling would satisfy the first alone.
+    echo "negative-control: b13 [colour] -- a non-pawn key of the wrong colour must not compile"
+    ok=1
+    printf '#include "position.h"\nusing namespace Stockfish;\nNonPawnKey<WHITE> f(const Position& p) { return p.non_pawn_key<BLACK>(); }\n' \
+        > /tmp/nc_b13_colour.cpp
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b13_colour.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a BLACK key was accepted where WHITE was declared"; ok=0
+    fi
+    printf '#include "position.h"\nusing namespace Stockfish;\nNonPawnKey<WHITE> f(const Position& p) { return p.non_pawn_key<WHITE>(); }\nusize g(const Position& p, usize m) { return p.non_pawn_key<BLACK>() & m; }\n' \
+        > /tmp/nc_b13_colour.cpp
+    if ! ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b13_colour.cpp ) >/dev/null 2>&1; then
+        echo "  RIG FAULT -- the legal forms do not compile either"; ok=0
+    fi
+    if [ "$ok" = 1 ]; then echo "  ok, rejected by the compiler"; PASS=$((PASS+1));
+    else FAIL=$((FAIL+1)); fi
+    rm -f /tmp/nc_b13_colour.cpp
+fi
+
+row b13-dirtythreat static
+if selected b13-dirtythreat; then
+    # One keyword, and the same two-sided shape: a raw u32 must stop becoming a
+    # DirtyThreat with no cast, and the named construction must still work.
+    echo "negative-control: b13 [dt]     -- a raw u32 must not become a DirtyThreat"
+    ok=1
+    printf '#include "types.h"\nusing namespace Stockfish;\nDirtyThreat f(u32 raw) { return raw; }\n' \
+        > /tmp/nc_b13_dt.cpp
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b13_dt.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the implicit conversion was accepted"; ok=0
+    fi
+    printf '#include "types.h"\nusing namespace Stockfish;\nDirtyThreat f(u32 raw) { return DirtyThreat(raw); }\n' \
+        > /tmp/nc_b13_dt.cpp
+    if ! ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b13_dt.cpp ) >/dev/null 2>&1; then
+        echo "  RIG FAULT -- the explicit form does not compile either"; ok=0
+    fi
+    if [ "$ok" = 1 ]; then echo "  ok, rejected by the compiler"; PASS=$((PASS+1));
+    else FAIL=$((FAIL+1)); fi
+    rm -f /tmp/nc_b13_dt.cpp
+fi
+
 row b5-swap
 if selected b5-swap; then
     # What the type does NOT buy, recorded as a test so no page can imply

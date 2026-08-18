@@ -293,7 +293,7 @@ struct SharedHistories {
 
     template<Color c>
     auto& nonpawn_correction(const Position& pos, Color us) {
-        auto& bundle = correctionHistory[pos.non_pawn_key(c) & sizeMinus1][us];
+        auto& bundle = correctionHistory[pos.non_pawn_key<c>() & sizeMinus1][us];
         if constexpr (c == WHITE)
             return bundle.nonPawnWhite;
         else
@@ -301,7 +301,7 @@ struct SharedHistories {
     }
     template<Color c>
     const auto& nonpawn_correction(const Position& pos, Color us) const {
-        const auto& bundle = correctionHistory[pos.non_pawn_key(c) & sizeMinus1][us];
+        const auto& bundle = correctionHistory[pos.non_pawn_key<c>() & sizeMinus1][us];
         if constexpr (c == WHITE)
             return bundle.nonPawnWhite;
         else
