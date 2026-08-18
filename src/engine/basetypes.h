@@ -217,11 +217,22 @@ class MultiArray {
 // public xor would let any space absorb any other's material -- exactly the
 // mixing the type exists to prevent. The raw u64s are maintained in
 // position.cpp; the type begins at the accessors in position.h.
+// NonPawnWhite and NonPawnBlack are TWO SPACES, not one space with an argument.
+// They were one, and `non_pawn_key(WHITE)` where BLACK was meant compiled --
+// which is the defect the whole enum exists to make impossible, surviving in the
+// one place the discriminator was a parameter instead of a type. The colour half
+// of the pairing was already discriminated on the field side: CorrectionBundle
+// has separate nonPawnWhite and nonPawnBlack members and history.h selects
+// between them with `if constexpr`. This is the key side of the same job.
+//
+// The two must stay ADJACENT and in colour order: types.h maps Color to space by
+// adding the colour to NonPawnWhite, which is one add rather than a branch.
 enum class KeySpace : u8 {
     Pawn,
     MinorPiece,
     Material,
-    NonPawn
+    NonPawnWhite,
+    NonPawnBlack
 };
 
 template<KeySpace S>
@@ -251,7 +262,9 @@ class TypedKey {
 using PawnKey     = TypedKey<KeySpace::Pawn>;
 using MinorKey    = TypedKey<KeySpace::MinorPiece>;
 using MaterialKey = TypedKey<KeySpace::Material>;
-using NonPawnKey  = TypedKey<KeySpace::NonPawn>;
+// NonPawnKey is in types.h -- it is parameterised by Color, which this header
+// does not see and must not: types.h includes this one, not the reverse.
+
 
 
 // Wrapper around std::atomic<T> which uses relaxed accesses or plain

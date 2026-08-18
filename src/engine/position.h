@@ -171,7 +171,8 @@ class Position {
     MaterialKey material_key() const;
     PawnKey pawn_key() const;
     MinorKey minor_piece_key() const;
-    NonPawnKey non_pawn_key(Color c) const;
+    template<Color C>
+    NonPawnKey<C> non_pawn_key() const;
 
     // Other properties of the position
     Color side_to_move() const;
@@ -341,7 +342,10 @@ inline MaterialKey Position::material_key() const { return MaterialKey(st->mater
 
 inline MinorKey Position::minor_piece_key() const { return MinorKey(st->minorPieceKey); }
 
-inline NonPawnKey Position::non_pawn_key(Color c) const { return NonPawnKey(st->nonPawnKey[c]); }
+template<Color C>
+inline NonPawnKey<C> Position::non_pawn_key() const {
+    return NonPawnKey<C>(st->nonPawnKey[C]);
+}
 
 inline Value Position::non_pawn_material(Color c) const { return st->nonPawnMaterial[c]; }
 
