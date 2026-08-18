@@ -468,6 +468,27 @@ if selected lanecheck-stale-workflow-excuse; then
     restore
 fi
 
+row actionpins-pin static
+if selected actionpins-pin; then
+    # A CACHE THAT HIDES A FINDING IS WORSE THAN THE FLAKINESS IT CURED. The
+    # network half now answers from resources/actionpins-cache.tsv when it can,
+    # so this row runs with that cache WARM and requires the gate to still catch
+    # a pin whose SHA is not the tag it claims -- which is the point of the
+    # cache: it stores what the tag resolves to, and the comparison against the
+    # pin is unchanged.
+    echo "negative-control: actionpins  -- a pin whose SHA is not its claimed tag"
+    ./tests/actionpins.sh >/dev/null 2>&1 || true   # warm the cache first
+    mutate .github/workflows/golden.yml \
+        'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0' \
+        'actions/cache@0000000000000000000000000000000000000000 # v6.1.0'
+    if ./tests/actionpins.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a pin that lies about its tag passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 row actionpins-guards static
 if selected actionpins-guards; then
     echo "negative-control: actionpins  -- a job with no deadline, a workflow with no floor"
