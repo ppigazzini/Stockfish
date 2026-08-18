@@ -703,7 +703,7 @@ class NumaReplicated: public NumaReplicatedBase {
    public:
     using ReplicatorFuncType = std::function<T(const T&)>;
 
-    NumaReplicated(NumaReplicationContext& ctx) :
+    explicit NumaReplicated(NumaReplicationContext& ctx) :
         NumaReplicatedBase(ctx) {
         replicate_from(T{});
     }
@@ -789,7 +789,7 @@ class LazyNumaReplicated: public NumaReplicatedBase {
    public:
     using ReplicatorFuncType = std::function<T(const T&)>;
 
-    LazyNumaReplicated(NumaReplicationContext& ctx) :
+    explicit LazyNumaReplicated(NumaReplicationContext& ctx) :
         NumaReplicatedBase(ctx) {
         prepare_replicate_from(T{});
     }
