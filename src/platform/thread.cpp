@@ -67,7 +67,7 @@ Thread::Thread(Search::SharedState&           sharedState,
         this->numaAccessToken = binder();
         this->worker          = make_unique_large_page<Search::Worker>(
           sharedState, std::move(sm), n, idxInNuma, totalNuma,
-          this->numaAccessToken.get_numa_index());
+          HistoryBankIndex(this->numaAccessToken.get_numa_index()));
     });
 
     wait_for_search_finished();
@@ -166,7 +166,6 @@ u64 ThreadPool::tb_hits() const {
     return sum;
 }
 
-static usize next_power_of_two(u64 count) { return count > 1 ? (2ULL << msb(count - 1)) : 1; }
 
 // Creates/destroys threads to match the requested number.
 // Created and launched threads will immediately go to sleep in idle_loop.
@@ -225,7 +224,8 @@ void ThreadPool::set(const NumaConfig&                           numaConfig,
             NumaIndex numaIndex = pair.first;
             u64       count     = pair.second;
             auto      f         = [&]() {
-                sharedState.sharedHistories.try_emplace(numaIndex, next_power_of_two(count));
+                sharedState.sharedHistories.try_emplace(HistoryBankIndex(numaIndex),
+                                                        PowerOfTwo::ceil(count));
             };
             if (doBindThreads)
                 numaConfig.execute_on_numa_node(numaIndex, f);
