@@ -824,10 +824,11 @@ A zone is a **directory** under `src/` (`tests/zones.sh`), so a file joins one b
 put. That is why the gate also reports **files in no zone**: a file added outside all three
 matches no rule, and without that check it would be silently exempt rather than caught.
 
-Both edges **out of** the engine are checked, because both are defects rather than choices: an
-engine file that includes a shell header, and one that includes a platform header. Platform
-depending on engine is the intended direction, and shell depending on both is what a process
-does, so neither of those is asked about.
+**Three** edges are checked, because each is a defect rather than a choice. Two out of the
+engine: an engine file that includes a shell header, and one that includes a platform header.
+One out of the platform: a platform file that includes a shell header, which is the direction
+nothing looked at for longest. Platform depending on engine is the intended direction, and
+shell depending on both is what a process does, so neither of those is asked about.
 
 The platform rule exists because `linkcheck.sh` cannot see that class. It reasons about symbols
 an object leaves undefined, and a dependency a header carries leaves none -- an inline function,
@@ -855,11 +856,17 @@ and one of them is never compiled -- while the covered-by-the-build loop finds b
 `negative_control.sh zone-ambiguous` plants a header pair and asserts `depcheck` red with
 `buildcoverage` green, which is what makes them two checks rather than one restated.
 
-`tests/depcheck.baseline` and `tests/depcheck-platform.baseline` carry the edges that exist, one
-per line, with the reason each is there. Both **expire in both directions**: an edge missing from
-its baseline fails as new, and an entry that no longer happens fails as stale. A baseline that
-only grows is not a debt register, it is a permanent excuse, and the second direction is what
-keeps it from becoming one. The platform baseline ships empty and is meant to stay that way.
+One baseline per edge -- `tests/depcheck.baseline`, `tests/depcheck-platform.baseline` and
+`tests/depcheck-platform-shell.baseline` -- carrying the edges that exist, one per line, with
+the reason each is there. All three **expire in both directions**: an edge missing from its
+baseline fails as new, and an entry that no longer happens fails as stale. A baseline that only
+grows is not a debt register, it is a permanent excuse, and the second direction is what keeps
+it from becoming one. Two of the three ship empty and are meant to stay that way:
+
+```sh
+grep -cvE '^[[:space:]]*(#|$)' tests/depcheck.baseline \
+    tests/depcheck-platform.baseline tests/depcheck-platform-shell.baseline
+```
 
 One entry is not debt. `types.h -> tune.h` is deliberate -- the include sits after `types.h`'s
 own `#endif` so the SPSA macros reach anywhere `types.h` does, and removing it would make every
