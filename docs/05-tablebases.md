@@ -21,7 +21,7 @@ Audience: tablebase probing.
 | the in-search probe | `engine/search.cpp` | Step 6 of `Worker::search` |
 | extending a PV to mate | `engine/search.cpp` | `syzygy_extend_pv` |
 | finding and opening a file | `platform/syzygy/tbprobe.cpp` | `TBFile`, `TBFile::map`, `TBTables` |
-| parsing a table header | `platform/syzygy/tbprobe.cpp` | `set_groups`, `set_sizes`, `set_dtz_map` |
+| parsing a table header | `platform/syzygy/tbprobe.cpp` | `set` (the template), `set_groups`, `set_sizes`, `set_dtz_map` |
 | decoding a symbol | `platform/syzygy/tbprobe.cpp` | `decompress_pairs` |
 | refusing a bad file | `tests/malformed.sh` | one fixture per field |
 
@@ -142,8 +142,10 @@ have, which is a state it already knows how to be in.
 The mapping is `MAP_SHARED`, `PROT_READ`, with `madvise(MADV_RANDOM)`: the tables are paged in on
 demand and never read end to end.
 
-Past the magic, the data is a header describing a compressed body. `set_groups` reads the piece
-order and computes the index space, `set_sizes` reads the block geometry and the Huffman alphabet,
+Past the magic, the data is a header describing a compressed body. The template `set` drives the
+whole parse -- `grep -n 'bool set(T& e' src/platform/syzygy/tbprobe.cpp` -- and returns false the
+moment a span leaves the mapping. Under it, `set_groups` reads the piece order and computes the
+index space, `set_sizes` reads the block geometry and the Huffman alphabet,
 `set_dtz_map` reads the DTZ value map, and the three span arrays -- `sparseIndex[]`, `blockLength[]`
 and the data blocks themselves -- are bounded once against the end of the mapping and then used
 through the pointer and size stored beside them. A probe therefore walks a compressed block rather
@@ -261,7 +263,7 @@ bound the file walks straight through.
 
 The **table** flags byte is the first byte after the magic. Its `Split` and `HasPawns` bits are a
 claim about a layout the reader has already sized from the material it asked for -- `sides` and
-`maxFile` come from `e.key != e.key2` and `e.hasPawns` -- so `do_init` refuses a file whose flags
+`maxFile` come from `e.key != e.key2` and `e.hasPawns` -- so `set` refuses a file whose flags
 disagree with its own name rather than parsing on. `tests/malformed.sh`'s `flags-vs-material`
 fixture is that byte, at offset 4 of the smallest table.
 
@@ -285,8 +287,10 @@ a shown PV that draws is not a PV for a win.
 
 **Step 2 extends to mate**, playing the top-ranked (minimal-DTZ) move each ply until there are no
 legal moves. The result is *a possible continuation, not a proven mating line*: DTZ-optimal play
-gives optimal mates only for simple endgames. The loop stops at `MAX_PLY`, which is what keeps it
-inside `PVMoves::Capacity`.
+gives optimal mates only for simple endgames. The loop's own
+`while (rootMove.pv.size() < MAX_PLY)` is what keeps it inside `PVMoves`'s `Capacity`, which is
+`MAX_PLY + 1`. That guard is the only bound: `PVMoves::push_back` checks its own with an `assert`
+alone, so nothing in the shipped build would catch a relaxation of it.
 
 This is where the prober meets the clock. The whole function budgets itself against `Move Overhead`,
 whose range starts at 0, so it compares in microseconds through the `clock.h` seam: at
