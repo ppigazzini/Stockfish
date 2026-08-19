@@ -94,16 +94,23 @@ jobs:
     name: Platform battery
     if: ${{ always() }}
     uses: ./.github/workflows/platformbattery.yml
+  # publish: false on both. This branch calls no release job and downloads no
+  # artifact, so every upload here was produced by a lane and consumed by
+  # nothing. What the two lanes PROVE is unchanged: each still compiles its
+  # target and still runs signature.sh against the anchor.
   ARMCompilation:
     name: Android builds
     needs: [Matrix]
     uses: ./.github/workflows/arm_compilation.yml
     with:
       matrix: ${{ needs.Matrix.outputs.arm_matrix }}
+      publish: false
   UniversalCompilation:
     name: Universal builds
     needs: [Matrix]
     uses: ./.github/workflows/universal_compilation.yml
+    with:
+      publish: false
 
   # The gate that decides whether the others can still fail, and the only one
   # here that is not also in stockfish.yml.
