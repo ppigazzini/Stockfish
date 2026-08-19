@@ -63,22 +63,39 @@ is a merge gate rather than something to re-derive by hand.
 
 ```cpp
 Attacks::init();      // slider and leaper tables
-Position::init();     // Zobrist keys, from a fixed-seed generator
+Position::init();     // Zobrist keys, from PRNG rng(1070372)
+
+auto cli = CommandLine(argc, argv);
 auto uci = std::make_unique<UCIEngine>(std::move(cli));
+
 Tune::init(uci->engine_options());
 uci->loop();
 ```
 
-`Position::init()` must follow `Attacks::init()`, and reads the attack tables twice over.
-`Position::init` itself calls `attacks_bb` to enumerate the reversible one-piece moves the
-cuckoo table is built from; `Position::set` later calls `set_check_info`, which calls
-`both_attacks_bb`. Neither crashes on zeroed tables. The cuckoo table simply comes out empty,
-so `upcoming_repetition` never fires, and a `Position` built too early finds no checkers and
+`Position::init()` must follow `Attacks::init()`, and two readers depend on it:
+`Position::init` calls `attacks_bb` to enumerate the reversible one-piece moves the cuckoo table
+is built from, and every later `Position::set` calls `set_check_info`, which calls
+`both_attacks_bb`. Neither crashes on zeroed tables. The cuckoo table simply comes out empty, so
+`upcoming_repetition` never fires, and a `Position` built too early finds no checkers and
 generates no piece moves -- both present as a search bug rather than a startup bug.
 
-The network is **not** loaded here. It is a runtime input the UCI layer loads later, because
-the UCI layer owns the `EvalFile` option. The binary resolves it relative to the working
-directory, which is why the engine is run from `src/`.
+**The network is loaded inside the `make_unique<UCIEngine>` line**, and no call in the block
+says so. `Engine`'s member initialiser list runs `get_default_network()`, which is
+`Network::load` with an empty path; an empty path becomes `EvalFile::defaultName`, and on that
+path `load_internal` reads the EMBEDDED net out of `gEmbeddedNNUEData`. The directory loop that
+follows is guarded on `evalFile.current != evalfilePath`, so a successful embedded load opens no
+file at all.
+
+The filesystem is reached only when `EvalFile` names something other than the default, or when
+the embedded load failed. `Network::load` then tries, in order, the working directory, the
+binary's own directory (`CommandLine::get_binary_directory`), and `DEFAULT_NNUE_DIRECTORY` if
+the build defined one -- so where the binary is run from decides which file a non-default
+`EvalFile` resolves to.
+
+`OptionsMap::add` does not fire an option's on-change callback, so declaring `EvalFile` at
+startup loads nothing. `setoption name EvalFile` is what reaches `Engine::load_network`, and
+that path re-hands the replicas before clearing the pool, because `modify_and_replicate`
+destroys every replica each worker still points into.
 
 ## How a search flows
 
@@ -110,9 +127,10 @@ flowchart TD
     QS --> MP
 ```
 
-`UCIEngine::loop` parses `go` into a `LimitsType`; `ThreadPool::start_thinking` hands it to
-every `Worker`; each runs `iterative_deepening`, which recurses through `search` and drops into
-`qsearch` at depth zero. Move ordering comes from `MovePicker`, leaf scores from the NNUE.
+`UCIEngine::parse_limits` (`src/shell/uci.cpp`) turns `go` into a `LimitsType`; `Engine::go`
+resolves `searchmoves` and assigns the option snapshot; `ThreadPool::start_thinking` hands both
+to every `Worker`; each runs `iterative_deepening`, which recurses through `search` and drops
+into `qsearch` at depth zero. Move ordering comes from `MovePicker`, leaf scores from the NNUE.
 
 The search allocates nothing per node: move lists are automatics, and the transposition
 table, the accumulator stack and the refresh cache are allocated once outside any search.
@@ -171,14 +189,20 @@ A file's zone is **its directory**, so a new file joins a zone by where it is pu
 a directory the mapping does not name resolves to `unassigned` -- reported by both checks
 rather than silently exempt. `tests/zones.sh` holds the mapping and both checks read it.
 
-**Both edges out of the engine are checked at the include and again at the symbol**, and the
-four baselines are read together. `./tests/depcheck.sh` reads `#include` lines against
-`tests/depcheck.baseline` for the engine-to-shell edge -- one entry, `types.h -> tune.h`, which
-is deliberate rather than debt -- and `tests/depcheck-platform.baseline` for the
-engine-to-platform one, which is empty. `./tests/linkcheck.sh` asks the same two questions of
-symbols, against `tests/linkcheck.baseline` and `tests/linkcheck-platform.baseline`, both empty.
-A baseline expires in both directions -- an entry describing an edge that no longer happens fails
-too, so a fixed edge cannot quietly stay listed as debt.
+**Both edges out of the engine are checked at the include and again at the symbol**, and five
+baselines are read together. `./tests/depcheck.sh` reads `#include` lines and asks three
+questions, one per row -- `grep -n '^check_rule' tests/depcheck.sh` is the list:
+
+| edge | baseline | holds |
+|---|---|---|
+| engine -> shell | `tests/depcheck.baseline` | one entry, `types.h -> tune.h`, deliberate rather than debt |
+| engine -> platform | `tests/depcheck-platform.baseline` | empty |
+| platform -> shell | `tests/depcheck-platform-shell.baseline` | empty |
+
+`./tests/linkcheck.sh` asks the first two of those questions of symbols instead, against
+`tests/linkcheck.baseline` and `tests/linkcheck-platform.baseline`, both empty. A baseline
+expires in both directions -- an entry describing an edge that no longer happens fails too, so a
+fixed edge cannot quietly stay listed as debt.
 
 **The include check is not a weaker restatement of the link check.** `linkcheck` reasons about
 symbols an object leaves undefined, and a dependency a header carries leaves none: an inline
@@ -252,13 +276,23 @@ once. `src/shell/engine.cpp` is the composition root.
 
 | Seam | Hands over | Default, unregistered | Registered by |
 |---|---|---|---|
-| `engine/arena.h` | `alloc`, `alloc_hinted`, `free` | plain aligned allocation | `Engine::ArenaInstallerTag`, whose position is the guarantee |
+| `engine/arena.h` | `alloc`, `alloc_hinted`, `free`, and `hugePageBytes` as a value | plain aligned allocation, `DefaultHugePageBytes` | `Engine::ArenaInstallerTag`, whose position is the guarantee |
 | `engine/output_sink.h` | `line`, `debug_dump` | prints to stdout unsynchronised | `Engine::ArenaInstallerTag` |
-| `engine/tb_source.h` | `max_cardinality`, `probe_wdl`, `rank_root_moves` | no tablebases loaded | `Engine::ArenaInstallerTag` |
-| `engine/clock.h` | `now_us` | reads `std::chrono::steady_clock` in microseconds | nothing; the default is the clock |
-| `engine/parallel.h` | thread count, NUMA map, `run_on`, `wait_on` | runs the work inline | `Engine::resize_threads` |
-| `engine/worker_set.h` | `start_searching`, `wait_for_search_finished`, the counters, `count`, `at` | reports no workers | `Engine::resize_threads` |
-| `engine/fatal.h` | `abort_now` | prints to `stderr` and exits | nothing; the default is the current behaviour |
+| `engine/tb_source.h` | `ctx`, `max_cardinality`, `probe_wdl`, `rank_root_moves` | no tablebases loaded | `Engine::ArenaInstallerTag` |
+| `engine/clock.h` | `now_us` | reads `std::chrono::steady_clock` in microseconds | nothing in `src/`; the default is the clock |
+| `engine/parallel.h` | `num_threads`, `numa_nodes`, `thread_numa_map`, `run_on`, `wait_on` | runs the work inline | `Engine::resize_threads` |
+| `engine/worker_set.h` | `ctx`, `start_searching`, `wait_for_search_finished`, `nodes_searched`, `tb_hits`, `count`, `at` | reports no workers | `Engine::resize_threads` |
+| `engine/fatal.h` | `abort_now` | prints `reason` to `stderr` and exits, and prints nothing for an empty one | nothing in `src/`; `tests/seams_main.cpp` registers a recording handler to prove the routing |
+
+**One seam member is a value rather than a function pointer.** `Arena::hugePageBytes` carries a
+default member initialiser because every registration site fills an `Arena` by braced aggregate
+initialisation, so a field a host forgets would be zero -- and zero is not a small huge page, it
+is a comparison `ttBytes >= numa_nodes() * hugePageBytes * 8` that is true for every size. The
+hint would then be set on every allocation and the run would still produce a number. Never
+register a zero.
+
+`ctx` on `TbSource` and `WorkerSet` is the host's own object, passed back to every call in the
+struct: these two seams have state behind them, the other five do not.
 
 **The fatal seam routes a POLICY, not a service.** The other six hand over something the host
 does better; this one hands back a decision the engine was making on the host's behalf -- ending
@@ -278,10 +312,14 @@ Two properties of it that the compiler cannot carry:
   `Network::verify` is that site, and it is the one that shows saying and terminating are separable
   -- it says the right thing through the right channel and still takes the process down.
 
-Two of the four callers are reporting that an allocation failed, so they format their message with
+Three of its callers are reporting that an allocation failed, so they format their message with
 `snprintf` into a stack buffer rather than a `std::string`: with `-fno-exceptions` a string that
 cannot get its buffer aborts, and the report the operator needs is lost to a second failure inside
-the first.
+the first. Count them rather than trusting the number here:
+
+```sh
+git grep -n 'engine_abort(' -- src | grep -v 'engine/fatal'
+```
 
 A default must fail in one of three ways, and which one is a property of the service:
 
@@ -331,10 +369,17 @@ declaration order and destruction follows it in reverse. The initialiser list de
   by the host's is heap corruption with no diagnostic.
 - **`ThreadPool threads` is declared last**, so the workers it owns are destroyed before
   anything they hold references into. A `Search::Worker` binds `searchOptions` and `tt` by
-  reference, one `SharedHistories` out of `sharedHists` by reference, a pointer into a replica
-  owned by `network`, and -- on the main thread -- a `SearchManager` holding `updateContext` by
-  reference. Declare the pool higher up and those referents die while the workers still exist,
-  and nothing diagnoses it.
+  reference, one `SharedHistories` out of `sharedHists` by reference, the `Host` snapshot by
+  reference, a pointer into a replica owned by `network`, and -- on the main thread -- a
+  `SearchManager` holding `updateContext` by reference. Declare the pool higher up and those
+  referents die while the workers still exist, and nothing diagnoses it.
+
+- **`Host host` is declared between them and assigned in `Engine::resize_threads`**, not in the
+  constructor. `current_host()` copies whatever is registered when it runs, so the assignment
+  sits after `set_parallel_for` and `set_worker_set` and before `threads.set` builds the first
+  `Worker`. Snapshot earlier and every worker reads the inline parallel-for and the refusing
+  worker set for the life of the pool -- a search that runs, reports no workers and returns a
+  plausible number, with nothing to diagnose it.
 
 Neither end is expressible in the initialiser list, which is why `src/shell/engine.h` is where
 the order is fixed and `src/shell/engine.cpp` says so rather than restating it.
@@ -360,9 +405,10 @@ The hottest files reach no seam at all. Of the rest:
 - In `search.cpp` the only seam on the per-node path is the tablebase probe, spelled
   `host.tb.probe_wdl(host.tb.ctx, pos, &err)` and appearing once, and `tbConfig.cardinality`
   short-circuits before it, so an engine with no tablebases never reaches the call.
-- The worker set is reached per node only through `check_time`, which decrements a counter and
-  returns on every call but one in at most 512. It is spelled `host.workers` and read in eleven
-  places, but the other ten are the root, the pool handoff and the info line.
+- The worker set is reached per node only through `SearchManager::check_time`, which decrements
+  `callsCnt` and returns on every call but one in at most 512. Every other read is the root, the
+  pool handoff or the info line -- `grep -n 'host\.workers' src/engine/search.cpp` lists them
+  all, and only the two lines inside `check_time` are on a per-node path.
 
 **The command above and the spellings differ, and both are current.** The getters it greps for
 survive in the seam definition units and in the composition root that takes the snapshot, which
@@ -374,11 +420,12 @@ above spell them `host.<seam>`.
 direct one, and **`bench` cannot see it** -- the bench list never probes, so a measurement there
 measures the guard rather than the call. Every performance gate in
 [10-tooling-ci.md](10-tooling-ci.md) drives `bench` by default, so none of them sets a
-`SyzygyPath` and none of them costs this seam. `--syzygy DIR` is the answer, and three gates
-take it -- `perfbudget.sh` for instructions, `perfdecomp.sh` and `perfcounters.sh` for the two
-axes that see a miss or a mispredict. Each swaps the bench list for a probing workload. A change
-to this seam or to the reader behind it quotes those cells, because every gate run without the
-option is blind to it.
+`SyzygyPath` and none of them costs this seam. `--syzygy DIR` is the answer, and
+`grep -ln -e '--syzygy' tests/*.sh` names every gate that takes it: `perfbudget.sh` for
+instructions, `perfdecomp.sh` and `perfcounters.sh` for the two axes that see a miss or a
+mispredict, `fingerprint.sh` for the per-function call counts, and `match.sh` for games. Each
+swaps the bench list for a probing workload. A change to this seam or to the reader behind it
+quotes those cells, because every gate run without the option is blind to it.
 
 ### The include graph
 
@@ -405,13 +452,17 @@ including it. Four edges decide most of that closure:
   of `shm.h` in this family, and it lives in `numa_shared.h`, which includes both `numa.h` and
   `shm.h`. `shell/engine.h` owns one by value and includes `numa_shared.h`; `platform/thread.h`
   forward-declares it and only takes one by reference; `search.h` names neither the holder nor
-  `numa.h`. So the shared-memory headers reach the files that own or pass one
-  rather than every consumer of `search.h`, which is two files -- re-establish it rather than
-  trust it:
+  `numa.h`. So the shared-memory headers reach the files that own or pass one rather than every
+  consumer of `search.h` -- re-establish it rather than trust it:
 
   ```sh
   grep -rl 'shm\.h' --include=*.h --include=*.cpp src
   ```
+
+  What that prints is the DIRECT includers -- `platform/numa_shared.h`, where the one holder is
+  declared, and `src/shell/engine.cpp`. `shell/engine.h` reaches `shm.h` transitively through
+  `numa_shared.h` and does not appear, so a third name in that output is the signal, not a
+  third name in an include line.
 
   `numa.h` includes `<variant>` directly, for the policy variant, so this edge cannot silently
   become the path a standard header arrives by.
@@ -425,19 +476,22 @@ including it. Four edges decide most of that closure:
 - **`types.h` includes `basetypes.h`, not `misc.h`.** The type vocabulary it needs -- the
   integer aliases and `ValueList` -- lives in `basetypes.h`, so the fundamental type header
   does not pull the logger or `CommandLine` into every translation unit that touches a
-  `Square`. `misc.h` does not include `basetypes.h` either -- its last `usize` is behind
-  `_WIN32`, pinned with a pragma in `misc.cpp` -- so a file that wants the type vocabulary
-  names `basetypes.h` and gets nothing else.
+  `Square`. `misc.h` holds no `usize` at all and does not include `basetypes.h`; the drawer's
+  last one is in `misc.cpp`, inside `path_from_utf8`'s `_WIN32` branch, which is why that
+  include carries an `IWYU pragma: keep` -- a Linux analyze lane never reaches the use and reads
+  the include as unused. So a file that wants the type vocabulary names `basetypes.h` and gets
+  nothing else.
 
 - **`engine/` includes `platform/misc.h` nowhere, and the transitive half is the half that
   rots.** The things an engine file wants that have no OS in them are elsewhere by design:
   `RelaxedAtomic` and `mul_hi64` in `engine/basetypes.h`, `PRNG` in `engine/prng.h`,
   `sf_always_inline` and `stringify` in `engine/compiler.h`, which is the compiler header.
-  The string helpers `platform/numa.h` needs are `platform/text.h`, and that matters because
-  `numa.h` is a header the pool and the composition root include: point it at the drawer and
-  every file reaching it transitively gets `CommandLine` and the logger, which no grep for a
-  direct include reveals. **Not because `search.h` includes it** -- `search.h` names no NUMA
-  type at all, which the check above prints as nothing and this paragraph once contradicted.
+  The string helpers the NUMA code needs are `platform/text.h`, and **no header includes it** --
+  `grep -rl 'text\.h' --include=*.h src` prints nothing. `numa.cpp` is the
+  platform consumer, and the placement is the point: `numa.h` is a header the pool and the
+  composition root include, so pointing *it* at the drawer would hand `CommandLine` and the
+  logger to every file that reaches `numa.h` transitively, which no grep for a direct include
+  reveals.
 
   Both directions are cheap to check, and the second needs `-H` rather than grep:
 
@@ -465,7 +519,9 @@ on that, not on how many lines the preprocessor emits.
 Lazy SMP: every `Worker` searches the same tree independently and they share the
 transposition table, the history tables and a stop flag. The sharing is **deliberately racy**
 and the races are typed rather than left undefined -- see `RelaxedAtomic` in
-`src/engine/basetypes.h` and its uses in `search.h`, `history.h`, `thread.h` and `tt.cpp`.
+`src/engine/basetypes.h`, and `git grep -ln RelaxedAtomic -- src` for every file that holds one.
+`src/platform/thread.h` is not among them: the flags the pool shares with every worker are plain
+`std::atomic<bool>`, handed over by reference through `SharedState`.
 
 `bench` is single-threaded, so every value gate in [10-tooling-ci.md](10-tooling-ci.md) stays
 green while a data race is present. The sanitizer lanes are what cover it.
