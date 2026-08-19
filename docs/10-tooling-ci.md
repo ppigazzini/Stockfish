@@ -1696,9 +1696,10 @@ corpus in `tests/`. `tbpv.py` below is what needs it, and needs exactly it: addi
 what the sweep reproduces.
 
 **Separate directories, because what a corpus CONTAINS is part of what a test using it
-records.** `MaxCardinality` reads 3 or 4 depending on which is there and the engine prints the file count
-in its own output, so a 3-man corpus under the 4-man path makes a suite expecting the larger one
-block until its timeout on a line that cannot come. A mirror that answers a missing file with a
+records.** `MaxCardinality` reads 3 or 4 depending on which is there and the engine prints the
+file count in its own output, so a 3-man corpus under the 4-man path makes a suite expecting the
+larger one block until its timeout on
+a line that cannot come. A mirror that answers a missing file with a
 body -- an error page, a redirect to a landing page -- otherwise gets that body stored as a
 table, and it fails much later inside the decoder, where it reads as a corrupt table rather
 than a bad download. Without a corpus the harness **skips visibly** rather than passing. It is
