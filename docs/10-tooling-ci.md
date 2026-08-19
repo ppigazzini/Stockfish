@@ -82,17 +82,6 @@ differently at one vector width.
 
 **It says nothing about cost.** A change can shed no nodes and run measurably slower.
 
-### `tests/perft.sh`
-
-Move generation, by node count at depth, over standard and Chess960 positions. Most of the rows
-are Chess960, because standard-chess castling hides a whole class of bug
-([01-engine-board.md](01-engine-board.md)).
-
-The counts are **facts about chess**, not a golden. A mismatch is always a movegen bug and
-never an update candidate.
-
-It cannot see a key that desyncs and resyncs, because perft counts leaves.
-
 ### `tests/reprosearch.sh`
 
 Node counts repeat across `ucinewgame` at varying node limits.
