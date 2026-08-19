@@ -50,11 +50,11 @@ Building, usage, UCI commands and user-facing terminology are the
 ./tests/docslint.sh
 ```
 
-runs six checks -- `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
+runs seven checks -- `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
 link, a named path that does not exist, a pinned bench signature, a gate no page names, a
-tracked file pointing into the untracked working area, and the two copies of the
-performance-gate selector table naming different gates. **It cannot tell you a sentence has
-become false**, which is the half that decides whether this set is worth reading --
+tracked file pointing into the untracked working area, the two copies of the performance-gate
+selector table naming different gates, and the CI table naming gates the workflows do not run.
+**It cannot tell you a sentence has become false**, which is the half that decides whether this set is worth reading --
 [12-writing.md](12-writing.md) is how that half is bought.
 
 **The zone boundary is checked, not described.** `src/` is `engine/`, `platform/` and `shell/`,
