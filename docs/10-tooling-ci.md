@@ -98,15 +98,6 @@ interpreter, `grep` matched nothing, `awk` rejected nothing, and the script prin
 Exit 2 is SKIPPED and proves nothing -- `tests.yml` installs `expect`, so the merge lane
 still runs it, but a local run on a box without it establishes nothing about `ucinewgame`.
 
-### `tests/instrumented.py`
-
-The CLI and interactive suite, driven under valgrind, TSan, UBSan and
-`-D_GLIBCXX_ASSERTIONS` by `sanitizers.yml`. `tests/testing.py` is its harness.
-
-It asserts that expected **substrings** appear. It does not pin the full text of a session,
-so an `info` line format change, a PV rendered one move short, or a changed ponder move
-passes.
-
 ## The performance gates
 
 These answer "does it still cost the same?", which no value gate above can.
@@ -570,49 +561,6 @@ runs in. A null perturbation over two revisions with identical `src/` -- a docs-
 reports IDENTICAL, because both sides get a populated stamp. **A gate with two build paths needs a
 control per path**, and this one had one control and two paths.
 
-## `tests/golden.sh`
-
-Byte-compares the engine's output for a scripted UCI session.
-
-```sh
-./tests/golden.sh            # compare every case
-./tests/golden.sh search     # one case
-./tests/golden.sh --update   # re-record
-```
-
-Dispatched by `golden.yml`, which fetches the 3-4-man corpus first so the tablebase case runs
-rather than skipping.
-
-`signature.sh` proves the engine searched the same tree. Nothing else proves it **said** the
-same thing: an `info` field that loses a name or changes order, a PV one move short, a ponder
-move named against the wrong position, a `d` board that stops printing checkers. None of those
-moves the node count.
-
-Three properties, each of which a naive comparison gets wrong:
-
-- **What is not behaviour is filtered before comparing.** The clock, the nps, `hashfull`, the
-  network banner and the build stamp are properties of the machine or the build. Leaving the
-  stamp in would invalidate every golden on the next commit.
-- **The driver waits.** The engine runs `go` on its own thread and treats end of input as
-  `quit`, so writing every line at once collects a `bestmove` from a search that never
-  finished. After a search command the driver reads until the engine says it is done.
-- **A comparison that compared nothing fails.** An absent corpus skips at exit 2; a corpus
-  that is present and yields nothing is a rig fault and goes red. A case whose engine printed
-  nothing is a dead engine rather than a behaviour.
-
-A `.uci` file is engine input, piped raw, so a `#` line is a command the engine answers
-`Unknown command` to. The gate refuses one rather than letting the case diverge for a reason
-unrelated to what it tests.
-
-**It sees the sessions in `tests/cases/` and the fields the filter leaves.** A command no
-`.uci` file sends is unchecked, and so is every field filtered as machine-dependent -- a
-`hashfull` that starts reporting nonsense passes here. Adding a case is how the covered surface
-grows; there is no other mechanism.
-
-**Re-recording a golden records whatever the engine currently does**, so an update over a
-broken build makes the break the expected output. Update only from a tree whose signature
-matches the commit record, and put the diff in the commit body.
-
 ## `tests/anchor.sh`
 
 Holds the commit record to a shape the architecture lanes can read.
@@ -708,42 +656,6 @@ about repository-wide automation rather than about a gate.
 
 The network half -- that a pin's SHA really is the release its comment claims -- skips loudly
 without an authenticated `gh`, and says so rather than folding into the pass.
-
-## `tests/optiondefaults.sh`
-
-Asserts that the engine's own option defaults equal the UCI ones the shell registers.
-
-```sh
-./tests/optiondefaults.sh            # or: ./tests/optiondefaults.sh path/to/stockfish
-```
-
-`engine/searchoptions.h` is a **value** the shell fills before a search, which is what lets the
-engine be driven with no option model behind it. Its header states the invariant and names the
-failure: a default that drifts makes an unhosted search run with different parameters from the
-UCI engine, **and both still produce a plausible number**.
-
-Nothing held them there, and that is the expensive class -- no other gate sees it. The bench runs
-hosted, so it reads the UCI side; `enginelink.sh` runs unhosted, so it reads the struct, and it
-asserts only that the node count is non-zero and never a value, because a node count is
-`signature.sh`'s claim. So a drifted default moves the numbers a gate prints while every gate
-stays green. `negative_control.sh optiondefaults` demonstrates exactly that: the mutation reddens
-this gate and leaves the bench signature where it was.
-
-Dispatched by `golden.yml`, ahead of the golden comparison.
-
-**The mapping is not restated here.** `Engine::search_options()` already assigns each field from
-its option, so the gate reads the mapping out of that function. A copy in a third place is a copy
-of a fact two files already disagree about.
-
-**The UCI side comes from the running engine**, not from parsing `options.add()`. Those calls take
-four different `Option` shapes and one default is a named constant, so a parser would have to
-resolve C++ to answer; the engine prints what it registered, which is the fact in question.
-
-Three ways it refuses rather than reporting a pass: a field in `SearchOptions` that no option
-fills, a mapping it cannot read out of the shell, and a comparison that compared nothing. It does
-not check options the engine has no field for -- `Hash`, `EvalFile`, `SyzygyPath`,
-`UCI_Chess960`, `Debug Log File` -- because those are the shell's alone and have no second copy
-to drift against.
 
 ## `tests/negative_control.sh`
 
@@ -1394,33 +1306,6 @@ or order **except** the two that checks 6 and 7 weld -- the performance selector
 copy in `AGENTS.md`, and the CI table below, against `.github/workflows/`. Every other list on
 every page is prose. That half is yours.
 
-## `tests/liveness.sh`
-
-Asks one question of five cases: after a command sent mid-search, does the engine still answer?
-
-```sh
-./tests/liveness.sh [<binary>]     # 0 every case answered, 1 a case hung, 2 skipped
-DEADLINE=8 ./tests/liveness.sh     # the deadline is the gate; default 20s
-```
-
-**Every other gate here compares against a known-good answer and is therefore blind to a hang.**
-`golden.sh` compares text, `instrumented.py` looks for substrings, `signature.sh` counts nodes;
-to all three a wedged engine is the harness timing out, and a harness timeout is a rig fault
-rather than a detection. Four defects on this branch's register are exactly that class -- a
-`setoption` during `go infinite`, an `export_net` under live workers, a `go movetime 0`, and a
-critical error raised while workers sit inside a tablebase probe. None of them changes an
-answer; each stops there being one.
-
-So the deadline is not a detail of the gate, it is the gate. `tests/uci_driver.py during` owns
-it and reports HANG explicitly; this script is the case table.
-
-**A missing tablebase corpus SKIPs the one case that needs one and says so**, and the run
-prints that a skip is not a pass. Dispatched by `golden.yml`, which already builds the engine
-and fetches the corpus.
-
-**What it cannot see is a wrong answer** -- it reads neither the move, the score nor the node
-count. It is blind to everything a hang is not.
-
 ## `tests/shellcheck.sh`
 
 Lints the shell the gates are written in.
@@ -1853,45 +1738,6 @@ from `src/Makefile`. The second run is sanitized because a wrong window read is 
 the fixture owns: it produces a right answer far more often than a wrong one, and ASan is what
 turns that into a report.
 
-### setoption during an unbounded search deadlocks the engine
-
-**Not fixed.** Four lines against a stock binary:
-
-```sh
-printf 'uci\nisready\ngo infinite\nsetoption name Hash value 32\nquit\n' | ./src/stockfish
-```
-
-The engine never exits. It is not slow -- it is unreachable: `stop` and `quit` are no longer
-read, so nothing in the protocol can recover it.
-
-`Engine::resize_threads` and `Engine::set_tt_size` (`src/shell/engine.cpp`) each open with
-`wait_for_search_finished()`, and both are reached from an option's on-change handler. That
-handler runs on the **UCI reader thread**, which is the only thread that would ever read the
-`stop` that releases the wait. The reader blocks waiting for a search that only the reader
-could end.
-
-The boundary is exactly whether the search ends by itself:
-
-| after `go infinite` | after `go depth 20` |
-|---|---|
-| `setoption name Threads value 2` hangs | returns normally |
-| `setoption name Threads value 1` hangs -- even with no change to apply | returns normally |
-| `setoption name Hash value 32` hangs | returns normally |
-| `stop` first, then `setoption` returns normally | -- |
-
-Any option whose handler waits will do; `Threads` and `Hash` are simply the two reached here,
-and a value identical to the current one still hangs, so the wait happens before anything asks
-whether there is work to do.
-
-**The UCI specification says `setoption` is sent only while the engine is not calculating**, so
-a conforming GUI does not produce this, and that is the honest limit on its severity. It is
-still a state from which the protocol offers no way out, reachable in four lines from a stock
-binary.
-
-The harness must guard against generating an unbounded `go` with no `stop` behind it, or it
-hangs on this engine behaviour rather than reporting it -- and a leading empty token makes a
-generated line read as `" go"`, which a guard matching on the first character misses.
-
 ## `tests/tbpv.py`
 
 Walk the tablebase PV extension against the **array that has to hold it**.
@@ -1930,79 +1776,6 @@ position 350. It does that only through the corpus `--men 5` fetches: add stems 
 sweep passes on the same defect, because richer tables hand the search different scores and a
 different PV to extend. So the gate SKIPS, loudly, when the corpus it is handed is not that one,
 and a clean run means "this sequence found nothing" rather than "the bound holds".
-
-## `tests/uci_driver.py`
-
-Drive the engine over UCI without tripping the stdin-EOF trap.
-
-**`platformbattery.yml` dispatches it, and portability is the reason.** `perft.sh` and
-`reprosearch.sh` both drive the engine through `expect`, which does not travel to every target;
-this driver is plain subprocess pipes and carries those two checks to Windows and ARM.
-`lanecheck.sh` carries no excuse for it.
-
-```sh
-python3 tests/uci_driver.py smoke          # 15 surfaces, exit 0 or 1, ~2s
-python3 tests/uci_driver.py bench          # and compare to the anchor in git log
-python3 tests/uci_driver.py perft --full   # tests/perft.sh's list, without expect
-python3 tests/uci_driver.py repro          # tests/reprosearch.sh's, without expect
-python3 tests/uci_driver.py during --then 'setoption name Hash value 32'
-python3 tests/uci_driver.py go --depth 14 --threads 4 --syzygy tests/syzygy-3man
-python3 tests/uci_driver.py raw 'position startpos' 'go movetime 500'
-```
-
-**`perft` and `repro` read their inputs out of the shell gates they replace**,
-never out of a copy: the positions and expected counts come from `perft.sh`'s
-own `run_test` lines, and the round count, node budgets and command sequence
-from `reprosearch.sh`'s loop and its expect heredoc. A change to either reaches
-the driver without anybody porting it, which is what stops a second
-transcription becoming a second thing to rot.
-
-**The trap it exists for.** The engine is a REPL on stdin. A shell pipe closes
-stdin as the last command is written, the UCI loop reads EOF, and it quits
-*mid-search* -- returning a depth-1 move in a millisecond, with exit code 0 and
-nothing in the output saying the search was cut short:
-
-```sh
-printf 'position startpos\ngo movetime 3000\n' | ./stockfish | tail -1
-# bestmove a2a3                 <- 0.35s, depth 1, exit 0
-
-( printf 'position startpos\ngo movetime 3000\n'; sleep 4 ) | ./stockfish | tail -1
-# bestmove e2e4 ponder e7e5     <- 4.0s, depth 27
-```
-
-Every command it sends waits for the sentinel line that command actually
-produces -- `uciok`, `readyok`, `bestmove`, `Nodes searched:` -- on a pipe held
-open until `quit`. Stdlib only, no venv.
-
-Two subcommands do something no gate here does.
-
-**`during` is the liveness shape.** It is the only way to reach the engine while
-it is searching; everything else in the tree is request/response. It owns a
-deadline and reports a wedge *as a wedge* rather than as a harness timeout,
-which is the distinction M0.4 in the defect backlog asks for -- `golden.sh`
-compares text and `instrumented.py` looks for substrings, and to both of them a
-deadlocked engine is a rig fault. Its control passes; `--then 'setoption name
-Hash value 32'` hangs, and that is a live upstream defect described under
-fuzzing above, not a driver fault.
-
-**`perft` is the replacement on a box with no `expect`.** `tests/perft.sh` drives
-the engine through an expect script; where that is absent every case exits 127
-and the gate prints `Some tests failed` in a tenth of a second -- a missing
-interpreter reported as a movegen bug. The driver reads the same positions and
-the same expected counts out of `perft.sh` itself and speaks UCI directly, so
-the two cannot drift. **It is not a substitute for the gate in CI**, where
-`expect` is installed and `perft.sh` is what `tests.yml` runs.
-
-`bench` reads the expected node count out of `git log`, never from a constant,
-and `negative_control.sh uci_driver` is what shows that comparison can fail: the
-same futility mutation the `signature` row uses, and the driver must report
-MISMATCH. A mismatch is a **behaviour change**, not a performance question.
-
-`games` needs a `fastchess` binary and a book, looked for in `resources/` and
-overridable with `SF_FASTCHESS` / `SF_BOOK` or `--fastchess` / `--book`. Nothing
-fetches them; `tests/match.sh` is the project's own wrapper and builds its own.
-The Elo it prints establishes nothing at this game count -- the pass criterion is
-that every game finished legally.
 
 ## Local hooks
 
