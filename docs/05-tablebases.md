@@ -317,3 +317,143 @@ searched from depth 0.
 With no path set, nothing is discovered, no probe fires, and the bench signature is
 unaffected. That is the property that keeps an unconfigured engine identical to one built
 without the feature.
+
+## The gates
+
+| gate | what it proves here | owned by |
+|---|---|---|
+| `tests/tbfetch.sh` | the corpus every other row needs, verified by magic rather than by HTTP status | this page |
+| `tests/malformed.sh` | a known-bad table is still refused | this page |
+| `tests/tbpv.py` | the PV extension respects the array that has to hold it | this page |
+| `tests/fuzz.py --harness tb` | mutated bytes reach the decoder, and one table's corruption does not reach another's verdict | [10-tooling-ci.md](10-tooling-ci.md) |
+
+### `tests/tbfetch.sh`
+
+Fetches the tablebases from the mirror `TB_MIRROR` names, and verifies each file by its
+**magic** rather than by HTTP status. `--men 3` fetches the 3-man stems the fuzz
+corpus uses; `--men 4` adds the 4-man ones into `tests/syzygy-34man`, which is what `golden.sh`
+plays its tablebase cases against. Both are small enough to cache in a lane and neither is
+worth carrying in git:
+
+```sh
+./tests/tbfetch.sh --men 3 && ./tests/tbfetch.sh --men 4 && du -sh tests/syzygy-3man tests/syzygy-34man
+```
+
+**`--men 5` is not the 5-man set.** It is one 5-man stem, `KNNvKP`, plus the four a capture from
+it can reach, which is the closure a probe needs and 23 MB of which one stem is 99%. It lands
+under `resources/`, the scratch tree `.gitignore` covers wholesale, rather than beside a 12 KB
+corpus in `tests/`. `tbpv.py` below is what needs it, and needs exactly it: adding stems changes
+what the sweep reproduces.
+
+**Separate directories, because what a corpus CONTAINS is part of what a test using it
+records.** `MaxCardinality` reads 3 or 4 depending on which is there and the engine prints the
+file count in its own output, so a 3-man corpus under the 4-man path makes a suite expecting the
+larger one block until its timeout on a line that cannot come.
+
+The magic check is what separates a bad download from a bad table. A mirror that answers a
+missing file with a body -- an error page, a redirect to a landing page -- otherwise gets that
+body stored as a table, and it fails much later inside the decoder, where it reads as a corrupt
+table rather than a bad download.
+
+### `tests/malformed.sh`
+
+Assert that a **known-bad** input is still refused.
+
+```sh
+./tests/malformed.sh                    # builds its own sanitized engine
+./tests/malformed.sh --exe path/to/sf   # test a binary you built
+```
+
+Nothing else in this tree asks that question. `signature.sh` is the anchor and it is green with
+every parser defect this gate covers live, because the bench reads no file the engine did not
+ship with. `fuzz.py` looks for input that is bad in a way nobody has described yet, on a
+nightly budget, and is explicitly not a merge gate. Between them sits the case that matters
+most for a fix: **a file refused yesterday must be refused today.**
+
+One fixture per field the reader trusts. They are generators and byte lists rather than
+committed blobs, because the interesting thing about a fixture here is *which field is wrong*
+and a blob hides that:
+
+```sh
+./tests/malformed.sh 2>&1 | tail -1     # the count, and how many skipped for want of a corpus
+```
+
+| fixture | the field | what it reached |
+|---|---|---|
+| `symbol-oob` | `btree[0].Right` = 2048 with one symbol declared | an out-of-bounds heap **write** through `symlen[]` |
+| `negative-resize` | `minSymLen` 255, `maxSymLen` 0 | `base64.resize()` of about 1.8e19 |
+| `block-shift` | the block-size byte = 200 | `1ULL << 200` |
+| `base64-shift` | `minSymLen` 0 | a right-pad shift of exactly 64 |
+| `btree-past-end` | 65535 symbols declared by an 80-byte file | a `btree[]` span outside the mapping |
+| `corpus-flags` | `KNvK.rtbw` byte 10 cleared | an 80-byte file sent down the full decode path, every span past the mapping |
+| `symbol-past-end` | 8 bytes of `KQvK.rtbw` | a symbol outside the 12-bit alphabet `symlen[]` and `btree[]` are sized for |
+| `huffman-noncanon` | 8 bytes of `KRvK.rtbw`, `lowestSym[]` stops descending | a `base64[]` search over a code that is not canonical |
+| `cyclic-btree` | a pairing that closes a loop | unbounded recursion in `set_symlen` |
+| `flags-vs-material` | the `Split`/`HasPawns` bits against the material asked for | a file laid out to one plan and read to another |
+| `bitstream-walk` | a block index from the padded region of `blockLength[]` | a forward stream walk leaving the mapping at both ends |
+| `sparse-block` | the first `SparseEntry` block index = `0xFFFFFFFF` | a block far past `blockLengthSize` |
+| `alloc-failure` | 16 threads under a 128 MB allocation cap | an allocation the host refuses, rather than a corrupt file |
+
+The last is a different question from the rest -- it asks what the engine does when the
+allocator says no, which no mutated file can provoke -- and it is here because the answer has
+the same shape: report and stay up.
+
+The four preceding it were found by `fuzz.py`'s `tb` harness and are replayed as the exact byte
+edits it made. Three of them need the 3-man corpus and **skip visibly** without it; a skip is
+counted separately from a pass, because a fixture that did not run has not refused anything.
+
+**These need no synthetic mutation: the defect is the mutation.** Every one was red on the tree
+that carried the defect it covers, and the commit that closed it records that output. That is
+the rule for adding one -- a fixture that has never been seen red is a fixture nobody has shown
+can fail.
+
+A refusal is four things and all four are checked: the process exits 0, it prints a diagnostic
+naming the file, no sanitizer reports anything, and **it still answers**. A parser that takes
+the engine down with it has not refused a file, it has been defeated by one.
+
+It builds its own engine under `sanitize="address undefined" debug=yes`, from the **working
+tree** rather than from `HEAD`, because the gate exists to be run on a change before that change
+is a commit. Sanitized on purpose: the tables are `mmap`ed and a read just past the end lands in
+the page's zero padding, so the shipped build absorbs exactly the class of defect this gate is
+for. **A gate for refusals has to be stricter than the binary it protects**, or it certifies the
+reads it cannot see. `corpus-flags` SKIPS loudly without `tbfetch.sh`'s corpus rather than
+passing.
+
+### `tests/tbpv.py`
+
+Walk the tablebase PV extension against the **array that has to hold it**.
+
+```sh
+./tests/tbfetch.sh --men 5              # 23 MB, once
+python3 tests/tbpv.py                   # 350 positions, about 7 seconds
+python3 tests/tbpv.py --bin path/to/sf  # a binary you built
+```
+
+`RootMove::pv` is a `PVMoves` -- a fixed `Move[PVMoves::Capacity]`, which is `MAX_PLY + 1`, whose
+`push_back` checks its bound with an `assert`, which `-DNDEBUG` removes from the build that
+ships. The bound and the array now read the same constant; they were two separate spellings with
+nothing making them agree. `syzygy_extend_pv`'s step 2
+appends one move per iteration, and its other three exits are all conditional on the position:
+`rule50 && is_draw` is constant-false with `Syzygy50MoveRule` off, `time_abort()` is
+constant-false whenever `use_time_management()` is -- `go infinite`, `go movetime`, `go depth`,
+which is how a GUI analyses -- and the tables run out only where the walk leaves them. The length
+bound is the array's capacity, and nothing else supplies one.
+
+Dispatched by `sanitizers.yml`, whose corpus step is `continue-on-error`, so a mirror outage
+costs this gate its run and not the workflow -- and the gate then SKIPs rather than passing.
+
+**No other gate can fail on this.** `bench` probes no tablebases, so the anchor, both perf gates
+and every sanitizer row stay green while the overflow is live. That is the hole this fills.
+
+Two assertions, and they age differently. The engine must answer every position -- a walk with no
+bound either overruns the array or does not terminate, and this catches the second. And no `pv`
+may exceed `MAX_PLY`, read out of `src/engine/types.h` rather than pinned here, which is the one
+that stays true whatever the search does around it.
+
+**The sweep is a reproduction, and reproductions rot.** `tests/tbpv.fens` is 350 seeded KNNvKP
+positions driven through one engine with no `ucinewgame` between them -- the state one search
+leaves is part of what the next is driven with -- and it took a pre-fix binary to SIGSEGV at
+position 350. It does that only through the corpus `--men 5` fetches: add stems and the same
+sweep passes on the same defect, because richer tables hand the search different scores and a
+different PV to extend. So the gate SKIPS, loudly, when the corpus it is handed is not that one,
+and a clean run means "this sequence found nothing" rather than "the bound holds".
