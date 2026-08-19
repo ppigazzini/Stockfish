@@ -18,6 +18,43 @@ A gate that SKIPPED for a missing tool has proven **nothing** and must never be 
 pass. Both perf gates and the documentation lint distinguish the three outcomes by exit code:
 0 clean, 1 findings, 2 could not run.
 
+## Which gate settles which claim
+
+Pick by what the change CLAIMS, not by what is cheap to run. Every row's third column is the
+reason the row above it is not a substitute: a gate quoted without its blind spot is a gate
+being over-trusted.
+
+| the claim | the gate | what it cannot see |
+|---|---|---|
+| "it searches the same tree" | `tests/signature.sh` | cost; and anything off the bench position list |
+| "move generation is right" | `tests/perft.sh` | a key that desyncs and resyncs -- perft counts leaves |
+| "`ucinewgame` resets what a search reads" | `tests/reprosearch.sh` | whether those node counts are the right ones; a second thread |
+| "it still SAYS the same thing" | `tests/golden.sh` | a command no `.uci` case sends; every field the filter drops |
+| "the CLI still works" | `tests/instrumented.py` | the full text of a session -- it asserts substrings |
+| "it still answers mid-search" | `tests/liveness.sh` | the move, the score, the node count. It is blind to everything a hang is not |
+| "the unhosted search runs on the same parameters" | `tests/optiondefaults.sh` | an option the engine has no field for |
+| "the call graph is unchanged" | `tests/fingerprint.sh` | a callee inlined INTO its caller; and any code the workload never reaches |
+| "no host dependency leaked into `engine/`" | `tests/depcheck.sh`, then `tests/linkcheck.sh`, then `tests/enginelink.sh` | each is blind where the next sees: includes miss a template edge, symbols miss an inline header body, the link misses what nothing calls |
+| "every source is built" | `tests/buildcoverage.sh` | a header no unit includes; whether the object reaches the binary at a given `ARCH` |
+| "the include set is minimal" | `tests/iwyu.sh` | a use behind another host's `#ifdef`; and in shim mode, any absolute verdict |
+| "a known-bad table is still refused" | `tests/malformed.sh` | a field nobody has broken yet |
+| "the weight reader matches the FORMAT" | `tests/leb128.sh` | the engine -- it builds one translation unit and no binary |
+| "the PV extension respects its array" | `tests/tbpv.py` | anything but the one seeded sequence over the one corpus |
+| "nothing NEW breaks it" | `tests/fuzz.py`, `tests/fuzzsearch.sh` | a correctly-read corrupt table; and the run's own budget bounds the claim |
+| "the engine plays" | `tests/match.sh` | strength; and any defect both binaries share |
+| "it costs the same" / "it is faster" / "it scales" | the six performance gates below | each other -- see the selector table |
+| "this gate can still fail" | `tests/negative_control.sh` | a gate with no row, which is simply absent from it |
+| "every gate runs somewhere" | `tests/lanecheck.sh` | whether the gate asserts anything once it runs |
+| "the docs are not rotten" | `tests/docslint.sh` | whether a sentence is false |
+| "the citations resolve" | `tests/devcite.sh` | whether the SHA names the commit the sentence means |
+| "the actions are pinned" | `tests/actionpins.sh` | whether a pin is the latest release -- reported by `--latest`, never gated |
+| "the commit record is readable by a lane" | `tests/anchor.sh` | bodies a shallow clone did not fetch |
+| "the gate scripts are sound shell" | `tests/shellcheck.sh` | whether a gate checks the thing it claims to |
+
+Most of these can SKIP -- for a missing tool, a missing corpus, a missing PMU -- and a skip
+answers nothing. Read the exit code, and for `negative_control.sh` read the skipped count
+besides, because a skipped row leaves its status at 0.
+
 ## The value gates
 
 These answer "does the engine still do the same thing?".
