@@ -35,9 +35,16 @@ python3 ../tests/instrumented.py --none ./stockfish        # from src/
 pre-commit install                            # optional, hooks below
 ```
 
-The net is downloaded by the `net` target, which `build` depends on. Run the binary from
-`src/`: it resolves `EvalFile` relative to the working directory, and a run from the repo root
-finds no net and produces an unrelated but entirely plausible number.
+The net is downloaded by the `net` target, which `build` depends on, and then **embedded into
+the binary** -- `network.cpp` has `INCBIN(EmbeddedNNUE, EvalFileDefaultName)`, and `Network::load`
+takes `load_internal` for the default name and skips its directory loop, so a default build opens
+no net file at any working directory. `bench` reads the same signature from `src/`, from the repo
+root and from `/`.
+
+**A non-default `EvalFile` is the case that moves.** `Network::load` searches the working
+directory first, then the binary's own directory, then `DEFAULT_NNUE_DIRECTORY` -- so a relative
+`EvalFile` resolves against wherever the process was started, and a run from the wrong directory
+falls through to the embedded default and produces an unrelated but entirely plausible number.
 
 **`ARCH=native` is not a tier.** It silently changes which vector width the NNUE loops lower
 to, so two hosts reporting the same label ship different binaries and no measurement taken
