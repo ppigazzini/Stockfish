@@ -15,9 +15,9 @@ is the claim this set makes about it.
 | [07-shell.md](07-shell.md) | `shell/main`, `uci`, `ucioption`, `engine`, `benchmark`, `perft`, `tune` | the UCI surface and options | hot |
 | [09-type-design.md](09-type-design.md) | the value domain: what each quantity means and which are distinguishable | anyone adding a type or changing an encoding | cold |
 | [10-tooling-ci.md](10-tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
-| [11-references.md](11-references.md) | external links: chess programming, C++17, Make, LTO, gates | all developers | cold |
-| [12-writing.md](12-writing.md) | technical writing: pages, code comments, commit messages | anyone writing prose about this code | cold |
-| [13-glossary.md](13-glossary.md) | the vocabulary, in tiers | all contributors | cold |
+| [12-references.md](12-references.md) | external links: chess programming, C++17, Make, LTO, gates | all developers | cold |
+| [13-writing.md](13-writing.md) | technical writing: pages, code comments, commit messages | anyone writing prose about this code | cold |
+| [14-glossary.md](14-glossary.md) | the vocabulary, in tiers | all contributors | cold |
 
 **The zone pages do not cover every file, and [00-architecture.md](00-architecture.md)'s layout
 table is what routes the rest.** The seam headers, `engine/host`, `engine/basetypes.h`,
@@ -49,7 +49,7 @@ link, a named path that does not exist, a pinned bench signature, a gate no page
 tracked file pointing into the untracked working area, the two copies of the performance-gate
 selector table naming different gates, and the CI table naming gates the workflows do not run.
 **It cannot tell you a sentence has become false**, which is the half that decides whether this set is worth reading --
-[12-writing.md](12-writing.md) is how that half is bought.
+[13-writing.md](13-writing.md) is how that half is bought.
 
 **The zone boundary is checked, not described.** `src/` is `engine/`, `platform/` and `shell/`,
 the engine depends on neither of the others, and four gates hold that: `tests/depcheck.sh` at

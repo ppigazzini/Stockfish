@@ -72,7 +72,7 @@ None of this is chess-programming vocabulary.
 | **paired ratio** | head over base within ONE round, then the median across rounds -- not the ratio of the medians. A round is the only comparison in which both sides saw the same machine state |
 | **the spread** | the min and max of those per-round ratios. A ratio whose spread straddles 1.000 has established no direction, whatever its median reads |
 | **multiplexing** | the kernel time-slicing more events than the PMU has slots, so a counter covers only part of the run. The read format carries enabled/running to scale it; an unscaled reading under-reports silently |
-| **hot / cold** | of a page: whether it describes code that moves. [12-writing.md](12-writing.md) |
+| **hot / cold** | of a page: whether it describes code that moves. [13-writing.md](13-writing.md) |
 | **zone** | one of `src/engine/`, `src/platform/`, `src/shell/`. A file's zone is its directory, so a new file joins one by where it is put, and a file in a directory the mapping does not name resolves to `unassigned` rather than being skipped. `tests/zones.sh` is the single mapping, sourced rather than restated: `grep -rl zones.sh tests` names every gate that reads it |
 | **seam** | a struct of function pointers the engine declares, reads through a getter, and the host fills once before the first search. The engine names no host type; the host names the engine's. Catalogued in [00-architecture.md](00-architecture.md) |
 | **the host snapshot** | `Host` (`src/engine/host.h`), a by-value copy of all seven seam registrations. `current_host()` reads whatever is registered when it runs, so `Engine::host` must be assigned after the registrations and before any `Worker` is built -- a snapshot taken early holds the fallback arena and the refusing worker set, which is a working engine giving a different answer |
@@ -101,7 +101,7 @@ None of this is chess-programming vocabulary.
 ## 4. The testing field's vocabulary
 
 Neither this repository nor Stockfish owns these; the literature does, and
-[11-references.md](11-references.md) links it.
+[12-references.md](12-references.md) links it.
 
 | term | as used here |
 |---|---|
