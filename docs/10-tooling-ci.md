@@ -1786,8 +1786,10 @@ python3 tests/tbpv.py                   # 350 positions, about 7 seconds
 python3 tests/tbpv.py --bin path/to/sf  # a binary you built
 ```
 
-`RootMove::pv` is a `PVMoves` -- a fixed `Move[MAX_PLY + 1]` whose `push_back` checks its bound
-with an `assert`, which `-DNDEBUG` removes from the build that ships. `syzygy_extend_pv`'s step 2
+`RootMove::pv` is a `PVMoves` -- a fixed `Move[PVMoves::Capacity]`, which is `MAX_PLY + 1`, whose
+`push_back` checks its bound with an `assert`, which `-DNDEBUG` removes from the build that
+ships. The bound and the array now read the same constant; they were two separate spellings with
+nothing making them agree. `syzygy_extend_pv`'s step 2
 appends one move per iteration, and its other three exits are all conditional on the position:
 `rule50 && is_draw` is constant-false with `Syzygy50MoveRule` off, `time_abort()` is
 constant-false whenever `use_time_management()` is -- `go infinite`, `go movetime`, `go depth`,

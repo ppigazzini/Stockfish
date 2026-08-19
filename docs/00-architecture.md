@@ -394,10 +394,12 @@ including it. Four edges decide most of that closure:
   grep -nE 'NumaIndex|NumaReplicat|NumaConfig|numa\.h' src/engine/search.h   # nothing
   ```
 
-  A `Search::Worker` takes a `HistoryBankIndex` -- an index into the engine's own map -- rather
-  than a topology handle. It does hold `numaThreadIdx` and `numaTotal`, but those are plain
-  `usize`: a position within a bank and the bank's size, used to cut the shared tables into
-  slices one worker each clears. They carry the host's grouping as two numbers, and nothing on
+  A `Search::Worker` takes a `HistoryBankIndex` -- a scoped enum over `usize`, an index into the
+  engine's own map -- rather than a topology handle. It does hold `numaThreadIdx` and
+  `numaTotal`, but those are plain `usize`: a position within a bank and the bank's size, used to
+  cut the shared tables into slices one worker each clears. They travel to `shared_slice` as one
+  `WorkerShare`, because two adjacent counts transposed keep the arithmetic working and hand
+  every worker a different slice. They carry the host's grouping as two numbers, and nothing on
   the search path can ask what the grouping meant.
 - **Shared memory does not ride along with it.** `LazyNumaReplicatedSystemWide` is the only user
   of `shm.h` in this family, and it lives in `numa_shared.h`, which includes both `numa.h` and
