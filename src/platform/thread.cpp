@@ -28,7 +28,6 @@
 #include <unordered_set>
 #include <utility>
 
-#include "../engine/bitboard.h"
 #include "../engine/history.h"
 #include "memory.h"
 #include "../engine/movegen.h"
