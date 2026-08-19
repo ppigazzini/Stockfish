@@ -1,8 +1,9 @@
 # The shell
 
-`src/shell/main.cpp`, `src/shell/uci.h`, `src/shell/uci.cpp`, `src/shell/ucioption.h`, `src/shell/ucioption.cpp`,
-`src/shell/engine.h`, `src/shell/engine.cpp`, `src/shell/benchmark.h`, `src/shell/benchmark.cpp`, `src/shell/perft.h`,
-`src/shell/console.h`, `src/shell/console.cpp`, `src/shell/tune.h`, `src/shell/tune.cpp`.
+`src/shell/main.cpp`, `src/shell/uci.h`, `src/shell/uci.cpp`, `src/shell/ucioption.h`,
+`src/shell/ucioption.cpp`, `src/shell/engine.h`, `src/shell/engine.cpp`, `src/shell/benchmark.h`,
+`src/shell/benchmark.cpp`, `src/shell/perft.h`, `src/shell/console.h`, `src/shell/console.cpp`,
+`src/shell/tune.h`, `src/shell/tune.cpp`.
 
 The process around the engine: the UCI transport, the option table, the session that holds
 the position and the network, and the bench.

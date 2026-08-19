@@ -52,8 +52,9 @@ The claims that survive review and fail verification are always the same shapes:
 - **a list with the wrong count** -- an enum with five members written as four;
 - **a real symbol under a wrong name** -- `TBCursedWin` for `WDLCursedWin`;
 - **a case list that omits a case** -- `legal()` described without castling;
-- **a paraphrase that inverts a condition** -- "a king move forces a refresh", when it forces
-  one only across a bucket boundary.
+- **a paraphrase that inverts a condition** -- "an own-king move forces a refresh only across a
+  bucket boundary", when `HalfKAv2_hm::requires_refresh` tests `diff.pc == make_piece(perspective,
+  KING)` and every one of them does.
 
 None of them is catchable by a tool. All of them are catchable by opening the file.
 
