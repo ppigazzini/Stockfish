@@ -1954,9 +1954,15 @@ pre-commit run --all-files        # everything, now
 ```
 
 `.pre-commit-config.yaml` runs file hygiene, `ruff` (lint and format), `ty`, `make format`, and
-the three static gates above -- `docslint.sh`, `lanecheck.sh`, `depcheck.sh`. **CI does not run
-these.** The workflows stay the authority; this catches the same classes before the commit
-exists, which is the only difference that matters when a gate takes seconds.
+four of the static gates above -- `docslint.sh`, `lanecheck.sh`, `shellcheck.sh` and
+`depcheck.sh`, each on the file globs its subject lives under. **CI does not run these.** The
+workflows stay the authority; this catches the same classes before the commit exists, which is
+the only difference that matters when a gate takes seconds.
+
+**Two hooks turn a skip into a pass, and both do it deliberately.** `pre-commit` reads any
+non-zero status as a failure, so `shell-lint` maps `shellcheck.sh`'s exit 2 back to 0 and prints
+SKIP; a commit on a box with no pinned shellcheck therefore passes a hook that linted nothing.
+`docs.yml` is what cannot be fooled that way, because it installs the pin first.
 
 `pyproject.toml` holds the `ruff` and `ty` configuration and declares the dependency the gates
 need. The lint set is curated rather than `ALL`: these are operator tools, so `print` IS their
@@ -1970,11 +1976,11 @@ fork does not own. `E501` is ignored in those same two files, where every overlo
 single string literal -- a search-output regex, a FEN with its move list, ANSI-coloured
 f-strings. Editing a regex to satisfy a line limit is how a gate quietly stops matching.
 
-**The `clang-format` hook runs only if `clang-format-20` is present**, the version CI pins. The
-Makefile falls back to a bare `clang-format` when 20 is absent, and a different major reformats
-the whole tree to its own house style, rewriting files nobody touched. The hook skips loudly
-instead, which weakens nothing -- CI's own `clang-format` step is `continue-on-error` and
-comments rather than blocks.
+**The `clang-format` hook runs only if `clang-format-20` is present**, the version CI pins. A
+different major reformats the whole tree to its own house style, rewriting files nobody touched.
+`make format` refuses outright without the pinned major, so the hook's guard chooses what
+happens instead of that refusal: a loud SKIP rather than a failed commit. It weakens nothing --
+CI's own `clang-format` step is `continue-on-error` and comments rather than blocks.
 
 ## CI
 
