@@ -2114,9 +2114,8 @@ stated in the lane rather than left as silent gaps.
 It runs on two arm64 targets rather than a wide matrix because it is answering one question --
 does this engine SEARCH correctly off x86-64 -- and because the three subsystems this branch
 changed most, `shm`, `numa` and `thread_native`, are the three that diverge most across
-platforms. **It asserts behaviour and never performance**: every figure on
-`PERFORMANCE.md` is per-host by construction and a second host's numbers would not pool with
-the first's.
+platforms. **It asserts behaviour and never performance**: a performance figure is per-host by
+construction, so a second host's numbers would not pool with the first's.
 
 ### Reachability
 
