@@ -443,13 +443,15 @@ if selected lanecheck-branchfilter; then
     # reachable through its caller no matter what its own filters say, so
     # mutating a called workflow would test nothing. This is also the umbrella
     # that dispatches most gates here, so cutting it off is visible downstream.
+    #
+    # The CURRENT branch is cut, not a fixed name. refish.yml admits more than
+    # one, so striking a hard-coded `refish` off it leaves the branch the row is
+    # running on still admitted, lanecheck still green, and the row reporting
+    # NOT DETECTED for a gate that works -- which is what it did on github_ci.
+    nc_branch=$(git rev-parse --abbrev-ref HEAD)
     mutate .github/workflows/refish.yml \
-        '  push:
-    branches:
-      - refish' \
-        '  push:
-    branches:
-      - no-such-branch'
+        "      - $nc_branch" \
+        '      - no-such-branch'
     if ./tests/lanecheck.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- a workflow filtered off this branch read as reachable"
         FAIL=$((FAIL+1))
@@ -466,19 +468,23 @@ if selected lanecheck-stale-workflow-excuse; then
     # follows. Giving stockfish.yml a trigger this branch matches must report the
     # excuse as stale rather than quietly keeping it.
     # Anchored through `tags:` so it names the PUSH block: `pull_request` below
-    # carries the same two branches, and an anchor matching both refuses.
+    # carries the same two branches, and an anchor matching both refuses. The
+    # branch added is the CURRENT one -- adding a fixed `refish` makes
+    # stockfish.yml reachable only when that is the branch being checked, and
+    # the row then reports NOT DETECTED everywhere else.
+    nc_branch=$(git rev-parse --abbrev-ref HEAD)
     mutate .github/workflows/stockfish.yml \
         '    tags:
       - "*"
     branches:
       - master
       - tools' \
-        '    tags:
-      - "*"
+        "    tags:
+      - \"*\"
     branches:
       - master
       - tools
-      - refish'
+      - $nc_branch"
     # Captured, then matched against a here-string. NOT `lanecheck.sh | grep -q`:
     # under `set -o pipefail` grep exits at the first match, the producer dies of
     # SIGPIPE, and pipefail propagates that status -- so a MATCH reads as no
@@ -554,7 +560,11 @@ if selected actionpins-unresolved; then
         printf '#!/bin/bash\ncase "$1" in\n  auth) exit 0 ;;\n  api) echo "gh: API rate limit exceeded (HTTP 403)" >&2; exit 1 ;;\nesac\n' \
             > "$fake/gh"
         chmod +x "$fake/gh"
-        out=$(PATH="$fake:$PATH" ./tests/actionpins.sh 2>&1)
+        # An EMPTY cache, so the gate actually reaches the API it is being
+        # asked about. With the real one warm it makes no calls at all, nothing
+        # goes unresolved, and this row reports the gate broken when it is the
+        # row that cannot see.
+        out=$(PATH="$fake:$PATH" ACTIONPINS_CACHE="$fake/cache.tsv" ./tests/actionpins.sh 2>&1)
         if printf '%s' "$out" | grep -q 'unresolved: [1-9]'; then
             if printf '%s' "$out" | grep -q 'no such tag upstream'; then
                 echo "  NOT DETECTED -- a 403 was reported as a missing tag"; FAIL=$((FAIL+1))
