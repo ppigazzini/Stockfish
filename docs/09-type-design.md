@@ -6,7 +6,7 @@ them it cannot.
 `src/engine/types.h` owns most of it; `src/engine/basetypes.h` owns `TypedKey` and the
 `KeySpace` enumerators, `src/engine/history.h` the history clamps, and
 `src/engine/position.h` the key accessors. The theory each family rests on is linked in
-[11-references.md](11-references.md).
+[12-references.md](12-references.md).
 
 Audience: anyone adding a type or changing an encoding.
 
@@ -328,7 +328,7 @@ A hypothetical `Depth::operator*` returning one type leaves the other five needi
 escape, and the choice that serves all six -- depth times an int giving an int -- turns any
 depth into any integer.
 **A type that needs six output types needs none.** Units-of-measure systems solve this with
-unit polymorphism, which C++ cannot express; see [11-references.md](11-references.md).
+unit polymorphism, which C++ cannot express; see [12-references.md](12-references.md).
 
 ## The cost of a type here
 
