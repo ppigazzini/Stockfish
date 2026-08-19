@@ -1943,12 +1943,10 @@ and a clean run means "this sequence found nothing" rather than "the bound holds
 
 Drive the engine over UCI without tripping the stdin-EOF trap.
 
-**It used to be an operator harness that no lane ran**, excused on the grounds
-that every check it could make was owned by a gate that *is* dispatched. That
-stopped being true when `platformbattery.yml` landed: `perft.sh` and
-`reprosearch.sh` both drive the engine through `expect`, which does not travel
-to every target, and the driver is what carries those two checks to Windows and
-ARM. It is dispatched now and `lanecheck.sh` carries no excuse for it.
+**`platformbattery.yml` dispatches it, and portability is the reason.** `perft.sh` and
+`reprosearch.sh` both drive the engine through `expect`, which does not travel to every target;
+this driver is plain subprocess pipes and carries those two checks to Windows and ARM.
+`lanecheck.sh` carries no excuse for it.
 
 ```sh
 python3 tests/uci_driver.py smoke          # 15 surfaces, exit 0 or 1, ~2s
