@@ -214,7 +214,7 @@ change is not confined to one. A breaking change to a UCI option or an exported 
 Body wrapped at 80, carrying the evidence: gate output and exit code, not "should work". A
 change that moves the bench signature must say what moved it and carry the new `Bench:`.
 
-**Write the body to the rules in [docs/12-writing.md](docs/12-writing.md).** A commit message is
+**Write the body to the rules in [docs/13-writing.md](docs/13-writing.md).** A commit message is
 the one surface where history is the subject rather than the contamination, and that licence
 covers the change -- not the prose. No capitalised shouting to mark a section, no paragraph
 describing what the commit does or does not establish, no summary of the body above it. State
@@ -222,7 +222,7 @@ the fact and stop.
 
 **No footer names a non-author.** The footers this branch writes are `Bench:` and
 `BREAKING CHANGE:`; `closes` and a human `Co-authored-by:` follow
-[docs/12-writing.md](docs/12-writing.md). Never a `Co-Authored-By:` for a tool or an assistant,
+[docs/13-writing.md](docs/13-writing.md). Never a `Co-Authored-By:` for a tool or an assistant,
 and never a generated-by advertisement of any kind: a footer naming a non-author is a false
 claim about who wrote the change, and every blame view repeats it forever. Configure tooling
 that appends one by default not to, rather than stripping it in a later rewrite.
