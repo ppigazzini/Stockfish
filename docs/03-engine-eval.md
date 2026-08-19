@@ -360,3 +360,9 @@ ls -l src/stockfish src/*.nnue
 
 **The engine resolves `EvalFile` relative to the working directory.** Running from anywhere but
 `src/` finds no external net and produces an unrelated but entirely plausible number.
+
+## The gates
+
+| gate | what it proves here | owned by |
+|---|---|---|
+| `tests/fuzz.py --harness net` | a corrupt network is refused rather than loaded and reported as an opinion | [10-tooling-ci.md](10-tooling-ci.md) |
