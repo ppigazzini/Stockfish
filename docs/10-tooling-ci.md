@@ -18,38 +18,40 @@ A gate that SKIPPED for a missing tool has proven **nothing** and must never be 
 pass. Both perf gates and the documentation lint distinguish the three outcomes by exit code:
 0 clean, 1 findings, 2 could not run.
 
-## Which gate settles which claim
+## The gates
 
 Pick by what the change CLAIMS, not by what is cheap to run. Every row's third column is the
 reason the row above it is not a substitute: a gate quoted without its blind spot is a gate
-being over-trusted.
+being over-trusted. The last column is where the gate is described, which is the page whose
+subject it holds.
 
-| the claim | the gate | what it cannot see |
-|---|---|---|
-| "it searches the same tree" | `tests/signature.sh` | cost; and anything off the bench position list |
-| "move generation is right" | `tests/perft.sh` | a key that desyncs and resyncs -- perft counts leaves |
-| "`ucinewgame` resets what a search reads" | `tests/reprosearch.sh` | whether those node counts are the right ones; a second thread |
-| "it still SAYS the same thing" | `tests/golden.sh` | a command no `.uci` case sends; every field the filter drops |
-| "the CLI still works" | `tests/instrumented.py` | the full text of a session -- it asserts substrings |
-| "it still answers mid-search" | `tests/liveness.sh` | the move, the score, the node count. It is blind to everything a hang is not |
-| "the unhosted search runs on the same parameters" | `tests/optiondefaults.sh` | an option the engine has no field for |
-| "the call graph is unchanged" | `tests/fingerprint.sh` ([11-performance.md](11-performance.md)) | a callee inlined INTO its caller; and any code the workload never reaches |
-| "no host dependency leaked into `engine/`" | `tests/depcheck.sh`, then `tests/linkcheck.sh`, then `tests/enginelink.sh` | each is blind where the next sees: includes miss a template edge, symbols miss an inline header body, the link misses what nothing calls |
-| "every source is built" | `tests/buildcoverage.sh` | a header no unit includes; whether the object reaches the binary at a given `ARCH` |
-| "the include set is minimal" | `tests/iwyu.sh` | a use behind another host's `#ifdef`; and in shim mode, any absolute verdict |
-| "a known-bad table is still refused" | `tests/malformed.sh` | a field nobody has broken yet |
-| "the weight reader matches the FORMAT" | `tests/leb128.sh` | the engine -- it builds one translation unit and no binary |
-| "the PV extension respects its array" | `tests/tbpv.py` | anything but the one seeded sequence over the one corpus |
-| "nothing NEW breaks it" | `tests/fuzz.py`, `tests/fuzzsearch.sh` | a correctly-read corrupt table; and the run's own budget bounds the claim |
-| "the engine plays" | `tests/match.sh` | strength; and any defect both binaries share |
-| "it costs the same" / "it is faster" / "it scales" | the six axes in [11-performance.md](11-performance.md) | each other -- see that page's selector |
-| "this gate can still fail" | `tests/negative_control.sh` | a gate with no row, which is simply absent from it |
-| "every gate runs somewhere" | `tests/lanecheck.sh` | whether the gate asserts anything once it runs |
-| "the docs are not rotten" | `tests/docslint.sh` | whether a sentence is false |
-| "the citations resolve" | `tests/devcite.sh` | whether the SHA names the commit the sentence means |
-| "the actions are pinned" | `tests/actionpins.sh` | whether a pin is the latest release -- reported by `--latest`, never gated |
-| "the commit record is readable by a lane" | `tests/anchor.sh` | bodies a shallow clone did not fetch |
-| "the gate scripts are sound shell" | `tests/shellcheck.sh` | whether a gate checks the thing it claims to |
+| the claim | the gate | what it cannot see | described in |
+|---|---|---|---|
+| "it searches the same tree" | `tests/signature.sh` | cost; and anything off the bench position list | this page |
+| "move generation is right" | `tests/perft.sh` | a key that desyncs and resyncs -- perft counts leaves | [01-engine-board.md](01-engine-board.md) |
+| "`ucinewgame` resets what a search reads" | `tests/reprosearch.sh` | whether those node counts are the right ones; a second thread | [02-engine-search.md](02-engine-search.md) |
+| "it still SAYS the same thing" | `tests/golden.sh` | a command no `.uci` case sends; every field the filter drops | [07-shell.md](07-shell.md) |
+| "the CLI still works" | `tests/instrumented.py` | the full text of a session -- it asserts substrings | [07-shell.md](07-shell.md) |
+| "it still answers mid-search" | `tests/liveness.sh` | the move, the score, the node count. It is blind to everything a hang is not | [07-shell.md](07-shell.md) |
+| "the unhosted search runs on the same parameters" | `tests/optiondefaults.sh` | an option the engine has no field for | [07-shell.md](07-shell.md) |
+| "the call graph is unchanged" | `tests/fingerprint.sh` | a callee inlined INTO its caller; and any code the workload never reaches | [11-performance.md](11-performance.md) |
+| "no host dependency leaked into `engine/`" | `tests/depcheck.sh`, then `tests/linkcheck.sh`, then `tests/enginelink.sh` | each is blind where the next sees: includes miss a template edge, symbols miss an inline header body, the link misses what nothing calls | [00-architecture.md](00-architecture.md) |
+| "every source is built" | `tests/buildcoverage.sh` | a header no unit includes; whether the object reaches the binary at a given `ARCH` | [00-architecture.md](00-architecture.md) |
+| "the include set is minimal" | `tests/iwyu.sh` | a use behind another host's `#ifdef`; and in shim mode, any absolute verdict | [00-architecture.md](00-architecture.md) |
+| "a known-bad table is still refused" | `tests/malformed.sh` | a field nobody has broken yet | [05-tablebases.md](05-tablebases.md) |
+| "the weight reader matches the FORMAT" | `tests/leb128.sh` | the engine -- it builds one translation unit and no binary | [03-engine-eval.md](03-engine-eval.md) |
+| "the PV extension respects its array" | `tests/tbpv.py` | anything but the one seeded sequence over the one corpus | [05-tablebases.md](05-tablebases.md) |
+| "nothing NEW breaks it, at the stdin surface" | `tests/fuzz.py` | a correctly-read corrupt table; and the run's own budget bounds the claim | this page |
+| "nothing NEW breaks it, in the node body" | `tests/fuzzsearch.sh` | the same, and it registers no seam, so nothing a host would have supplied | [02-engine-search.md](02-engine-search.md) |
+| "the engine plays" | `tests/match.sh` | strength; and any defect both binaries share | this page |
+| "it costs the same" / "it is faster" / "it scales" | the six axes in [11-performance.md](11-performance.md) | each other -- see that page's selector | [11-performance.md](11-performance.md) |
+| "this gate can still fail" | `tests/negative_control.sh` | a gate with no row, which is simply absent from it | this page |
+| "every gate runs somewhere" | `tests/lanecheck.sh` | whether the gate asserts anything once it runs | this page |
+| "the docs are not rotten" | `tests/docslint.sh` | whether a sentence is false | [13-writing.md](13-writing.md) |
+| "the citations resolve" | `tests/devcite.sh` | whether the SHA names the commit the sentence means | [13-writing.md](13-writing.md) |
+| "the actions are pinned" | `tests/actionpins.sh` | whether a pin is the latest release -- reported by `--latest`, never gated | this page |
+| "the commit record is readable by a lane" | `tests/anchor.sh` | bodies a shallow clone did not fetch | [13-writing.md](13-writing.md) |
+| "the gate scripts are sound shell" | `tests/shellcheck.sh` | whether a gate checks the thing it claims to | this page |
 
 Most of these can SKIP -- for a missing tool, a missing corpus, a missing PMU -- and a skip
 answers nothing. Read the exit code, and for `negative_control.sh` read the skipped count
@@ -119,17 +121,6 @@ invalidates `npsab.sh`.
 is not idle, so a match run there forfeits on time and scores the box rather than the engine.
 It runs when someone remembers it.
 
-## The build and packaging scripts
-
-| Script | Job |
-|---|---|
-| `scripts/net.sh` | download and verify the network the build expects |
-| `scripts/get_native_properties.sh` | detect the host ISA and name the matching `ARCH` |
-| `scripts/check_universal.sh` | verify the x86-64 runtime-dispatch binary |
-| `scripts/check_universal_arm.sh` | the same for aarch64 |
-| `scripts/check_universal_macos.sh` | the same for the macOS universal binary |
-| `scripts/check_universal_riscv.sh` | the same for riscv64 |
-
 ## `tests/actionpins.sh`
 
 Holds every third-party GitHub Action to a commit, a stated version, and one version.
@@ -193,26 +184,6 @@ because it reports success.
 Every mutation perturbs a **value** rather than removing a bound: a mutant that hands the
 search an evaluation with no ceiling produces an experiment that never terminates, and a
 timeout is a rig fault rather than a detection.
-
-**One class of row mutates nothing, and it is where a new type's row goes.** A type introduced
-so that a wrong spelling stops compiling has no gate to redden -- the compiler is the gate. Such
-a row writes a probe translation unit, compiles it against the real headers, and asserts the
-illegal form is REFUSED:
-
-```sh
-printf '#include "history.h"\nusing namespace Stockfish;\n%s\n' \
-    'HistoryBankIndex f(usize n) { return n; }' > probe.cpp
-( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only probe.cpp )   # must FAIL
-```
-
-`-Iengine` as well as `-I.` is load-bearing: the probes include engine headers by bare name and
-`src/` is zone directories, so `-I.` alone fails to find them -- which makes the illegal form
-AND the legal one fail, and scores a broken rig as a detection. So each of these rows asserts
-both halves, and the second is what catches it: every legal spelling must still compile. A row
-that only checked the refusal would be satisfied by a header that stopped compiling at all.
-
-These rows are `static` by construction -- they build no engine -- and they restore nothing,
-because they never touched the tree.
 
 Three ways the rig itself can be wrong, and all three refuse rather than return a verdict: an
 anchor string that has rotted (the tree is never mutated, the gate greens, and that reads as
