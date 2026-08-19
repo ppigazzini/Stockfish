@@ -52,15 +52,10 @@ selector table naming different gates, and the CI table naming gates the workflo
 [13-writing.md](13-writing.md) is how that half is bought.
 
 **The zone boundary is checked, not described.** `src/` is `engine/`, `platform/` and `shell/`,
-the engine depends on neither of the others, and four gates hold that: `tests/depcheck.sh` at
-the include, `tests/linkcheck.sh` at the symbol, `tests/enginelink.sh` at the link, and
-`tests/fuzzsearch.sh` by running the engine with no host at all. Between them they read five
-baselines -- `depcheck` asks about three edges, `linkcheck` about two:
+and the engine depends on neither of the others. The gates that hold it, the five baselines they
+read and the one entry that is deliberate rather than debt are
+[00-architecture.md](00-architecture.md)'s.
 
-```sh
-grep -n '^check_rule' tests/depcheck.sh   # engine->shell, engine->platform, platform->shell
-grep -n '^BASELINE' tests/linkcheck.sh    # engine->shell, engine->platform
-```
-
-Four are empty and meant to stay that way. The fifth, `tests/depcheck.baseline`, carries one
-entry -- `types.h -> tune.h` -- which is deliberate rather than debt.
+**Each page ends with `## The gates`**, naming what holds its claims. `owned by` reads
+`this page` where the mechanics live there and names the page otherwise, so a gate is described
+once and reachable from everywhere it matters.
