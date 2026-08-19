@@ -97,7 +97,7 @@ bool root_probe(Position&, Search::RootMoves&, Rule50, RankDTZ, const std::funct
 bool root_probe_wdl(Position&, Search::RootMoves&, Rule50) { return false; }
 
 Config rank_root_moves(
-  const SearchOptions&, Position&, Search::RootMoves&, bool, const std::function<bool()>&) {
+  const SearchOptions&, Position&, Search::RootMoves&, RankDTZ, const std::function<bool()>&) {
     return Config{};
 }
 

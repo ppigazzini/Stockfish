@@ -284,7 +284,7 @@ Tablebases::Config rank_root_moves(void*,
                                    const SearchOptions&,
                                    Position&,
                                    Search::RootMoves&,
-                                   bool,
+                                   Tablebases::RankDTZ,
                                    const std::function<bool()>&) {
     return Tablebases::Config();
 }
