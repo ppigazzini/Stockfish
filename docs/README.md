@@ -13,6 +13,7 @@ is the claim this set makes about it.
 | [05-tablebases.md](05-tablebases.md) | `platform/syzygy/` | tablebase probing | hot |
 | [06-platform.md](06-platform.md) | `platform/memory`, `numa`, `shm`, `thread_native`, `src/universal/`; the replication mechanism | porting, threading, allocation, dispatch | hot |
 | [07-shell.md](07-shell.md) | `shell/main`, `uci`, `ucioption`, `engine`, `benchmark`, `perft`, `tune` | the UCI surface and options | hot |
+| [08-idiomatic-cpp.md](08-idiomatic-cpp.md) | the C++17 this tree commits to, the spellings that measured, and the detector for each | hot-path and build contributors | hot |
 | [09-type-design.md](09-type-design.md) | the value domain: what each quantity means and which are distinguishable | anyone adding a type or changing an encoding | cold |
 | [10-tooling-ci.md](10-tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
 | [11-performance.md](11-performance.md) | the six axes, what each proves and what it cannot see; `fingerprint.sh` | anyone measuring a refactor or an optimisation | hot |
