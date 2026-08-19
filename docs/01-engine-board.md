@@ -245,7 +245,7 @@ two table probes rather than by generating moves. That is Marcel van Kervinck's 
 `cuckoo` and `cuckooMove` in `position.cpp`, 8192 entries, indexed by `H1` and `H2`.
 
 The table is a pure function of the Zobrist psq and side keys, and is built in `Position::init`
-where those keys are drawn -- see the ordering requirement at the top of this page.
+where those keys are drawn -- after `Attacks::init`, which it reads through `attacks_bb`.
 
 ### `see_ge` -- static exchange evaluation
 
