@@ -145,7 +145,7 @@ asked for.
 
 **No padding.** Length is not thoroughness; it is where rot hides. Cut anything that does not
 help a reader implement or verify. Background available from the wiki belongs in
-[11-references.md](11-references.md) as a link.
+[12-references.md](12-references.md) as a link.
 
 **Pair every prohibition with an alternative.** "Do not call X" leaves a reader stuck; "do not
 call X, use Y, which holds the lock" does not.
