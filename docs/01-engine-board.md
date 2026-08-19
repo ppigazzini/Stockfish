@@ -347,3 +347,29 @@ accepts.
 
 This is why `tests/perft.sh` carries Chess960 rows: standard-chess castling hides an entire class
 of bug, and the same FEN means two different positions under the two dialects.
+
+## The gates
+
+| gate | what it proves here | owned by |
+|---|---|---|
+| `tests/perft.sh` | move generation is right, in both dialects | this page |
+
+```sh
+./tests/perft.sh
+```
+
+Node counts at depth, over standard and Chess960 positions. Most of the rows are Chess960 for
+the reason above: standard-chess castling hides a whole class of bug, and the same FEN means two
+different positions under the two dialects.
+
+The counts are **facts about chess**, not a golden. A mismatch is always a movegen bug and never
+an update candidate.
+
+**It cannot see a key that desyncs and resyncs**, because perft counts leaves -- a position whose
+Zobrist key goes wrong and comes back right generates the same moves and reaches the same total.
+Neither can the anchor, which is a fixed position list. Nothing in the tree proves the key
+faithful ([10-tooling-ci.md](10-tooling-ci.md)).
+
+`tests/uci_driver.py perft` reads the same positions and the same expected counts out of this
+script rather than a copy, and speaks UCI directly for a host with no `expect`. It is not the
+substitute in CI, where `expect` is installed and the script itself is what runs.
