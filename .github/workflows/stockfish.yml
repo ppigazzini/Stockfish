@@ -4,7 +4,10 @@ on:
     branches:
       - master
       - tools
-      - github_ci
+      # github_ci is refish.yml's on this fork: two umbrellas on one branch call
+      # the same reusable lanes twice, under different concurrency groups, so
+      # neither cancels the other.
+
   pull_request:
     branches:
       - master
