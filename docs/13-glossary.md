@@ -23,24 +23,28 @@ Audience: all contributors.
 | **the transposition table** | `src/engine/tt.cpp`: clusters of three `TTEntry` in 32 bytes, shared across threads without a lock. `depth8` is the occupancy test, which is why `DEPTH_UNSEARCHED` and `DEPTH_NONE` are negative and distinct |
 | **cluster** | the 32-byte unit the table is an array of, sized to divide a cache line so one probe touches one line |
 | **the history tables** | `src/engine/history.h`. Every one is a gravity table: `operator<<` moves the stored value toward the bonus in proportion to its distance from the clamp `D`, which is a template parameter, one per table |
-| **continuation history** | a plane per (piece, destination) of the *previous* move, each plane a history over the current move. `ContinuationHistory` in `src/engine/history.h`, held in a `[2][2]` block reached only as `block(InCheck, Capture)` -- the two subscripts are one-bit scoped enums so the quadrant cannot be transposed |
+| **continuation history** | a plane per (piece, destination) of the *previous* move, each plane a history over the current move. `ContinuationHistory` in `src/engine/history.h`, held in a `ContinuationHistoryBlock` whose `[2][2]` table is reachable only through `operator()(InCheck, Capture)` -- both subscripts are one-bit scoped enums, so `[capture][inCheck]` no longer has a spelling |
 | **history bank** | one `SharedHistories`, shared by the workers the host grouped together and named by a `HistoryBankIndex`. Sized by a `PowerOfTwo`, because both its tables are indexed by masking with `size - 1` |
-| **correction history** | tables recording how far the static evaluation of positions sharing a pawn structure, minor-piece configuration or non-pawn material count has been from what the search found. The node starts from the corrected value |
+| **correction history** | tables recording how far the static evaluation of positions sharing a pawn structure, minor-piece configuration or non-pawn material count has been from what the search found. The node starts from the corrected value. `SharedHistories::pawn_correction`, `minor_piece_correction` and `nonpawn_correction` in `src/engine/history.h` each pick the key that selects the row and the field read out of it in one place, so no caller can pair one key's row with another key's field |
 | **the move picker** | `src/engine/movepick.cpp`, staged: each stage is generated only when the previous one runs out. Four sequences -- main, evasion, probcut, quiescence |
-| **stand-pat** | the static evaluation used as a lower bound in quiescence, before any capture is tried |
+| **stand-pat** | the static evaluation used as a lower bound in quiescence, before any capture is tried. `Search::Worker::qsearch` in `src/engine/search.cpp` |
 | **SEE** | static exchange evaluation, `Position::see_ge`. Answers whether an exchange on a square is worth at least a threshold, without searching it |
 | **the optimum and the maximum** | the two numbers `src/engine/timeman.cpp` produces. The optimum is the point past which a new iteration is not started; the maximum is the point past which the search stops wherever it is |
 | **nodestime** | the mode in which the whole clock model is denominated in nodes rather than milliseconds. The `time` reported to the GUI stays real milliseconds |
 | **the accumulator** | the NNUE first layer's output for the current position, updated per move rather than recomputed. `src/engine/nnue/nnue_accumulator.cpp` |
 | **refresh** | recomputing an accumulator rather than updating it, forced by a king move under a king-bucketed feature set. The refresh cache diffs against the last accumulator computed in that bucket |
 | **dirty piece / dirty threats** | the record `Position::do_move` leaves of exactly what changed, so the accumulator update knows which features to subtract and add. `DirtyPiece` and `DirtyThreats` in `src/engine/types.h` |
-| **psqt and positional** | the network's two output heads. Their sum is the raw evaluation; their difference is the complexity term `evaluate.cpp` blends with |
-| **optimism** | the per-worker search disposition blended into the evaluation, one of the three reasons Lazy SMP threads diverge |
+| **psqt and positional** | the network's two output heads, returned as a pair by `Network::evaluate`. Their sum is the raw evaluation; the absolute value of their difference is the complexity term `Eval::evaluate` (`src/engine/evaluate.cpp`) scales both optimism and the evaluation by |
+| **optimism** | the per-worker search disposition blended into the evaluation, one of the three reasons Lazy SMP threads diverge. Set per root move in `Search::Worker::iterative_deepening` and read by `Search::Worker::evaluate`, both `src/engine/search.cpp`; `Eval::evaluate` scales it by the network's complexity term |
 | **Lazy SMP** | the threading model: N workers on one root, sharing the transposition table, with no work queue and no split points |
+| **the principal variation** | `PVMoves` in `src/engine/search.h`: a fixed `Move` array plus a length, not a `vector`, so a node's PV costs no allocation. `PVMoves::Capacity` is the one spelling of the bound and the array and the `push_back` assert both read it |
+| **the bestmove pair** | `BestMove` in `src/engine/search.h`: the best move and its ponder move as one value on the `onBestmove` callback. Two adjacent `std::string_view`s in a parameter list transpose silently and print a legal-looking `bestmove` line |
+| **worker share** | `WorkerShare` in `src/engine/history.h`: which worker of how many is asking, as one value. `shared_slice` cuts a shared table into contiguous slices from it, and transposing two adjacent counts keeps the arithmetic working while handing every worker a different slice -- so the whole table is cleared only when every index in `[0, share.total)` asks exactly once with the same total |
 | **the vote** | `Search::best_worker` (`src/engine/search.cpp`), which picks the answer by weighted agreement across workers rather than by taking the deepest or highest-scoring |
 | **WDL, DTZ** | the two Syzygy results -- win/draw/loss, and distance to a zeroing move. `src/platform/syzygy/tbprobe.cpp` |
 | **cursed win, blessed loss** | a win the fifty-move rule takes away, and a loss it rescues. `WDLCursedWin` and `WDLBlessedLoss` are members of `WDLScore` in `src/engine/tb_source.h`, and exist because the tables are generated under two rules at once |
-| **cardinality** | the largest piece count the loaded tablebases cover. Zero with no `SyzygyPath`, which is what makes the Step 6 probe one predictable branch for a user with no tables |
+| **the root probe flags** | `Rule50` and `RankDTZ` in `src/engine/tb_source.h`, scoped enums over `bool`. They are `root_probe`'s two adjacent flags: transposing them compiles, and both inversions are silent -- `Rule50` changes the verdict a table gives, `RankDTZ` changes whether DTZ ranking happens at all |
+| **cardinality** | the largest piece count the loaded tablebases cover: `Tablebases::Config::cardinality` in `src/engine/tb_source.h`. Zero with no `SyzygyPath`, and the guard on it short-circuits before the probe, which is what makes Step 6 of `search()` one predictable branch for a user with no tables |
 
 ## 2. This repository's vocabulary
 
@@ -69,14 +73,15 @@ None of this is chess-programming vocabulary.
 | **the spread** | the min and max of those per-round ratios. A ratio whose spread straddles 1.000 has established no direction, whatever its median reads |
 | **multiplexing** | the kernel time-slicing more events than the PMU has slots, so a counter covers only part of the run. The read format carries enabled/running to scale it; an unscaled reading under-reports silently |
 | **hot / cold** | of a page: whether it describes code that moves. [12-writing.md](12-writing.md) |
-| **zone** | one of `src/engine/`, `src/platform/`, `src/shell/`. A file's zone is its directory, so a new file joins one by where it is put. `tests/zones.sh` is the single mapping both zone checks read |
+| **zone** | one of `src/engine/`, `src/platform/`, `src/shell/`. A file's zone is its directory, so a new file joins one by where it is put, and a file in a directory the mapping does not name resolves to `unassigned` rather than being skipped. `tests/zones.sh` is the single mapping, sourced rather than restated: `grep -rl zones.sh tests` names every gate that reads it |
 | **seam** | a struct of function pointers the engine declares, reads through a getter, and the host fills once before the first search. The engine names no host type; the host names the engine's. Catalogued in [00-architecture.md](00-architecture.md) |
+| **the host snapshot** | `Host` (`src/engine/host.h`), a by-value copy of all seven seam registrations. `current_host()` reads whatever is registered when it runs, so `Engine::host` must be assigned after the registrations and before any `Worker` is built -- a snapshot taken early holds the fallback arena and the refusing worker set, which is a working engine giving a different answer |
 | **the composition root** | `src/shell/engine.cpp`: the one file that calls a seam's setter. Nothing else does |
 | **the arena** | `src/engine/arena.h`, the allocation seam. Unregistered it falls back to plain aligned allocation, which is why a block must never be taken from one allocator and released by the other |
 | **a default that refuses** | a seam whose unregistered behaviour would be a *different* answer rather than a slower one, so it declines instead. The unregistered worker set reports **no** workers rather than answering with one; a silent single-threaded search would still print a number, and the number would look fine |
 | **headless** | running the engine with no host registered. `Search::go` (`src/engine/search_go.h`) is the entry; `tests/enginelink.sh` and `tests/fuzzsearch.sh` are the two callers. Above one worker it needs threads it cannot spawn, so it dispatches through the parallel-for seam and refuses a count that seam cannot supply |
 | **the standalone link** | `tests/enginelink.sh`: compile `src/engine/` alone, link with a stub `main` and nothing else, fail on any undefined symbol. Stronger than a symbol-set intersection, which cannot see an inline call |
-| **the corpus** | the inputs a fuzzer keeps because they reached new coverage. Without one persisted across runs, a nightly job re-derives the same shallow coverage every night |
+| **the corpus** | the inputs a fuzzer keeps because they reached new coverage. `tests/fuzz.py` carries four harnesses -- mutated UCI text, Syzygy bytes, a network file, and two processes contending for the shared segment -- and `tests/fuzz_search.cpp` fuzzes the real search in-process, with no shell and no subprocess. Without a corpus persisted across runs, a nightly job re-derives the same shallow coverage every night |
 
 ## 3. Words that mean two things
 
@@ -91,7 +96,7 @@ None of this is chess-programming vocabulary.
 | **history** | an ordering table (`src/engine/history.h`), or git history |
 | **cluster** | the 32-byte transposition unit, or a machine cluster running fishtest |
 | **check** | the king being attacked, or a gate assertion |
-| **magic** | the multiplier in magic bitboards. Also three struct names that all get there differently: `BitboardMagic` (the multiplier), `HyperbolaMagic` and `DualMagic`, the last two using hyperbola quintessence despite the name. Each branch aliases its own to `Magic` |
+| **magic** | the multiplier in magic bitboards, and three struct names in `src/engine/attacks.h` that reach a slider attack set three different ways: `BitboardMagic` multiplies and shifts, while `HyperbolaMagic` and `DualMagic` use hyperbola quintessence despite the name. A macro picks one -- `USE_HYPERBOLA_QUINT`, `USE_DUAL_HYPERBOLA_QUINT`, or neither. Only two of the three alias to `Magic`; the dual layout has no alias and is reached as `dual_magic(Square)`, so a `Magic` in prose never means it. `git grep -n 'using Magic' -- src` is what says which |
 
 ## 4. The testing field's vocabulary
 
