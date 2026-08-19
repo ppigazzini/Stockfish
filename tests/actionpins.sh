@@ -164,7 +164,11 @@ else
     # release tag names one commit forever. If upstream force-moved a tag, this
     # would keep answering with the old SHA -- and a moved tag is the LIES case,
     # which is upstream's bug rather than a pin's. Delete the file to re-ask.
-    CACHE=$ROOT/resources/actionpins-cache.tsv
+    # ACTIONPINS_CACHE overrides the location, and the negative control needs
+    # it: a warm cache makes zero API calls, so a row that shims `gh` to answer
+    # 403 finds nothing to answer and reports the gate unable to detect. The
+    # row points this at an empty temporary file to force the network path.
+    CACHE=${ACTIONPINS_CACHE:-$ROOT/resources/actionpins-cache.tsv}
     declare -A CACHED=()
     if [ -r "$CACHE" ]; then
         while IFS=$'\t' read -r key val; do
