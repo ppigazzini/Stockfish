@@ -1342,16 +1342,27 @@ Lints the shell the gates are written in.
 
 ```sh
 ./tests/shellcheck.sh                  # 0 clean, 1 findings, 2 skipped
+./tests/shellcheck.sh --severity error # the only option it takes
 ```
 
-The tool is not a build dependency. The hosted image ships it, so the lane finds it on `PATH`;
-a developer box without it gets a SKIP naming where to put one, the way `iwyu.sh` does for its
-own toolchain.
+**The tool is PINNED, and the pin is asserted rather than hoped for.** A lint's finding set is
+version-dependent -- 0.9.0 reports a trap-invoked cleanup as SC2317 and 0.11.0 reports the same
+line as SC2329 -- so a suppression written against one version is not a suppression under the
+other. `tests/shellcheck.version` is the single owner of the number; `docs.yml` reads it,
+downloads that release into `resources/shellcheck/`, and the gate asserts the version it found
+equals it. **A different version is a SKIP, not a verdict**, and so is no shellcheck at all.
+`resources/` is searched before `PATH`, because a distro shellcheck is whatever the image
+happened to ship.
 
-**Nearly ten thousand lines of hand-written bash decide every claim this branch makes** --
-`cat tests/*.sh scripts/*.sh | wc -l` is 9,959 today, against 8,446 when this landed -- and until it did
-no tool had read them. The pre-commit config lints, formats and type-checks the Python; the
-language the gates are actually written in had nothing.
+**Every claim this branch makes is decided by hand-written bash**, and until this gate landed no
+tool had read a line of it:
+
+```sh
+cat tests/*.sh scripts/*.sh | wc -l
+```
+
+The pre-commit config lints, formats and type-checks the Python; the language the gates are
+actually written in had nothing.
 
 **Scope is by authorship, not by directory, and the rule maintains itself.** `tests/` and
 `scripts/` hold upstream's scripts as well as this branch's, and fixing a style finding in a
@@ -1379,6 +1390,12 @@ The directive takes no trailing text on its own line, and it must sit before the
 rather than before a continuation line. Two file-scoped directives exist, both where the
 property is genuinely file-wide: every SC2016 in `negative_control.sh` is a mutation anchor
 quoted verbatim, and every one in `devcite.sh` is a regex matching literal backticks.
+
+It judges scope against the fork point, so `docs.yml` checks out full history for it: with no
+merge-base it puts **every** script in scope, which is the strict direction and says which case
+it is in. The pre-commit hook maps its exit 2 back to 0 and prints SKIP, so a commit on a box
+with no pinned shellcheck passes the hook having linted nothing; `docs.yml` is the lane that
+cannot do that, because it installs the pin first.
 
 **What it cannot see**: whether a gate checks the thing it claims to. `negative_control.sh` is
 what proves a gate can fail, and a script can be shellcheck-clean and assert nothing.
