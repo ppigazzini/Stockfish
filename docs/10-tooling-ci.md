@@ -711,12 +711,19 @@ Breaks the engine on purpose and requires each gate to notice.
 ./tests/negative_control.sh static     # the rows that need no build
 ```
 
-**The `static` group is what a per-push lane can afford.** The full set builds the engine once
-per row and is hours; the static rows read the tree and finish in about a minute and a half.
-Membership is a tag on the row's own declaration -- `row docslint static` -- rather than a list
-kept elsewhere, because a list kept elsewhere goes stale the first time a row is added, and a
-row that quietly leaves the group is a row the lane stops running while still reporting a pass.
-A `static` selector that names no row refuses, the same as a rotted anchor.
+**The `static` group is what a per-push lane can afford**, and it is the only group any
+workflow runs -- `refish.yml`'s `NegativeControl` job. The full set builds the engine once per
+row and is hours; a static row reads the tree or compiles a syntax-only probe, and the group
+finishes in minutes. Membership is a tag on the row's own declaration -- `row docslint static`
+-- rather than a list kept elsewhere, because a list kept elsewhere goes stale the first time a
+row is added, and a row that quietly leaves the group is a row the lane stops running while
+still reporting a pass. A `static` selector that names no row refuses, the same as a rotted
+anchor.
+
+```sh
+grep -c '^row ' tests/negative_control.sh          # every row
+grep -c '^row .* static' tests/negative_control.sh # the group the lane runs
+```
 
 A gate's power to detect a defect is an assumption until something breaks the code and the
 gate is watched going red. A gate that has quietly stopped being able to fail is invisible,
@@ -725,6 +732,25 @@ because it reports success.
 Every mutation perturbs a **value** rather than removing a bound: a mutant that hands the
 search an evaluation with no ceiling produces an experiment that never terminates, and a
 timeout is a rig fault rather than a detection.
+
+**One class of row mutates nothing, and it is where a new type's row goes.** A type introduced
+so that a wrong spelling stops compiling has no gate to redden -- the compiler is the gate. Such
+a row writes a probe translation unit, compiles it against the real headers, and asserts the
+illegal form is REFUSED:
+
+```sh
+printf '#include "history.h"\nusing namespace Stockfish;\nHistoryBankIndex f(usize n) { return n; }\n' > probe.cpp
+( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only probe.cpp )   # must FAIL
+```
+
+`-Iengine` as well as `-I.` is load-bearing: the probes include engine headers by bare name and
+`src/` is zone directories, so `-I.` alone fails to find them -- which makes the illegal form
+AND the legal one fail, and scores a broken rig as a detection. So each of these rows asserts
+both halves, and the second is what catches it: every legal spelling must still compile. A row
+that only checked the refusal would be satisfied by a header that stopped compiling at all.
+
+These rows are `static` by construction -- they build no engine -- and they restore nothing,
+because they never touched the tree.
 
 Three ways the rig itself can be wrong, and all three refuse rather than return a verdict: an
 anchor string that has rotted (the tree is never mutated, the gate greens, and that reads as
@@ -745,10 +771,15 @@ described and inert, and nothing in the tree says so.
 
 Every script in `tests/` needs a row or an excuse -- a `NO ROW` line fails the run -- and the
 excuse list expires in both directions as `lanecheck.sh`'s does: an excused script that has a
-row is a stale excuse, and an excuse naming a script the tree no longer carries fails too. The
-excuses are for scripts that cannot fail on their own: a report that exits 0 for any ratio, an
-aggregation half invoked by another gate, the zone table, and `match.sh`, whose planted defect
-would be scored by the same clock the box perturbs.
+row is a stale excuse, and an excuse naming a script the tree no longer carries fails too. A
+row counts for its script when the row name is the stem or begins with it, so `depcheck-stale`
+covers `depcheck.sh`; that is how one script takes several rows without several excuses.
+
+What is excused, each with the reason it cannot fail on its own: a report that
+exits 0 for any ratio (`npsab.sh`, `npsthreads.sh`, `perfcounters.sh`, `perfdecomp.sh`), the
+aggregation half another gate invokes rather than runs, the zone table, `testing.py`, which
+`instrumented.py`'s row already covers, `match.sh`, whose planted defect would be scored by the
+same clock the box perturbs -- and this script, which cannot be its own negative control.
 
 ## `tests/lanecheck.sh`
 
