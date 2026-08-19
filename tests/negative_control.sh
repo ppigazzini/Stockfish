@@ -350,7 +350,7 @@ if selected docslint-selector; then
     # defect actually took: the six axes were added to AGENTS.md and the page's
     # copy kept five, under a sentence saying there were five because there were
     # five questions.
-    mutate docs/10-tooling-ci.md \
+    mutate docs/11-performance.md \
         '| "this scales" | `tests/npsthreads.sh` | every other axis runs one thread, so a contention change is invisible to all five |
 ' \
         ''

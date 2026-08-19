@@ -15,6 +15,7 @@ is the claim this set makes about it.
 | [07-shell.md](07-shell.md) | `shell/main`, `uci`, `ucioption`, `engine`, `benchmark`, `perft`, `tune` | the UCI surface and options | hot |
 | [09-type-design.md](09-type-design.md) | the value domain: what each quantity means and which are distinguishable | anyone adding a type or changing an encoding | cold |
 | [10-tooling-ci.md](10-tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
+| [11-performance.md](11-performance.md) | the six axes, what each proves and what it cannot see; `fingerprint.sh` | anyone measuring a refactor or an optimisation | hot |
 | [12-references.md](12-references.md) | external links: chess programming, C++17, Make, LTO, gates | all developers | cold |
 | [13-writing.md](13-writing.md) | technical writing: pages, code comments, commit messages | anyone writing prose about this code | cold |
 | [14-glossary.md](14-glossary.md) | the vocabulary, in tiers | all contributors | cold |
