@@ -143,7 +143,8 @@ first node, so the engine takes the hit whenever the OS schedules elsewhere.
 
 `NumaReplicatedAccessToken` is what a **`Thread`** holds to read the copy of a replicated object
 belonging to its own node. The `Search::Worker` it drives does not hold one and never sees the
-type: `thread.cpp` reduces the token to a `HistoryBankIndex` at construction, and
+type: `thread.cpp` reduces the token to a `HistoryBankIndex` at construction -- explicitly, since
+the scoped enum admits no other way -- and
 `thread.cpp`'s own `Thread::numa_access_token()` is what reads it back for
 `ensure_network_replicated`. The engine indexes its history map; the host owns the topology.
 
