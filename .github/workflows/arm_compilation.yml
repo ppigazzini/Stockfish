@@ -2,6 +2,15 @@ name: Android Compilation
 on:
   workflow_call:
     inputs:
+      publish:
+        description: >
+          Upload the built binary as a (pre)-release artifact. Default true, so
+          upstream's stockfish.yml is unaffected. A caller that ships nothing
+          passes false and the packaging steps go with it; the build and the
+          bench anchor are unchanged.
+        type: boolean
+        required: false
+        default: true
       matrix:
         type: string
         required: true
@@ -98,9 +107,11 @@ jobs:
           mv ./stockfish$EXT ../stockfish-android-$BINARY$EXT
 
       - name: Remove non src files
+        if: inputs.publish
         run: git clean -fxd
 
       - name: Upload artifact for (pre)-release
+        if: inputs.publish
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.config.simple_name }} ${{ matrix.binaries }}
