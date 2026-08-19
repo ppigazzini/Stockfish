@@ -123,11 +123,12 @@ class SqrClippedReLU {
             const __m256i sqrPacked = _mm256_packs_epi16(sqr0, sqr1);
             _mm256_store_si256(&sqrOut[i], sqrPacked);
 
-            const __m256i clip0 =
-              _mm256_srli_epi16(_mm256_max_epi16(words0, zero), WeightScaleBitsLocal);
-            const __m256i clip1 =
-              _mm256_srli_epi16(_mm256_max_epi16(words1, zero), WeightScaleBitsLocal);
-            const __m256i clipPacked = _mm256_packs_epi16(clip0, clip1);
+            // Clamp below after the narrowing, not before it: an arithmetic shift leaves a
+            // negative input negative, packs_epi16 saturates it into i8 range, and one
+            // max_epi8 zeroes both halves at once. Clamping first needs one max per half.
+            const __m256i clip0      = _mm256_srai_epi16(words0, WeightScaleBitsLocal);
+            const __m256i clip1      = _mm256_srai_epi16(words1, WeightScaleBitsLocal);
+            const __m256i clipPacked = _mm256_max_epi8(_mm256_packs_epi16(clip0, clip1), zero);
             _mm256_store_si256(&clipOut[i], clipPacked);
         }
     #else
