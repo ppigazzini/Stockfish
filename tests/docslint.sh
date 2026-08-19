@@ -135,13 +135,38 @@ head_check "5. no tracked file references the untracked working area"
 #
 # A file added here without one of those properties is a leak wearing an
 # exemption. The test to apply: does it still do something useful in a clone?
+# THE DIRECTORY STRING IS NOT THE ONLY WAY TO NAME THE AREA. A citation written
+# as a bare basename -- `PERFORMANCE.md` -- sends a reader to a file no clone
+# carries and matches no grep for __DEV, so this check read clean over one in
+# docs/10-tooling-ci.md. The basenames are therefore searched too, and because
+# a clone has no directory to read them out of, the mode is reported with the
+# result the way tests/iwyu.sh reports native against shim.
+needles=("$INTERNAL")
+mode="directory name only -- $INTERNAL/ is absent, so its basenames are unknown"
+if [ -d "$INTERNAL" ]; then
+    tracked_bases=$(git ls-files 2>/dev/null | sed 's#.*/##' | sort -u)
+    for f in "$INTERNAL"/*; do
+        [ -f "$f" ] || continue
+        b=${f##*/}
+        # A basename the tree also tracks cannot be attributed to the working
+        # area, so searching for it would report the tracked file instead.
+        printf '%s\n' "$tracked_bases" | grep -qxF -- "$b" && continue
+        needles+=("$b")
+    done
+    mode="directory name and $(( ${#needles[@]} - 1 )) basename(s) under $INTERNAL/"
+fi
+echo "  mode: $mode"
+
+grep_args=()
+for n in "${needles[@]}"; do grep_args+=(-e "$n"); done
+
 offenders=$(git ls-files 2>/dev/null | while read -r f; do
     [ -f "$f" ] || continue
     case "$f" in
         .gitignore|tests/docslint.sh|tests/devcite.sh|tests/lanecheck.sh|tests/negative_control.sh)
             continue ;;
     esac
-    grep -lF -- "$INTERNAL" "$f" 2>/dev/null
+    grep -lF "${grep_args[@]}" -- "$f" 2>/dev/null
 done)
 if [ -n "$offenders" ]; then
     # shellcheck disable=SC2001
