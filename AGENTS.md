@@ -115,7 +115,7 @@ A sign that **flips between gcc and clang** means the change is not an instructi
 at all -- it is one compiler's layout. A header change on this tree reads as a regression under
 gcc `-O3` and an improvement under clang, on identical source with an identical node count.
 Measure the grid -- two tiers, two compilers, both build modes -- rather than one cell of it;
-[docs/10-tooling-ci.md](docs/10-tooling-ci.md) carries the loop that does it.
+[docs/11-performance.md](docs/11-performance.md) carries the loop that does it.
 
 `make profile-build` is what ships and what fishtest measures, so PGO is the binding lane: a
 refactor free under PGO and costly under plain `-O3` on one compiler has cost no player
@@ -138,8 +138,9 @@ for cache footprint. `perfbudget.sh` scores it **+0.16%, a regression**. The ins
 is not merely blind to a locality win -- it reports it with the wrong sign. Never let
 `perfbudget.sh` alone veto a change whose claim is locality, prefetch, or latency hiding.
 
-What each gate proves and what it cannot see is in
-[docs/10-tooling-ci.md](docs/10-tooling-ci.md).
+What each axis proves and what it cannot see is in
+[docs/11-performance.md](docs/11-performance.md); every other gate is in
+[docs/10-tooling-ci.md](docs/10-tooling-ci.md) or on the page whose subject it holds.
 
 **Check the gate's EXIT CODE, never a piped fragment.** `cmd | tail -1` reads 0 from `tail`
 while the gate is red. A gate that SKIPPED for a missing tool proves nothing -- never report
