@@ -1400,8 +1400,10 @@ because an ignored directory lands in it and reports clean.
 
 **It settles the mechanical half of documentation rot and no more.** It cannot tell you a
 sentence has become false. Three classes it will pass: a real symbol attributed to the wrong
-file, a list with the wrong count or order, and a behaviour described as absent from a build
-that has it. That half is yours.
+file, a behaviour described as absent from a build that has it, and a list with the wrong count
+or order **except** the two that checks 6 and 7 weld -- the performance selector, against its
+copy in `AGENTS.md`, and the CI table below, against `.github/workflows/`. Every other list on
+every page is prose. That half is yours.
 
 ## `tests/liveness.sh`
 
@@ -2051,22 +2053,30 @@ CI's own `clang-format` step is `continue-on-error` and comments rather than blo
 
 ## CI
 
+**Column two names every script under `tests/` that the workflow invokes, and `docslint.sh`
+holds it to the YAML.** A row that falls a gate behind is the failure this page describes two
+sections down -- a list that drifts by one entry reads exactly like one that has not -- so it is
+welded rather than proofread. A workflow that runs no gate names none, and that is the honest
+entry for the six that build or publish rather than check.
+
 | Workflow | Gates |
 |---|---|
-| `stockfish.yml` | the umbrella: calls the rest |
-| `tests.yml` | the compile matrix: every platform/compiler configuration in its `config:` list, several architectures each, all benching the signature |
-| `sanitizers.yml` | four jobs: `instrumented.py` under TSan, UBSan, valgrind, valgrind-thread, uninstrumented and glibcxx assertions; then `malformed.sh`, `leb128.sh` and `tbpv.py`, one job each |
+| `stockfish.yml` | the umbrella: calls the rest, and runs nothing itself |
+| `refish.yml` | this branch's umbrella, calling the same reusable lanes; `negative_control.sh` is its alone |
+| `tests.yml` | the compile matrix: every platform/compiler configuration in its `config:` list, several architectures each, running `signature.sh`, `perft.sh` and `reprosearch.sh` |
+| `sanitizers.yml` | four jobs: `instrumented.py` under TSan, UBSan, valgrind, valgrind-thread, uninstrumented and glibcxx assertions; then `malformed.sh`, `leb128.sh` and `tbpv.py`, one job each, the last over the corpus `tbfetch.sh` writes |
 | `matetrack.yml` | mate-finding over a position suite, then `instrumented.py --none` |
 | `games.yml` | a short self-play match on a debug build; fails on an assertion or a disconnect |
 | `avx2_compilers.yml` | a compiler sweep at one architecture |
-| `arm_compilation.yml`, `universal_compilation.yml`, `wasm_compilation.yml` | the remaining targets |
-| `iwyu.yml`, `clang-format.yml`, `codeql.yml` | include hygiene, formatting, static analysis |
+| `arm_compilation.yml`, `universal_compilation.yml`, `wasm_compilation.yml` | the remaining targets, each benching `signature.sh` |
+| `iwyu.yml` | `iwyu.sh` in native mode, which is the only mode with an absolute verdict |
+| `clang-format.yml`, `codeql.yml` | formatting and static analysis; neither runs a gate under `tests/` |
 | `upload_binaries.yml` | release artifacts |
 | `perfbudget.yml` | `perfbudget.sh` at two tiers, base against head, then `textequal.sh` as `continue-on-error` -- the codegen comparison informs, it does not block |
 | `golden.yml` | `optiondefaults.sh`, then `golden.sh` against the corpus `tbfetch.sh --men 4` fetches, then `liveness.sh` |
 | `docs.yml` | `docslint.sh`, `lanecheck.sh`, `shellcheck.sh`, `buildcoverage.sh`, `depcheck.sh`, `actionpins.sh`, `anchor.sh`, then `linkcheck.sh` and `enginelink.sh` |
-| `fuzz.yml` | nightly: all four `fuzz.py` harnesses -- `uci`, `tb`, `net`, `shm` -- one job each, then `fuzzsearch.sh` |
-| `platformbattery.yml` | the functional battery on Linux arm64 and Windows arm64 -- the signature, the movegen and search reproducibility on both; the UCI surface and `malformed.sh` on Linux only |
+| `fuzz.yml` | nightly: all four `fuzz.py` harnesses -- `uci`, `tb`, `net`, `shm` -- one job each, then `fuzzsearch.sh`, over the corpus `tbfetch.sh` writes |
+| `platformbattery.yml` | the functional battery on Linux arm64 and Windows arm64: `signature.sh` on both, `uci_driver.py`, `instrumented.py` and `malformed.sh` on Linux only, over the corpus `tbfetch.sh` writes |
 
 `docs.yml` builds, despite the name: `linkcheck.sh` and `enginelink.sh` both compile the tree.
 The zone checks live there rather than in a lane of their own so a reader looking for one finds
