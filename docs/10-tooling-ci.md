@@ -474,7 +474,7 @@ default profile and a change routed through `decompress_pairs` reports no call-c
 all. `--syzygy` points `SyzygyPath` at a directory and drives `tests/tbprobe.fens` instead:
 
 ```sh
-./tests/fingerprint.sh --syzygy tests/syzygy HEAD~1
+./tests/fingerprint.sh --syzygy tests/syzygy-3man HEAD~1
 ```
 
 The difference is the whole reason the option exists. A depth-8 bench run reports `tbhits 0`
@@ -796,7 +796,11 @@ laundered into a pass.
 The excuse list is the hole, so it expires in its own direction -- an excused script that IS
 dispatched is reported as a stale excuse, and an excuse naming a script the tree no longer has
 fails too. A script named only in a comment does not count as dispatched, and the name match
-requires a separator on both sides so `net.sh` cannot be satisfied by `subnet.shx`.
+requires a separator on both sides -- one before, so `net.sh` cannot be satisfied by
+`subnet.sh`, and a non-name character after, so `net.shx` cannot satisfy it either.
+
+Dispatched by `docs.yml`, and by the `lane-coverage` pre-commit hook on any change under
+`tests/`, `scripts/` or `.github/workflows/`.
 
 ## `tests/iwyu.sh`
 
@@ -1286,8 +1290,8 @@ neighbouring row that absorbed the cost rather than the empty one.
 A component matching **on one side only** divides a real cost by nothing. That row is marked `X`
 and excluded from the verdict, the rest of the table still prints, and the run exits 1. It is
 not a refusal because asymmetric inlining is the expected outcome of the refactors this gate
-exists to measure -- suppressing twenty-six sound rows to report one artifact trades away the
-measurement.
+exists to measure -- suppressing every sound row in `tests/perfcomponents.tsv` to report one
+artifact trades away the measurement.
 
 A profile in which more than 5% of **either side's** instructions carry no symbol -- a raw
 address or an unresolved name-compression id -- cannot be attributed at all, so no table is
@@ -1360,9 +1364,9 @@ answer; each stops there being one.
 So the deadline is not a detail of the gate, it is the gate. `tests/uci_driver.py during` owns
 it and reports HANG explicitly; this script is the case table.
 
-**A missing tablebase corpus SKIPs the cases that need one and says so**, and the run prints
-that a skip is not a pass. Dispatched by `golden.yml`, which already builds the engine and holds
-the corpus.
+**A missing tablebase corpus SKIPs the one case that needs one and says so**, and the run
+prints that a skip is not a pass. Dispatched by `golden.yml`, which already builds the engine
+and fetches the corpus.
 
 **What it cannot see is a wrong answer** -- it reads neither the move, the score nor the node
 count. It is blind to everything a hang is not.
@@ -1888,7 +1892,7 @@ python3 tests/uci_driver.py bench          # and compare to the anchor in git lo
 python3 tests/uci_driver.py perft --full   # tests/perft.sh's list, without expect
 python3 tests/uci_driver.py repro          # tests/reprosearch.sh's, without expect
 python3 tests/uci_driver.py during --then 'setoption name Hash value 32'
-python3 tests/uci_driver.py go --depth 14 --threads 4 --syzygy tests/syzygy
+python3 tests/uci_driver.py go --depth 14 --threads 4 --syzygy tests/syzygy-3man
 python3 tests/uci_driver.py raw 'position startpos' 'go movetime 500'
 ```
 
