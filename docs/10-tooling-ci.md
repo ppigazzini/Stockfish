@@ -2078,6 +2078,19 @@ entry for the six that build or publish rather than check.
 | `fuzz.yml` | nightly: all four `fuzz.py` harnesses -- `uci`, `tb`, `net`, `shm` -- one job each, then `fuzzsearch.sh`, over the corpus `tbfetch.sh` writes |
 | `platformbattery.yml` | the functional battery on Linux arm64 and Windows arm64: `signature.sh` on both, `uci_driver.py`, `instrumented.py` and `malformed.sh` on Linux only, over the corpus `tbfetch.sh` writes |
 
+**`arm_compilation.yml` and `universal_compilation.yml` take a `publish` input, and `refish.yml`
+passes false.** Both end by uploading a (pre)-release artifact, and this branch calls no release
+job and downloads no artifact, so each upload was produced by a lane and consumed by nothing.
+False also drops the strip and clean steps, which exist to package that artifact. What either
+lane proves is unchanged: the target still compiles and `signature.sh` still runs against the
+anchor. The default is true, so `stockfish.yml` passes nothing and is unaffected.
+
+**`universal_compilation.yml` is the only lane that compiles `src/universal/`**, which is the
+runtime dispatch `06-platform.md` owns -- `grep -rlE 'ARCH=[a-z0-9-]*universal' .github/workflows`
+returns it alone -- and the only one running `scripts/check_universal.sh`, which asks whether the
+binary selects the right architecture at run time rather than whether it built. Dropping it to
+save CI would leave the dispatch layer with no coverage of either kind.
+
 `docs.yml` builds, despite the name: `linkcheck.sh` and `enginelink.sh` both compile the tree.
 The zone checks live there rather than in a lane of their own so a reader looking for one finds
 the others beside it.
