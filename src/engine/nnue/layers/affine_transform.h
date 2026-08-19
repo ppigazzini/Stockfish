@@ -294,6 +294,11 @@ class AffineTransform {
                 acc[k] = vec_add_32(acc[k], acc[k + NumAccums]);
         #endif
     #endif
+            // Unroll to eight and no further: the accumulators have to stay in registers for
+            // the whole pass, and a full unroll makes gcc hold the input dwords there instead
+            // and spill them. A smaller factor pays a register copy per accumulator on every
+            // back edge.
+    #pragma GCC unroll 8
             for (; i < NumChunks; ++i)
             {
                 const vec_t in0 = vec_load_32(input + i * sizeof(i32));
