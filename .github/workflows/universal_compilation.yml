@@ -1,6 +1,18 @@
 name: Universal Compilation
 on:
   workflow_call:
+    inputs:
+      publish:
+        description: >
+          Upload the built binary as a (pre)-release artifact. Default true, so
+          upstream's stockfish.yml is unaffected. A caller that ships nothing
+          passes false: the artifact is then produced by nothing and consumed by
+          nothing, and the strip and clean steps that exist only to package it
+          go with it. What the lane PROVES is unchanged -- the universal ARCH
+          still compiles and check_universal.sh still selects at runtime.
+        type: boolean
+        required: false
+        default: true
 # Least privilege at the workflow level so a job added later inherits it.
 # A job needing more declares it and that grant wins.
 permissions:
@@ -57,9 +69,11 @@ jobs:
         run: ./scripts/check_universal.sh ./stockfish-linux-x86-64-universal "$SDE_DIR/sde" "$benchref"
 
       - name: Remove non-src files
+        if: inputs.publish
         run: git clean -fxd -- src
 
       - name: Upload artifact for (pre)-release
+        if: inputs.publish
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux x86-64-universal
@@ -121,9 +135,11 @@ jobs:
         run: ./scripts/check_universal.sh ./stockfish-windows-x86-64-universal.exe "$SDE_DIR/sde" "$benchref"
 
       - name: Remove non-src files
+        if: inputs.publish
         run: git clean -fxd -- src
 
       - name: Upload artifact for (pre)-release
+        if: inputs.publish
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows x86-64-universal
@@ -181,9 +197,11 @@ jobs:
         run: ./scripts/check_universal_arm.sh ./stockfish-linux-arm64-universal "$benchref"
 
       - name: Remove non-src files
+        if: inputs.publish
         run: git clean -fxd -- src
 
       - name: Upload artifact for (pre)-release
+        if: inputs.publish
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux arm64-universal
@@ -240,9 +258,11 @@ jobs:
         run: mv src/stockfish.exe stockfish-windows-arm64-universal.exe
 
       - name: Remove non-src files
+        if: inputs.publish
         run: git clean -fxd -- src
 
       - name: Upload artifact for (pre)-release
+        if: inputs.publish
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows arm64-universal
@@ -278,9 +298,11 @@ jobs:
         run: ./scripts/check_universal_macos.sh ./stockfish-macos-universal
 
       - name: Remove non-src files
+        if: inputs.publish
         run: git clean -fxd -- src
 
       - name: Upload artifact for (pre)-release
+        if: inputs.publish
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos universal
@@ -347,9 +369,11 @@ jobs:
           QEMU=qemu-riscv64 QEMU_LD_PREFIX=/usr/riscv64-linux-gnu \
           ./scripts/check_universal_riscv.sh ./stockfish-linux-riscv64-universal "$benchref"
       - name: Remove non-src files
+        if: inputs.publish
         run: git clean -fxd -- src
 
       - name: Upload artifact for (pre)-release
+        if: inputs.publish
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux riscv64-universal
