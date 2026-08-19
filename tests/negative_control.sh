@@ -273,10 +273,10 @@ if selected docslint-bench; then
     else
         echo "negative-control: docslint    -- a page quoting the current bench signature"
         mutate docs/10-tooling-ci.md \
-            '## `tests/perft.sh`' \
+            '## Check the exit code, never a piped fragment' \
             "The reference is $REF today.
 
-## \`tests/perft.sh\`"
+## Check the exit code, never a piped fragment"
         if ./tests/docslint.sh >/dev/null 2>&1; then
             echo "  NOT DETECTED -- the lint accepted a pinned signature"; FAIL=$((FAIL+1))
         else
