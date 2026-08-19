@@ -26,7 +26,7 @@ table is what routes the rest.** The seam headers, `engine/host`, `engine/basety
 nothing for them. To find the owner of any file:
 
 ```sh
-grep -n "$(basename <file>)" docs/*.md
+grep -n 'prng\.h' docs/*.md      # substitute any basename under src/
 ```
 
 `numa` and `shm` appear once each, under `06`. The split from `04` is by question rather than

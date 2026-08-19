@@ -1,7 +1,8 @@
 # The evaluation
 
-`src/engine/evaluate.h`, `src/engine/evaluate.cpp`, `src/engine/nnue/` -- the feature transformer, the
-accumulator, the layers, and the feature sets under `src/engine/nnue/features/`.
+`src/engine/evaluate.h`, `src/engine/evaluate.cpp`, `src/engine/nnue/` -- the feature
+transformer, the accumulator, the layers, and the feature sets under
+`src/engine/nnue/features/`.
 
 A neural network evaluates the position. `evaluate.cpp` turns its output into the value the
 search uses.
