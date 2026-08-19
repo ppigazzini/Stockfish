@@ -300,16 +300,17 @@ git log -n 200 --format='%b' master | grep -c '^closes https://github.com/'
 ./tests/docslint.sh
 ```
 
-runs seven checks, and `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
+runs eight checks, and `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
 internal link, a `src/`/`tests/`/`scripts/`/`docs/`/`.github/` path named in prose that is not in the
 tree, a bench signature quoted in a page, a script in `tests/` or `scripts/` that no page
 names, a tracked file pointing into the untracked working area, the two copies of the
 performance-gate selector table -- `AGENTS.md`'s and [11-performance.md](11-performance.md)'s --
-naming different gates, and that page's CI table naming, per workflow, the gates the workflow
-actually invokes. A path `.gitignore` names is exempt from the path check, because prose
+naming different gates, [10-tooling-ci.md](10-tooling-ci.md)'s CI table naming, per workflow, the
+gates the workflow actually invokes, and every page's `## The gates` section against the scripts
+in the tree and against each other. A path `.gitignore` names is exempt from the path check, because prose
 legitimately describes the tool that writes an ignored artifact.
 
-The last two compare lists rather than reading a numeral, which is what makes them the only
+The last three compare lists rather than reading a numeral, which is what makes them the only
 checks here that can catch a wrong count. Neither reads the number written above its table: the
 selector check compares the two gate columns to each other, and the CI check compares one column
 to `.github/workflows/`. A count stated in a sentence is still prose.

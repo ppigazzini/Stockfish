@@ -391,3 +391,32 @@ one compiler cannot distinguish a change from its own codegen and PGO is what sh
    ```
 
 7. Add a row here -- to the table of what the compiler catches, to the boundary, or to both.
+
+## The gates
+
+| gate | what it proves here | owned by |
+|---|---|---|
+| `tests/negative_control.sh` | a type introduced so that a wrong spelling stops compiling actually refuses it -- and every legal spelling still compiles | [10-tooling-ci.md](10-tooling-ci.md) |
+
+**One class of row mutates nothing, and it is where a new type's row goes.** A type introduced
+so that a wrong spelling stops compiling has no gate to redden -- the compiler is the gate. Such
+a row writes a probe translation unit, compiles it against the real headers, and asserts the
+illegal form is REFUSED:
+
+```sh
+printf '#include "history.h"\nusing namespace Stockfish;\n%s\n' \
+    'HistoryBankIndex f(usize n) { return n; }' > probe.cpp
+( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only probe.cpp )   # must FAIL
+```
+
+`-Iengine` as well as `-I.` is load-bearing: the probes include engine headers by bare name and
+`src/` is zone directories, so `-I.` alone fails to find them -- which makes the illegal form
+AND the legal one fail, and scores a broken rig as a detection. So each of these rows asserts
+both halves, and the second is what catches it: every legal spelling must still compile. A row
+that only checked the refusal would be satisfied by a header that stopped compiling at all.
+
+These rows are `static` by construction -- they build no engine -- and they restore nothing,
+because they never touched the tree.
+
+So a type added here is not finished until it has a row. The compiler is the gate, and a gate
+nobody has watched refuse is a gate nobody has shown can fail.
