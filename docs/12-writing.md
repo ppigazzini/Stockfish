@@ -56,7 +56,18 @@ The claims that survive review and fail verification are always the same shapes:
   bucket boundary", when `HalfKAv2_hm::requires_refresh` tests `diff.pc == make_piece(perspective,
   KING)` and every one of them does.
 
-None of them is catchable by a tool. All of them are catchable by opening the file.
+Three of the four are catchable only by opening the file. **The wrong count is the exception,
+and only where a gate owns the list**: `docslint.sh` check 7 reads the CI table's gate column and
+compares it, pair by pair, against what the workflows invoke, so a row that falls a gate behind
+is a failure rather than a proofreading task. That check exists because the table had fallen nine
+rows behind the YAML, in the same page that tells the reader a list drifting by one entry reads
+exactly like one that has not.
+
+**Two lists remain prose, and prose rots.** The tier table in
+[09-type-design.md](09-type-design.md) and the option table in [07-shell.md](07-shell.md) are
+both derivable and neither is welded; the rule below still applies to them with nothing behind
+it. Gating a list means the page and the tree read from one source, and until that is written the
+list is a claim.
 
 ## Show the command
 
@@ -73,6 +84,10 @@ Two classes, and both go stale:
 - **Numbers a gate computes.** The bench signature above all. Quote the command;
   `tests/docslint.sh` refuses a page that quotes the signature, and reads the current value
   out of the commit record to do it.
+- **Lists a gate computes**, which is the same rule one dimension up. Write the list only where
+  something compares it to its source: the CI table is welded to `.github/workflows/` and the
+  performance selector to its copy in `AGENTS.md`. Elsewhere, name the command that produces the
+  list instead of the list.
 - **Numbers the code computes about itself.** Line counts, file sizes, symbol counts. Every
   one drifts with the next commit that touches its subject.
 
@@ -277,17 +292,19 @@ git log -n 200 --format='%b' master | grep -c '^closes https://github.com/'
 ./tests/docslint.sh
 ```
 
-runs six checks, and `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
+runs seven checks, and `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
 internal link, a `src/`/`tests/`/`scripts/`/`.github/` path named in prose that is not in the
 tree, a bench signature quoted in a page, a script in `tests/` or `scripts/` that no page
-names, a tracked file pointing into the untracked working area, and the two copies of the
+names, a tracked file pointing into the untracked working area, the two copies of the
 performance-gate selector table -- `AGENTS.md`'s and [10-tooling-ci.md](10-tooling-ci.md)'s --
-naming different gates. A path `.gitignore` names is exempt from the path check, because prose
+naming different gates, and that page's CI table naming, per workflow, the gates the workflow
+actually invokes. A path `.gitignore` names is exempt from the path check, because prose
 legitimately describes the tool that writes an ignored artifact.
 
-Only the last of the six derives a count, and it derives it from a table rather than from
-prose: it compares the gate column of the two selector tables and says nothing about the
-numeral written above either one.
+The last two compare lists rather than reading a numeral, which is what makes them the only
+checks here that can catch a wrong count. Neither reads the number written above its table: the
+selector check compares the two gate columns to each other, and the CI check compares one column
+to `.github/workflows/`. A count stated in a sentence is still prose.
 
 **It cannot tell you a sentence is false.** Prose can parse, link, name only real paths, and
 still describe code that has moved. The gate buys the mechanical half; the half that needs a

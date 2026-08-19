@@ -202,6 +202,64 @@ else
     echo "  ok, $(echo "$sel_agents" | grep -c .) gate(s) in both"
 fi
 
+head_check "7. the CI table names the gates the workflows run"
+
+# The one LIST this gate owns. Check 3 refuses a number the tree computes; a
+# list the tree computes is the same rule, and nothing enforced it -- the table
+# fell nine rows behind while the paragraph beside it told the reader that a
+# list drifting by one entry reads exactly like one that has not.
+#
+# Both sides are emitted as `workflow<TAB>gate` pairs so the comparison is a
+# `comm` rather than a diff by eye, and a workflow that runs no gate emits one
+# pair with an empty gate -- which is a real entry, not an absence, so a
+# workflow missing from the table cannot pass as one that runs nothing.
+lane_pairs_documented() {
+    awk '
+        /^\| `stockfish\.yml` \|/ { intable = 1 }
+        intable && !/^\|/          { exit }
+        intable {
+            split($0, col, "|")
+            nw = split(col[2], wtok, /[^A-Za-z0-9_.-]+/)
+            ng = split(col[3], gtok, /[^A-Za-z0-9_.\/-]+/)
+            for (i = 1; i <= nw; i++) {
+                if (wtok[i] !~ /\.yml$/) continue
+                seen = 0
+                for (j = 1; j <= ng; j++)
+                    if (gtok[j] ~ /\.(sh|py)$/) { print wtok[i] "\t" gtok[j]; seen = 1 }
+                if (!seen) print wtok[i] "\t"
+            }
+        }
+    ' docs/10-tooling-ci.md | sort -u
+}
+
+lane_pairs_actual() {
+    local w b g
+    for w in .github/workflows/*.yml; do
+        b=$(basename "$w")
+        g=$(grep -oE 'tests/[a-z0-9_]+\.(sh|py)' "$w" | sort -u)
+        g=${g//tests\//}
+        if [ -z "$g" ]; then printf '%s\t\n' "$b"; else echo "$g" | awk -v b="$b" '{print b "\t" $0}'; fi
+    done | sort -u
+}
+
+if [ ! -d .github/workflows ]; then
+    note "no .github/workflows -- the CI table has nothing to be held to"
+else
+    lane_doc=$(lane_pairs_documented)
+    lane_act=$(lane_pairs_actual)
+    if [ -z "$lane_doc" ]; then
+        note "the CI table was not found -- its first row no longer names stockfish.yml"
+    elif [ "$lane_doc" != "$lane_act" ]; then
+        echo "  documented, not run:"
+        comm -23 <(echo "$lane_doc") <(echo "$lane_act") | sed 's/^/    /'
+        echo "  run, not documented:"
+        comm -13 <(echo "$lane_doc") <(echo "$lane_act") | sed 's/^/    /'
+        note "the CI table is not the map the workflows are"
+    else
+        echo "  ok, $(echo "$lane_act" | cut -f1 | sort -u | grep -c .) workflow(s) agree"
+    fi
+fi
+
 echo
 if [ "$FAIL" = "0" ]; then echo "docslint: clean"; else echo "docslint: FINDINGS"; fi
 exit "$FAIL"
