@@ -82,6 +82,14 @@ dropping the alignment turns a legal aligned load into a fault. `Position::set_c
 `Position::attackers_to` are the callers that need both sets, and they get them without
 touching two structures.
 
+**The two non-dual layouts have two names.** `HyperbolaMagic` holds two masks and
+`BitboardMagic` a mask, a table pointer, a multiplier and a shift; each branch aliases the one it
+selected to `Magic`, so callers are unchanged. They shared the name `Magic` before, which meant
+the name did not identify the type: a grep returned two structurally different objects, and a
+debugger showed whichever the build chose. `BitboardMagic::attacks_bb` takes a `Square` it does
+not use, `[[maybe_unused]]`, to match the other's signature -- an interface shaped by a macro,
+and the comment beside it says so.
+
 **Which implementation is compiled changes the code but not the answer.** Every tier must
 produce the same attack sets, and what holds that is the compile matrix benching one signature
 after every architecture build it does ([10-tooling-ci.md](10-tooling-ci.md)).

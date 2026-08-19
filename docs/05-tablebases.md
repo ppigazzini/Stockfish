@@ -63,9 +63,16 @@ the search can tell a proven result from an estimate. `VALUE_TB` and the
 
 The prober is **platform code the engine reaches through a seam**. `engine/tb_source.h`
 declares the three hooks the search needs -- `max_cardinality`, `probe_wdl`, `rank_root_moves`
--- along with the types they speak (`Config`, `WDLScore`, `ProbeState`), and
-`platform/syzygy/tbprobe.h` re-exports those types by including it, so the prober and its
+-- along with the types they speak (`Config`, `WDLScore`, `ProbeState`, `Rule50`, `RankDTZ`),
+and `platform/syzygy/tbprobe.h` re-exports those types by including it, so the prober and its
 callers agree on one definition.
+
+`Rule50` and `RankDTZ` are scoped enums over `bool` and are in the engine header rather than the
+prober's for the reason the paragraph above gives: `rankDTZ` is in `rank_root_moves`'s
+function-pointer type, so it crosses the seam and the search names it. They were `bool rule50,
+bool rankDTZ`, adjacent in `root_probe`'s parameter list, where argument position was the only
+thing separating them -- inverting the first changes the verdict a table gives, inverting the
+second changes whether DTZ ranking happens at all, and transposing them compiled.
 
 Unregistered the source answers **no tablebases loaded**, which is exactly true of an engine
 with none: the search's `tbConfig.cardinality != 0` guard short-circuits before the call. That
