@@ -299,6 +299,28 @@ if selected docslint-gate; then
     rm -f tests/zzz_undocumented.sh
 fi
 
+row docslint-lanes static
+if selected docslint-lanes; then
+    # The CI table against the workflows. This is the one LIST docslint owns,
+    # and the row exists because the table fell nine rows behind the YAML while
+    # the paragraph beside it told the reader that a list drifting by one entry
+    # reads exactly like one that has not.
+    #
+    # Drop a gate from the PROSE rather than from a workflow: mutating the YAML
+    # would also change what CI runs, and a row that alters the lanes it is
+    # checking is testing two things at once.
+    echo "negative-control: docslint [lanes] -- a CI row a gate behind must be caught"
+    mutate docs/10-tooling-ci.md \
+        '| `iwyu.yml` | `iwyu.sh` in native mode, which is the only mode with an absolute verdict |' \
+        '| `iwyu.yml` | include hygiene |'
+    if ./tests/docslint.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a row naming no gate for a lane that runs one passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 row docslint-internal static
 if selected docslint-internal; then
     echo "negative-control: docslint    -- a tracked file pointing into the ignored area"
