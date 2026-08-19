@@ -2377,16 +2377,18 @@ void syzygy_extend_pv(const Host&               host,
     // using top ranked moves (minimal DTZ), which gives optimal mates only for simple
     // endgames e.g. KRvK.
     //
-    // THE LENGTH BOUND IS THE PV'S OWN CAPACITY AND NOTHING ELSE HERE SUPPLIES
-    // ONE. PVMoves is a fixed Move[MAX_PLY + 1] whose push_back checks its bound
-    // with an assert alone, so a -DNDEBUG build -- the one that ships -- walks
-    // off the end of it and into the next RootMove of the vector that holds it.
-    // Every other exit is conditional on the position: `rule50 && is_draw` is
+    // THE LENGTH BOUND IS EXPLICIT AND NOTHING ELSE HERE SUPPLIES ONE. Every
+    // other exit is conditional on the position: `rule50 && is_draw` is
     // constant-false with Syzygy50MoveRule off, time_abort() is constant-false
     // whenever use_time_management() is, which covers `go infinite`,
     // `go movetime` and `go depth` -- how a GUI analyses -- and the tables run
     // out only where the walk leaves them. A DTZ-optimal conversion is free to
-    // be longer than the array that has to hold it.
+    // run longer than any of those, so the count is the bound.
+    //
+    // MAX_PLY, not RootPVMoves' own capacity, because the value is copied into
+    // a PVMoves -- a fixed Move[MAX_PLY + 1] -- by the assignment operator that
+    // bridges the two, and a PV this loop grew past that is a PV the copy would
+    // silently truncate. Bounding the producer says so once instead.
     while (rootMove.pv.size() < MAX_PLY && !(rule50 && pos.is_draw(0)))
     {
         if (time_abort())
