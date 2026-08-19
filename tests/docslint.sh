@@ -58,12 +58,12 @@ rm -f /tmp/docslint.$$.links
 # legitimately describes the tool that writes an ignored artifact. That
 # exemption is exactly why check 5 exists separately -- the internal area is
 # ignored, so every reference into it would land here and report clean.
-head_check "2. every named src/ tests/ scripts/ .github/ path exists"
+head_check "2. every named src/ tests/ scripts/ docs/ .github/ path exists"
 for p in "${exists_pages[@]}"; do
     # Strip URLs first. A fishtest link carries `tests/view/<id>`, which is not a
     # path in this tree, and every functional commit message quotes one.
     sed -E 's#https?://[^ )>"]*##g' "$p" \
-    | grep -oE '(src|tests|scripts|\.github)/[A-Za-z0-9_./-]*[A-Za-z0-9_]' \
+    | grep -oE '(src|tests|scripts|docs|\.github)/[A-Za-z0-9_./-]*[A-Za-z0-9_]' \
     | sort -u | while read -r t; do
         [ -e "$t" ] && continue
         git check-ignore -q "$t" 2>/dev/null && continue
