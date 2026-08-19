@@ -1923,17 +1923,17 @@ comments rather than blocks.
 |---|---|
 | `stockfish.yml` | the umbrella: calls the rest |
 | `tests.yml` | the compile matrix: every platform/compiler configuration in its `config:` list, several architectures each, all benching the signature |
-| `sanitizers.yml` | TSan, UBSan, valgrind, valgrind-thread, uninstrumented, glibcxx assertions, and `malformed.sh` in a job of its own |
-| `matetrack.yml` | mate-finding over a position suite |
+| `sanitizers.yml` | four jobs: `instrumented.py` under TSan, UBSan, valgrind, valgrind-thread, uninstrumented and glibcxx assertions; then `malformed.sh`, `leb128.sh` and `tbpv.py`, one job each |
+| `matetrack.yml` | mate-finding over a position suite, then `instrumented.py --none` |
 | `games.yml` | a short self-play match on a debug build; fails on an assertion or a disconnect |
 | `avx2_compilers.yml` | a compiler sweep at one architecture |
 | `arm_compilation.yml`, `universal_compilation.yml`, `wasm_compilation.yml` | the remaining targets |
 | `iwyu.yml`, `clang-format.yml`, `codeql.yml` | include hygiene, formatting, static analysis |
 | `upload_binaries.yml` | release artifacts |
 | `perfbudget.yml` | `perfbudget.sh` at two tiers, base against head, then `textequal.sh` as `continue-on-error` -- the codegen comparison informs, it does not block |
-| `golden.yml` | `golden.sh` -- the recorded command outputs |
-| `docs.yml` | `docslint.sh`, `lanecheck.sh`, then `buildcoverage.sh`, `depcheck.sh`, `linkcheck.sh`, `enginelink.sh` |
-| `fuzz.yml` | nightly: the `uci`, `net` and `shm` harnesses, and `fuzzsearch.sh` |
+| `golden.yml` | `optiondefaults.sh`, then `golden.sh` against the corpus `tbfetch.sh --men 4` fetches, then `liveness.sh` |
+| `docs.yml` | `docslint.sh`, `lanecheck.sh`, `shellcheck.sh`, `buildcoverage.sh`, `depcheck.sh`, `actionpins.sh`, `anchor.sh`, then `linkcheck.sh` and `enginelink.sh` |
+| `fuzz.yml` | nightly: all four `fuzz.py` harnesses -- `uci`, `tb`, `net`, `shm` -- one job each, then `fuzzsearch.sh` |
 | `platformbattery.yml` | the functional battery on Linux arm64 and Windows arm64 -- the signature, the movegen and search reproducibility on both; the UCI surface and `malformed.sh` on Linux only |
 
 `docs.yml` builds, despite the name: `linkcheck.sh` and `enginelink.sh` both compile the tree.
@@ -1965,13 +1965,18 @@ the first's.
 
 ### Reachability
 
-A gate runs only if something can start the workflow that names it. `stockfish.yml` is the
-**two** entry points that fan out -- `stockfish.yml` for the branches upstream builds and
-`refish.yml` for this one; `clang-format.yml` and `codeql.yml` trigger themselves, and
-`fuzz.yml` hangs off a cron. Every other workflow declares `workflow_call`, so it runs when the
-umbrella calls it and never otherwise -- `docs.yml`, `golden.yml` and `perfbudget.yml` add a
+A gate runs only if something can start the workflow that names it. **Two** entry points fan
+out: `stockfish.yml` for the branches upstream builds and `refish.yml` for this one.
+`clang-format.yml` and `codeql.yml` trigger themselves, and `fuzz.yml` hangs off a cron. Every
+other workflow declares `workflow_call`, so it runs when an umbrella calls it and never
+otherwise -- `docs.yml`, `golden.yml`, `perfbudget.yml` and `platformbattery.yml` add a
 `workflow_dispatch` on top, which `lanecheck.sh` deliberately does not count, because a lane
 only a human can click gates no change.
+
+The two umbrellas call the same reusable lanes, and the difference between them is three jobs:
+`refish.yml` adds `platformbattery.yml` and the static half of `negative_control.sh`, and omits
+the release plumbing -- `Prerelease` and the two `upload_binaries.yml` jobs -- which publishes
+artifacts rather than checking anything and self-excludes on a fork anyway.
 
 ```mermaid
 flowchart LR
@@ -1984,18 +1989,24 @@ flowchart LR
     SF --> PB["perfbudget.yml"]
     SF --> D["docs.yml"]
     SF --> GO["golden.yml"]
+    SF --> OTH["iwyu, games, matetrack, avx2_compilers,<br/>arm, wasm, universal"]
+    SF --> UB["upload_binaries.yml<br/>(official repo only)"]
+    RF --> T
+    RF --> SAN
+    RF --> PB
+    RF --> D
+    RF --> GO
+    RF --> OTH
     RF --> PBAT["platformbattery.yml"]
+    RF --> NC["negative_control.sh<br/>(static rows)"]
     PBAT --> G8["signature.sh<br/>uci_driver.py perft<br/>uci_driver.py repro<br/>instrumented.py<br/>malformed.sh (Linux only)"]
-    SF --> OTH["iwyu, games, matetrack, avx2_compilers,<br/>arm, wasm, universal, upload_binaries"]
     N(["nightly cron"]) --> FZ["fuzz.yml"]
     T --> G1["signature.sh<br/>perft.sh<br/>reprosearch.sh"]
-    D --> G5["docslint.sh<br/>lanecheck.sh<br/>buildcoverage.sh<br/>depcheck.sh<br/>linkcheck.sh<br/>enginelink.sh"]
-    GO --> G6["golden.sh"]
-    FZ --> G7["fuzz.py (uci, net, shm)<br/>fuzzsearch.sh"]
-    SAN --> G3["instrumented.py<br/>malformed.sh"]
+    D --> G5["docslint.sh<br/>lanecheck.sh<br/>shellcheck.sh<br/>buildcoverage.sh<br/>depcheck.sh<br/>actionpins.sh<br/>anchor.sh<br/>linkcheck.sh<br/>enginelink.sh"]
+    GO --> G6["optiondefaults.sh<br/>golden.sh<br/>liveness.sh"]
+    FZ --> G7["fuzz.py (uci, tb, net, shm)<br/>fuzzsearch.sh"]
+    SAN --> G3["instrumented.py<br/>malformed.sh<br/>leb128.sh<br/>tbpv.py"]
     PB --> G4["perfbudget.sh<br/>textequal.sh"]
-    RF --> NC["negative_control.sh<br/>(static rows)"]
-    RF --> OTH
     L(["no trigger -- by hand only"]) --> G2["negative_control.sh<br/>(the rows that build)<br/>fingerprint.sh<br/>npsab.sh<br/>npsthreads.sh<br/>match.sh<br/>perfcounters.sh<br/>perfdecomp.sh<br/>devcite.sh"]
     style G2 stroke-dasharray: 5 5
     style L stroke-dasharray: 5 5
