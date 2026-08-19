@@ -293,7 +293,7 @@ git log -n 200 --format='%b' master | grep -c '^closes https://github.com/'
 ```
 
 runs seven checks, and `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
-internal link, a `src/`/`tests/`/`scripts/`/`.github/` path named in prose that is not in the
+internal link, a `src/`/`tests/`/`scripts/`/`docs/`/`.github/` path named in prose that is not in the
 tree, a bench signature quoted in a page, a script in `tests/` or `scripts/` that no page
 names, a tracked file pointing into the untracked working area, the two copies of the
 performance-gate selector table -- `AGENTS.md`'s and [10-tooling-ci.md](10-tooling-ci.md)'s --
