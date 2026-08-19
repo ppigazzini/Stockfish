@@ -43,12 +43,21 @@ Audience: all developers.
 - [nnue-pytorch][nnue-pytorch] -- the trainer the networks come from.
 - [Leela Chess Zero training data][lc0-data] -- what the networks are trained on, under the
   [ODbL][odbl].
+- [NNUE, Chess Programming Wiki][cpw-nnue] -- the accumulator, the incremental update and the
+  refresh cache the `AccumulatorCaches` comment calls Finny tables.
+- [LEB128][leb128] -- the variable-length integer encoding the large weight arrays are stored
+  in. `nnue_common.h` cites this page from `read_leb_128` and `write_leb_128`.
 
 ### Syzygy tablebases
 
 - [Syzygy tablebases][syzygy] -- the format and the probing rules.
+- [syzygy1/tb][syzygy-gen] -- Ronald de Man's generator, the reference implementation of the
+  format `src/platform/syzygy/tbprobe.cpp` reads. Its `README.md` is where the block, pairs
+  and DTZ-map layouts are described by their author.
 - [Tablebase generation and the fifty-move rule][cpw-fifty] -- why cursed wins and blessed
   losses exist.
+- [`madvise(2)`][madvise] -- `MADV_RANDOM`, which `TBFile::map` sets so a table is paged in
+  on demand rather than read through. The same page covers the `MADV_HUGEPAGE` below.
 
 ## C++
 
@@ -97,9 +106,10 @@ Background for [09-type-design.md](09-type-design.md).
 - [Harper, *Practical Foundations for Programming Languages*][pfpl] -- a type is a set of
   values and membership is construction, which is the frame that page assumes.
 - [Harper, "Boolean Blindness"][boolblind] -- *"There is no information carried by a Boolean
-  beyond its value. To make use of one you have to know its provenance."* The argument for
-  `NodeType` being an enum rather than two flags, and against the `cutNode` parameter beside
-  it.
+  beyond its value, and that's the rub."* The post attributes the consequence to Conor
+  McBride: to make use of a Boolean you have to know its provenance so that you can know what
+  it means. The argument for `NodeType` being an enum rather than two flags, and against the
+  `cutNode` parameter beside it.
 - [Kennedy, "Types for Units-of-Measure"][kennedy] -- unit polymorphism: a function generic
   in the unit it returns. That is the property a `Depth` type would need, and cannot have in
   C++, which is why `using Depth = int` is correct here.
@@ -139,8 +149,9 @@ perf gates.
 - [Valgrind manual][valgrind] | [Memcheck][memcheck] | [Helgrind][helgrind] -- the
   sanitizer lanes' instruments.
 - [ThreadSanitizer][tsan] | [UndefinedBehaviorSanitizer][ubsan] -- what the TSan and UBSan
-  lanes of `sanitizers.yml` actually detect. `tests/fuzzsearch.sh` is the only other place
-  the engine runs under UBSan, and the only one that reaches it with no host registered.
+  lanes of `sanitizers.yml` actually detect. `tests/fuzzsearch.sh` and `tests/malformed.sh`
+  also run the engine under UBSan; `fuzzsearch.sh` is the only one that reaches it with no
+  host registered.
 - [Transparent hugepages][thp] -- what `MADV_HUGEPAGE` requires, used by the transposition
   table allocation.
 
@@ -153,8 +164,10 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
   corpus arguments are defined.
 - [OSS-Fuzz / CIFuzz][cifuzz] -- the reference model for fuzzing in CI: minutes per change,
   hours on a schedule, and a corpus carried between runs.
-- [AddressSanitizer][asan] -- what `tests/fuzzsearch.sh` compiles in, and the only place the
-  engine runs under it. `sanitizers.yml` runs no ASan lane.
+- [AddressSanitizer][asan] -- compiled into `tests/fuzzsearch.sh`'s harness and into
+  `tests/malformed.sh`'s engine, which are the two places the engine runs under it;
+  `tests/leb128.sh` builds a standalone decoder harness under it too. `sanitizers.yml` runs no
+  ASan lane, so none of the three is reached by the sanitizer workflow.
 - [GitHub Actions workflow syntax][gha-syntax] -- triggers, `workflow_call`, and job
   dependencies. A workflow that declares only `workflow_call` and that nothing calls cannot
   run, which is what `tests/lanecheck.sh` checks.
@@ -203,6 +216,7 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 [cpw-lazysmp]:      https://www.chessprogramming.org/Lazy_SMP
 [cpw-lmr]:          https://www.chessprogramming.org/Late_Move_Reductions
 [cpw-magic]:        https://www.chessprogramming.org/Magic_Bitboards
+[cpw-nnue]:         https://www.chessprogramming.org/NNUE
 [cpw-null]:         https://www.chessprogramming.org/Null_Move_Pruning
 [cpw-perft]:        https://www.chessprogramming.org/Perft_Results
 [cpw-probcut]:      https://www.chessprogramming.org/ProbCut
@@ -230,9 +244,11 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 [intel-intrinsics]: https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html
 [kennedy]:          https://doi.org/10.1007/978-3-642-17685-2_8
 [lc0-data]:         https://storage.lczero.org/files/training_data
+[leb128]:           https://en.wikipedia.org/wiki/LEB128
 [libfuzzer]:        https://llvm.org/docs/LibFuzzer.html
 [llvm-lto]:         https://llvm.org/docs/LinkTimeOptimization.html
 [llvm-vec]:         https://llvm.org/docs/Vectorizers.html
+[madvise]:          https://man7.org/linux/man-pages/man2/madvise.2.html
 [memcheck]:         https://valgrind.org/docs/manual/mc-manual.html
 [metamorphic]:      https://en.wikipedia.org/wiki/Metamorphic_testing
 [mutation-testing]: https://en.wikipedia.org/wiki/Mutation_testing
@@ -256,6 +272,7 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 [sprt]:             https://en.wikipedia.org/wiki/Sequential_probability_ratio_test
 [stockfish]:        https://github.com/official-stockfish/Stockfish
 [syzygy]:           https://www.chessprogramming.org/Syzygy_Bases
+[syzygy-gen]:       https://github.com/syzygy1/tb
 [thinlto]:          https://clang.llvm.org/docs/ThinLTO.html
 [thp]:              https://docs.kernel.org/admin-guide/mm/transhuge.html
 [tsan]:             https://clang.llvm.org/docs/ThreadSanitizer.html
