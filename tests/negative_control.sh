@@ -465,15 +465,19 @@ if selected lanecheck-stale-workflow-excuse; then
     # The excuse list expires in BOTH directions, the same rule the script list
     # follows. Giving stockfish.yml a trigger this branch matches must report the
     # excuse as stale rather than quietly keeping it.
+    # Anchored through `tags:` so it names the PUSH block: `pull_request` below
+    # carries the same two branches, and an anchor matching both refuses.
     mutate .github/workflows/stockfish.yml \
-        '    branches:
+        '    tags:
+      - "*"
+    branches:
+      - master
+      - tools' \
+        '    tags:
+      - "*"
+    branches:
       - master
       - tools
-      - github_ci' \
-        '    branches:
-      - master
-      - tools
-      - github_ci
       - refish'
     # Captured, then matched against a here-string. NOT `lanecheck.sh | grep -q`:
     # under `set -o pipefail` grep exits at the first match, the producer dies of
