@@ -6,6 +6,34 @@ see [10-tooling-ci.md](10-tooling-ci.md); for building and usage see the
 
 Audience: anyone changing more than one file.
 
+## Where a thing lives
+
+| question | file | symbol |
+|---|---|---|
+| where the process starts | `src/shell/main.cpp` | `main` |
+| where a UCI command is dispatched | `src/shell/uci.cpp` | `UCIEngine::loop` |
+| where `go` becomes a budget | `src/shell/uci.cpp` | `UCIEngine::parse_limits` |
+| where an option is declared and defaulted | `src/shell/engine.cpp` | the `options.add` calls in `Engine::Engine` |
+| where the host registers itself | `src/shell/engine.cpp` | `Engine::ArenaInstallerTag`, `Engine::resize_threads` |
+| where a search is launched | `src/platform/thread.cpp` | `ThreadPool::start_thinking` |
+| where the root loop is | `src/engine/search.cpp` | `Search::Worker::iterative_deepening` |
+| where alpha-beta is | `src/engine/search.cpp` | `Search::Worker::search` |
+| where quiescence is | `src/engine/search.cpp` | `Search::Worker::qsearch` |
+| where time runs out | `src/engine/search.cpp` | `SearchManager::check_time` |
+| where the answer is chosen across workers | `src/engine/search.cpp` | `Search::best_worker` |
+| where the next move comes from | `src/engine/movepick.cpp` | `MovePicker::next_move` |
+| where moves are generated | `src/engine/movegen.cpp` | `generate<GenType>` |
+| where the board is mutated | `src/engine/position.cpp` | `Position::do_move`, `Position::undo_move` |
+| where the table is read and written | `src/engine/tt.cpp` | `TranspositionTable::probe`, `TTWriter::write` |
+| where a position is evaluated | `src/engine/evaluate.cpp` | `Eval::evaluate` |
+| where the accumulator is updated | `src/engine/nnue/nnue_accumulator.cpp` | `AccumulatorStack::evaluate` |
+| where the tablebases are probed | `src/engine/search.cpp` | `host.tb.probe_wdl`, in Step 6 |
+| where memory comes from | `src/engine/arena.h` | `arena_alloc`, `arena_alloc_hinted` |
+| where the process is ended on a fatal error | `src/engine/fatal.cpp` | `engine_abort` |
+
+Every row is a `grep -n '<symbol>' <file>` away, and that is the check when one goes stale:
+a row whose symbol the file no longer carries is a rename this table missed.
+
 ## The layout
 
 **No translation unit sits at the top of `src/`.** Every source is in a zone directory, and
@@ -19,37 +47,40 @@ ls src/universal                        # runtime ISA dispatch entry points
 ls src/incbin                           # vendored, not ours
 ```
 
-| File | Owns |
-|---|---|
-| `engine/types.h` | the value domain: `Color`, `Square`, `Piece`, `Move`, `Value`, `Key`, `Bitboard`, `Depth` |
-| `engine/basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, `TypedKey<KeySpace>`, `RelaxedAtomic`, `mul_hi64` |
-| `engine/prng.h` | `PRNG`: the xorshift the Zobrist keys and the magic bitboards are seeded from |
-| `engine/bitboard.h/.cpp`, `engine/attacks.h/.cpp` | square sets and the slider/leaper attack tables |
-| `engine/position.h/.cpp` | the board, `StateInfo`, `do_move`/`undo_move`, Zobrist keys, `see_ge` |
-| `engine/movegen.h/.cpp`, `engine/movepick.h/.cpp` | move generation and the staged picker |
-| `engine/search.h/.cpp` | `Search::Worker`, iterative deepening, alpha-beta, quiescence |
-| `engine/search_go.h/.cpp` | a depth-limited search from a FEN with no host registered, on one worker or on several |
-| `engine/searchoptions.h` | the option snapshot a worker is built from |
-| `engine/history.h` | the history tables and their update rule |
-| `engine/tt.h/.cpp` | the transposition table |
-| `engine/timeman.h/.cpp` | the time budget |
-| `engine/evaluate.h/.cpp` | the evaluation entry point and its trace |
-| `engine/nnue/` | the network: feature transformer, accumulator, layers, feature sets |
-| `engine/score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from |
-| `engine/hashing.h` | `hash_bytes`, arithmetic over bytes with no OS in it, so both zones can call it: the net's content hash from `engine/`, the shared-memory segment name from `platform/` |
-| `engine/arena.h`, `output_sink.h`, `tb_source.h`, `clock.h`, `parallel.h`, `worker_set.h`, `fatal.h` | the seams, catalogued below |
-| `engine/host.h`, `host.cpp` | `Host`, a snapshot of all seven registrations, and `current_host()` which takes one |
-| `engine/compiler.h` | what the COMPILER provides, not what the machine hosts: `RESTRICT`, `prefetch`, `IsLittleEndian`, `sf_always_inline`, `stringify`. In `engine/` for the same reason as `hashing.h` -- every zone spells the compiler, only the host spells the OS |
-| `platform/memory.h/.cpp` | aligned and large-page allocation |
-| `platform/numa.h/.cpp`, `numa_shared.h`, `shm.h`, `shm_unix.h` | NUMA topology, replication, cross-process sharing |
-| `platform/thread.h/.cpp`, `platform/thread_native.h` | the worker pool and the native thread with a chosen stack |
-| `platform/syzygy/` | the tablebase prober |
-| `platform/text.h/.cpp` | turning the host's text into values: `split`, `is_whitespace`, `remove_whitespace`, `str_to_size_t`, `read_file_to_string` |
-| `platform/misc.h/.cpp` | what only the shell asks for: the version strings, the logger, `CommandLine`, the utf-8 path conversions, the console |
-| `shell/main.cpp`, `shell/uci.h/.cpp`, `shell/ucioption.h/.cpp`, `shell/engine.h/.cpp` | the UCI transport, the option table, the session |
-| `shell/benchmark.h/.cpp`, `shell/perft.h`, `shell/tune.h/.cpp` | bench positions, perft, SPSA tuning |
-| `shell/console.h/.cpp` | `sync_cout`, `sync_endl` and the `dbg_*` counters -- the shell's own terminal |
-| `universal/` | per-ISA entry points for the runtime-dispatch binary |
+The **Page** column is the routing: `here` means no zone page names the file, so this page is
+the only description of it in the set.
+
+| File | Owns | Page |
+|---|---|---|
+| `engine/types.h` | the value domain: `Color`, `Square`, `Piece`, `Move`, `Value`, `Key`, `Bitboard`, `Depth` | [01](01-engine-board.md), [09](09-type-design.md) |
+| `engine/basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, `TypedKey<KeySpace>`, `RelaxedAtomic`, `mul_hi64` | [09](09-type-design.md) |
+| `engine/prng.h` | `PRNG`: the xorshift the Zobrist keys and the magic bitboards are seeded from | here |
+| `engine/bitboard.h/.cpp`, `engine/attacks.h/.cpp` | square sets and the slider/leaper attack tables | [01](01-engine-board.md) |
+| `engine/position.h/.cpp` | the board, `StateInfo`, `do_move`/`undo_move`, Zobrist keys, `see_ge` | [01](01-engine-board.md) |
+| `engine/movegen.h/.cpp`, `engine/movepick.h/.cpp` | move generation and the staged picker | [01](01-engine-board.md), [02](02-engine-search.md) |
+| `engine/search.h/.cpp` | `Search::Worker`, iterative deepening, alpha-beta, quiescence | [02](02-engine-search.md) |
+| `engine/search_go.h/.cpp` | a depth-limited search from a FEN with no host registered, on one worker or on several | [02](02-engine-search.md) |
+| `engine/searchoptions.h` | the option snapshot a worker is built from | here |
+| `engine/history.h` | the history tables and their update rule | [02](02-engine-search.md) |
+| `engine/tt.h/.cpp` | the transposition table | [02](02-engine-search.md) |
+| `engine/timeman.h/.cpp` | the time budget | [02](02-engine-search.md) |
+| `engine/evaluate.h/.cpp` | the evaluation entry point and its trace | [03](03-engine-eval.md) |
+| `engine/nnue/` | the network: feature transformer, accumulator, layers, feature sets | [03](03-engine-eval.md) |
+| `engine/score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from | [02](02-engine-search.md) |
+| `engine/hashing.h` | `hash_bytes`, arithmetic over bytes with no OS in it, so both zones can call it: the net's content hash from `engine/`, the shared-memory segment name from `platform/` | here |
+| `engine/arena.h`, `output_sink.h`, `tb_source.h`, `clock.h`, `parallel.h`, `worker_set.h`, `fatal.h` | the seams, catalogued below | here |
+| `engine/host.h`, `host.cpp` | `Host`, a snapshot of all seven registrations, and `current_host()` which takes one | here |
+| `engine/compiler.h` | what the COMPILER provides, not what the machine hosts: `RESTRICT`, `prefetch`, `IsLittleEndian`, `sf_always_inline`, `stringify`. In `engine/` for the same reason as `hashing.h` -- every zone spells the compiler, only the host spells the OS | here |
+| `platform/memory.h/.cpp` | aligned and large-page allocation | [06](06-platform.md) |
+| `platform/numa.h/.cpp`, `numa_shared.h`, `shm.h`, `shm_unix.h` | NUMA topology, replication, cross-process sharing | [06](06-platform.md) |
+| `platform/thread.h/.cpp`, `platform/thread_native.h` | the worker pool and the native thread with a chosen stack | [04](04-multithreading.md), [06](06-platform.md) |
+| `platform/syzygy/` | the tablebase prober | [05](05-tablebases.md) |
+| `platform/text.h/.cpp` | turning the host's text into values: `split`, `is_whitespace`, `remove_whitespace`, `str_to_size_t`, `read_file_to_string` | here |
+| `platform/misc.h/.cpp` | what only the shell asks for: the version strings, the logger, `CommandLine`, the utf-8 path conversions, the console | here |
+| `shell/main.cpp`, `shell/uci.h/.cpp`, `shell/ucioption.h/.cpp`, `shell/engine.h/.cpp` | the UCI transport, the option table, the session | [07](07-shell.md) |
+| `shell/benchmark.h/.cpp`, `shell/perft.h`, `shell/tune.h/.cpp` | bench positions, perft, SPSA tuning | [07](07-shell.md) |
+| `shell/console.h/.cpp` | `sync_cout`, `sync_endl` and the `dbg_*` counters -- the shell's own terminal | here |
+| `universal/` | per-ISA entry points for the runtime-dispatch binary | [06](06-platform.md) |
 
 **`src/Makefile` is the authority on what is compiled.** `SRCS` is an explicit list, not a
 wildcard, so a file added to a zone directory and not to `SRCS` is in the tree and not in the
