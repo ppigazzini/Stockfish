@@ -151,8 +151,6 @@ constexpr auto init_threat_offsets() {
 }
 
 constexpr auto helper_offsets = init_threat_offsets().first;
-// Lookup array for indexing threats
-constexpr auto offsets = init_threat_offsets().second;
 
 constexpr auto init_index_luts() {
     std::array<std::array<std::array<u32, 2>, PIECE_NB>, PIECE_NB> indices{};
@@ -181,13 +179,62 @@ constexpr auto init_index_luts() {
     return indices;
 }
 
-// The final index is calculated from summing data found in these two LUTs, as well
-// as offsets[attacker][from]
+// Every value in index_lut2 comes from PseudoAttacks, which tells the two pawn
+// colours apart and nothing else, so the twelve pieces read seven rows.
+constexpr IndexType NumAttackRows = 7;
+constexpr IndexType AttackRowSize = SQUARE_NB * SQUARE_NB;
+
+// [piece] -> the start of its row, already scaled, so make_index adds where a
+// second subscript would shift first. Rows 0 and 1 are the white and the black
+// pawn; rows 2..6 are the piece type, which is how PseudoAttacks indexes the
+// rest. Widen the element before adding a row: the last start is 6 * 4096.
+constexpr std::array<u16, PIECE_NB> AttackRowBase = {
+  0 * AttackRowSize, 0 * AttackRowSize, 2 * AttackRowSize, 3 * AttackRowSize,
+  4 * AttackRowSize, 5 * AttackRowSize, 6 * AttackRowSize, 0 * AttackRowSize,
+  0 * AttackRowSize, 1 * AttackRowSize, 2 * AttackRowSize, 3 * AttackRowSize,
+  4 * AttackRowSize, 5 * AttackRowSize, 6 * AttackRowSize, 0 * AttackRowSize};
+
+constexpr auto init_threat_index() {
+    constexpr auto squarePair = index_lut2_array();
+    constexpr auto fromOffset = init_threat_offsets().second;
+
+    std::array<u16, NumAttackRows * AttackRowSize> table{};
+
+    for (Piece piece : AllPieces)
+        for (Square from = SQ_A1; from <= SQ_H8; ++from)
+            for (Square to = SQ_A1; to <= SQ_H8; ++to)
+                table[AttackRowBase[piece] + from * SQUARE_NB + to] =
+                  u16(fromOffset[piece][from] + squarePair[piece][from][to]);
+
+    return table;
+}
+
+// The final index is the sum of these two LUTs
 
 // [attacker][attacked][from < to]
 constexpr auto index_lut1 = init_index_luts();
-// [attacker][from][to]
-constexpr auto index_lut2 = index_lut2_array();
+// [AttackRowBase[attacker] + from * SQUARE_NB + to], the from-offset and the
+// square-pair count already summed; the largest entry is under 1500
+constexpr auto index_lut2 = init_threat_index();
+
+// Six pieces write a row another piece also writes, so a pair that disagreed
+// anywhere would leave whichever of them ran last and no diagnostic. Enumerate
+// the whole domain make_index reaches: twelve attackers by every square pair.
+constexpr bool attack_rows_agree() {
+    constexpr auto squarePair = index_lut2_array();
+    constexpr auto fromOffset = init_threat_offsets().second;
+
+    for (Piece piece : AllPieces)
+        for (Square from = SQ_A1; from <= SQ_H8; ++from)
+            for (Square to = SQ_A1; to <= SQ_H8; ++to)
+                if (index_lut2[AttackRowBase[piece] + from * SQUARE_NB + to]
+                    != fromOffset[piece][from] + squarePair[piece][from][to])
+                    return false;
+
+    return true;
+}
+
+static_assert(attack_rows_agree());
 
 // Index of a feature for a given king position and another piece on some square
 inline sf_always_inline IndexType FullThreats::make_index(
@@ -201,8 +248,8 @@ inline sf_always_inline IndexType FullThreats::make_index(
     unsigned attacked_oriented = attacked ^ swap;
 
     return index_lut1[attacker_oriented][attacked_oriented][from_oriented < to_oriented]
-         + offsets[attacker_oriented][from_oriented]
-         + index_lut2[attacker_oriented][from_oriented][to_oriented];
+         + index_lut2[AttackRowBase[attacker_oriented] + from_oriented * SQUARE_NB
+                      + to_oriented];
 }
 
 // Get a list of indices for active features in ascending order
