@@ -219,8 +219,11 @@ between gcc and clang means the change is not an instruction-count change at all
 instruction axis is the wrong instrument for it.
 
 callgrind implements no AVX-512 and dies on the first instruction it does not know, so the
-instruction axis stops at avx2/bmi2 -- below the tier a player builds. The script refuses
-such an `--arch` rather than producing a number.
+instruction axis stops at avx2/bmi2 -- below the tier a player builds. An `--arch` matching
+`avx512` or `vnni` **SKIPs at exit 2** rather than producing a number, so a grid loop that reads
+only "not a failure" records the tier as measured when nothing measured it.
+
+Dispatched by `perfbudget.yml` at two tiers, base against head.
 
 ### Moving a body out of a header is not free, and its size barely matters
 
@@ -335,6 +338,9 @@ cannot shift rodata under it -- another reason it is not a statement about the s
 binary, which carries its stamp.
 
 A green run narrows what `perfbudget.sh` has to catch. It does not replace it.
+
+`perfbudget.yml` runs it after the budget under **`continue-on-error`**: the codegen comparison
+informs and does not block, so a red run there is a comment on a merge nobody stopped.
 
 **It proves nothing about a change to a SIGNATURE**, which is the limit to know before reaching
 for it on a typing change. A parameter's type is part of the mangled name, so replacing a `bool`
@@ -494,6 +500,10 @@ Per-function **call counts** between two revisions.
 ./tests/fingerprint.sh HEAD~1
 ```
 
+**No workflow runs it.** `lanecheck.sh` excuses it on cost -- callgrind over the whole call
+graph -- not on capability, so a lane could exist and does not; it runs when someone remembers
+it before a decomposition.
+
 Every other gate here compares values -- a node total, an instruction count, a disassembly.
 This one asks whether the engine still gets to its answer by calling what it called, as
 often. A change that claims to be a decomposition is exactly where that can move while every
@@ -580,6 +590,9 @@ Byte-compares the engine's output for a scripted UCI session.
 ./tests/golden.sh search     # one case
 ./tests/golden.sh --update   # re-record
 ```
+
+Dispatched by `golden.yml`, which fetches the 3-4-man corpus first so the tablebase case runs
+rather than skipping.
 
 `signature.sh` proves the engine searched the same tree. Nothing else proves it **said** the
 same thing: an `info` field that loses a name or changes order, a PV one move short, a ponder
@@ -695,6 +708,9 @@ Three properties, and only the last needs the network:
   and v6.1.0 in two others, and the tree said nothing. It surfaced as a Node 20 deprecation
   warning on a runner -- a message from GitHub about their schedule rather than a check of ours.
 
+Dispatched by `docs.yml`, which caches the resolved pins so the network half does not refetch
+every run.
+
 **Being the latest release is deliberately not gated.** It is true until the action's next
 release and false afterwards through no change here, so gating it reddens the lane on someone
 else's schedule. `--latest` reports it for a human to act on. Nothing in this repository keeps
@@ -723,6 +739,8 @@ asserts only that the node count is non-zero and never a value, because a node c
 `signature.sh`'s claim. So a drifted default moves the numbers a gate prints while every gate
 stays green. `negative_control.sh optiondefaults` demonstrates exactly that: the mutation reddens
 this gate and leaves the bench signature where it was.
+
+Dispatched by `golden.yml`, ahead of the golden comparison.
 
 **The mapping is not restated here.** `Engine::search_options()` already assigns each field from
 its option, so the gate reads the mapping out of that function. A copy in a third place is a copy
@@ -776,7 +794,8 @@ a row writes a probe translation unit, compiles it against the real headers, and
 illegal form is REFUSED:
 
 ```sh
-printf '#include "history.h"\nusing namespace Stockfish;\nHistoryBankIndex f(usize n) { return n; }\n' > probe.cpp
+printf '#include "history.h"\nusing namespace Stockfish;\n%s\n' \
+    'HistoryBankIndex f(usize n) { return n; }' > probe.cpp
 ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only probe.cpp )   # must FAIL
 ```
 
@@ -879,6 +898,9 @@ here: `stringify` in `network.cpp` under `DEFAULT_NNUE_DIRECTORY`, `<vector>` fo
 `CommandLine`'s Windows `argv_storage`, and the last `usize` in `misc.cpp` inside
 `path_from_utf8`'s `_WIN32` branch. Each carries a `// IWYU pragma: keep` and the reason.
 Deciding a finding is one of these is done by reading, not by deleting what the tool named.
+
+Dispatched by `iwyu.yml`, which the runner's `libc++` package puts in `native` mode; a local
+run without that package is `shim` mode and answers a narrower question.
 
 The analysis runs in a copy of the tree, never in `src/`. `make analyze` depends on `objclean`,
 so running it where you build destroys the objects you had and leaves no binary for
@@ -1674,9 +1696,9 @@ corpus in `tests/`. `tbpv.py` below is what needs it, and needs exactly it: addi
 what the sweep reproduces.
 
 **Separate directories, because what a corpus CONTAINS is part of what a test using it
-records.** `MaxCardinality` reads 3 or 4 depending on which is there and the engine prints the
-file count in its own output, so a 3-man corpus under the 4-man path makes a suite expecting
-the larger one block until its timeout on a line that cannot come. A mirror that answers a missing file with a
+records.** `MaxCardinality` reads 3 or 4 depending on which is there and the engine prints the file count
+in its own output, so a 3-man corpus under the 4-man path makes a suite expecting the larger one
+block until its timeout on a line that cannot come. A mirror that answers a missing file with a
 body -- an error page, a redirect to a landing page -- otherwise gets that body stored as a
 table, and it fails much later inside the decoder, where it reads as a corrupt table rather
 than a bad download. Without a corpus the harness **skips visibly** rather than passing. It is
@@ -1830,6 +1852,8 @@ that nothing past the truncation was written, which is exactly the release build
 header describes, 8 KiB of uninitialised stack loaded as weights with nothing said. Without that
 half the mutation scores 0 of 12.
 
+Dispatched by `sanitizers.yml` in a job of its own.
+
 It builds one translation unit and no engine, so it needs no net and no network. It needs a
 tier's **defines** all the same -- the header it compiles carries the NNUE intrinsic set -- and
 takes them from `make config-sanity` rather than restating them, so a second copy cannot drift
@@ -1895,6 +1919,9 @@ appends one move per iteration, and its other three exits are all conditional on
 constant-false whenever `use_time_management()` is -- `go infinite`, `go movetime`, `go depth`,
 which is how a GUI analyses -- and the tables run out only where the walk leaves them. The length
 bound is the array's capacity, and nothing else supplies one.
+
+Dispatched by `sanitizers.yml`, whose corpus step is `continue-on-error`, so a mirror outage
+costs this gate its run and not the workflow -- and the gate then SKIPs rather than passing.
 
 **No other gate can fail on this.** `bench` probes no tablebases, so the anchor, both perf gates
 and every sanitizer row stay green while the overflow is live. That is the hole this fills.
