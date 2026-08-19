@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     # A locality change can legitimately cost instructions -- upstream
-    # ee72cf49f is the worked example, see docs/10-tooling-ci.md. This lane is
+    # ee72cf49f is the worked example, see docs/11-performance.md. This lane is
     # therefore informative on such a PR and authoritative on a refactor that
     # claims to cost nothing. It does not replace fishtest.
     steps:
@@ -132,7 +132,7 @@ jobs:
             echo '## Instruction budget'
             echo
             echo 'Startup subtracted by measurement. Node counts must match or the'
-            echo 'comparison is void. See `docs/10-tooling-ci.md` for what this gate'
+            echo 'comparison is void. See `docs/11-performance.md` for what this gate'
             echo 'can and cannot see -- in particular that a locality win can read'
             echo 'here as a regression.'
             echo

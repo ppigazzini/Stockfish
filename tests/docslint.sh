@@ -188,7 +188,7 @@ fi
 # THE ONE COUNT THIS GATE CAN DERIVE. The header above admits that "a list with
 # the wrong count" is the rot it cannot see, and the performance-gate selector
 # is where that rot actually landed: AGENTS.md grew a sixth row for
-# npsthreads.sh and docs/10-tooling-ci.md kept saying "there are five of them
+# npsthreads.sh and the page's copy kept saying "there are five of them
 # because there are five questions" over a five-row copy of the same table.
 #
 # Two tables, one subject, so the check is set equality on the gate column and
@@ -213,14 +213,14 @@ selector_gates() {
 }
 
 sel_agents=$(selector_gates AGENTS.md)
-sel_page=$(selector_gates docs/10-tooling-ci.md)
+sel_page=$(selector_gates docs/11-performance.md)
 
 if [ -z "$sel_agents" ] || [ -z "$sel_page" ]; then
     note "one of the two selector tables was not found -- its header row moved"
 elif [ "$sel_agents" != "$sel_page" ]; then
     echo "  only in AGENTS.md:"
     comm -23 <(echo "$sel_agents") <(echo "$sel_page") | sed 's/^/    /'
-    echo "  only in docs/10-tooling-ci.md:"
+    echo "  only in docs/11-performance.md:"
     comm -13 <(echo "$sel_agents") <(echo "$sel_page") | sed 's/^/    /'
     note "the selector tables disagree -- and the sentence above each states a count"
 else
