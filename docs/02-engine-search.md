@@ -237,8 +237,8 @@ that may have been skipped.
 
 `Search::SharedState` is everything a `Search::Worker` is built from. Six members: a
 `const SearchOptions&` snapshot, the transposition table, the shared history banks, a
-**`const Host&`**, and the two `std::atomic<bool>&` flags every worker watches. The seams are in
-[00-architecture.md](00-architecture.md); what this page owns is what the search does with them.
+**`const Host&`**, and the two `std::atomic<bool>&` flags every worker watches. What each seam is
+and who installs it is in [00-architecture.md](00-architecture.md).
 
 **The `Host` does not stop here.** `Worker` holds no `SharedState` -- it unpacks one at
 construction, and `host` is unpacked with the rest onto `Worker::host`, which is the whole point of
