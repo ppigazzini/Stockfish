@@ -23,6 +23,11 @@ on:
   push:
     branches:
       - refish
+      # The CI-probe branch, which `stockfish.yml` names for the same purpose.
+      # Without it this branch's umbrella does not fire there, and every gate
+      # only it dispatches -- `negative_control.sh` -- is genuinely out of every
+      # lane, which `lanecheck.sh` reports and is right to.
+      - github_ci
   workflow_dispatch:
 
 concurrency:
