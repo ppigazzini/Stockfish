@@ -35,13 +35,7 @@ mapping -- and `04` owns **why the search is shaped around it**, which is why a 
 `HistoryBankIndex` rather than a topology handle. Each links to the other for the half it does
 not own.
 
-Numbered by reading order; a contributor works down from the architecture into a zone. **There
-is no `08`**, and no file ever occupied it, so renumbering would cost every inbound link its
-target for nothing:
-
-```sh
-git log --all --name-only --pretty=format: -- 'docs/08*'   # nothing
-```
+Numbered by reading order; a contributor works down from the architecture into a zone.
 
 Building, usage, UCI commands and user-facing terminology are the
 [wiki](https://github.com/official-stockfish/Stockfish/wiki)'s.
