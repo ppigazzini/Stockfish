@@ -285,6 +285,135 @@ else
     fi
 fi
 
+head_check "8. every page carries the gates that hold it"
+
+# THE ROUTING IS THE LIST, so it is derived rather than proofread. Each page
+# ends with `## The gates` naming what holds its claims; a row's page link is
+# where the gate is described, and its absence means this page. Three ways that
+# rots, and all three are checked here:
+#
+#   a. a page with no section at all -- a reader of that page never learns what
+#      holds it, and the gate it needed is discoverable only by grepping;
+#   b. a gate in no page's section -- check 4 above passes on an incidental
+#      mention anywhere in the prose, which is not the same as being routed to;
+#   c. a row pointing at a page that does not carry the gate -- the pointer
+#      outlives its target exactly as a baseline outlives its edge, so it is
+#      expired in the second direction like every other list here.
+#
+# Two pages hold no gates and say so rather than carrying an empty table. The
+# list expires in both directions: an exempt page that grows a section is a
+# stale exemption, and an exemption naming a page the tree no longer has fails.
+GATELESS_PAGES=(docs/12-references.md docs/14-glossary.md)
+
+# Four scripts are not gates. Each reason is the one negative_control.sh gives
+# for the same script, because it is the same fact.
+NOT_A_GATE=(
+    "zones.sh          the zone table, sourced by the zone-aware gates; it asserts nothing itself"
+    "testing.py        the harness instrumented.py imports rather than a gate"
+    "perfcounters_report.py  the aggregation half perfcounters.sh invokes rather than runs"
+    "perfdecomp.py     the decomposition half perfdecomp.sh invokes rather than runs"
+)
+
+# Emit `gate<TAB>page` for every row of a page's gates table; an empty page
+# field means the row claims the gate for the page it is on.
+gates_rows() {
+    awk '
+        /^## The gates[[:space:]]*$/ { ing = 1; next }
+        ing && /^## /                { ing = 0 }
+        !ing                         { next }
+        /^\|[-: |]+\|$/              { next }
+        /^\|/ {
+            row = $0
+            ng = 0; np = 0
+            s = row
+            while (match(s, /[A-Za-z0-9_]+\.(sh|py)/)) {
+                g[++ng] = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+            }
+            s = row
+            while (match(s, /[0-9][0-9]-[a-z0-9-]+\.md/)) {
+                pp[++np] = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+            }
+            for (i = 1; i <= ng; i++)
+                if (np == 0) print g[i] "\t-"
+                else for (j = 1; j <= np; j++) print g[i] "\t" pp[j]
+            delete g; delete pp
+        }
+    ' "$1"
+}
+
+gateless() {
+    local pg=$1 e
+    for e in "${GATELESS_PAGES[@]}"; do [ "$pg" = "$e" ] && return 0; done
+    return 1
+}
+
+all_rows=$(mktemp) || exit 2
+have_section=$(mktemp) || exit 2
+for pg in docs/[0-9]*.md; do
+    [ -f "$pg" ] || continue
+    n=$(grep -c '^## The gates[[:space:]]*$' "$pg")
+    if gateless "$pg"; then
+        [ "$n" = "0" ] || note "$pg is on the gateless list and has a gates section -- stale exemption"
+        continue
+    fi
+    case "$n" in
+        1) echo "$pg" >> "$have_section"; gates_rows "$pg" | sort -u | sed "s#\$#\t$pg#" >> "$all_rows" ;;
+        0) note "$pg has no '## The gates' section" ;;
+        *) note "$pg has $n '## The gates' sections -- want exactly one" ;;
+    esac
+done
+for e in "${GATELESS_PAGES[@]}"; do
+    [ -f "$e" ] || note "the gateless list names $e, which the tree does not carry"
+done
+
+# b. every script is routed to by some page
+excused_gate() {
+    local g=$1 e
+    for e in "${NOT_A_GATE[@]}"; do [ "${e%% *}" = "$g" ] && return 0; done
+    return 1
+}
+missing=0
+for f in tests/*.sh tests/*.py scripts/*.sh; do
+    [ -f "$f" ] || continue
+    g=${f##*/}
+    excused_gate "$g" && continue
+    if ! cut -f1 "$all_rows" | grep -qxF -- "$g"; then
+        echo "  $f is in no page's gates table"
+        missing=$((missing + 1))
+    fi
+done
+[ "$missing" = "0" ] || note "$missing gate(s) routed to by no page"
+for e in "${NOT_A_GATE[@]}"; do
+    g=${e%% *}
+    [ -e "tests/$g" ] || [ -e "scripts/$g" ] || note "the not-a-gate list names $g, which the tree does not carry"
+    if cut -f1 "$all_rows" | grep -qxF -- "$g"; then
+        note "$g is excused as not a gate and is in a gates table -- stale exemption"
+    fi
+done
+
+# c. a row that points at a page must find the gate there. The membership set is
+# built once rather than re-read per row, so nothing reads the row file while
+# another command in the same pipeline is writing it.
+carried=$(mktemp) || exit 2
+cut -f1,3 "$all_rows" | sort -u > "$carried"
+dangling=0
+while IFS=$'\t' read -r g target src; do
+    [ "$target" = "-" ] && continue
+    [ -f "docs/$target" ] || { echo "  $src routes $g to docs/$target, which does not exist"
+                               dangling=$((dangling + 1)); continue; }
+    if ! grep -qxF -- "$g	docs/$target" "$carried"; then
+        echo "  $src routes $g to $target, whose gates table does not name it"
+        dangling=$((dangling + 1))
+    fi
+done < "$all_rows"
+rm -f "$carried"
+[ "$dangling" = "0" ] || note "$dangling gates row(s) point at a page that does not carry the gate"
+
+if [ "$missing" = "0" ] && [ "$dangling" = "0" ]; then
+    echo "  ok, $(wc -l < "$have_section") page(s), $(cut -f1 "$all_rows" | sort -u | wc -l) gate(s) routed"
+fi
+rm -f "$all_rows" "$have_section"
+
 echo
 if [ "$FAIL" = "0" ]; then echo "docslint: clean"; else echo "docslint: FINDINGS"; fi
 exit "$FAIL"
