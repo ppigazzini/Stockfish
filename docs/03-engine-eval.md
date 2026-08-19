@@ -16,8 +16,8 @@ Audience: evaluation and NNUE.
 | how the two heads are produced | `nnue/network.cpp` | `Network::evaluate` |
 | dimensions and layer order | `nnue/nnue_architecture.h` | `L1`, `L2`, `L3`, `NetworkArchitecture` |
 | the accumulator and its stack | `nnue/nnue_accumulator.h` | `Accumulator`, `AccumulatorStack` |
-| the refresh cache | `nnue/nnue_accumulator.h` | `AccumulatorCaches::Entry` |
-| accumulator to layer input | `nnue/nnue_feature_transformer.h` | `FeatureTransformer::transform` |
+| the refresh cache | `nnue/nnue_accumulator.h` | `AccumulatorCaches`, its `Entry` |
+| accumulator to layer input | `nnue/nnue_feature_transformer.h` | `FeatureTransformer`, its `transform` |
 | which inputs the sparse layer skips | `nnue/nnz_helper.h` | `NNZInfo` |
 | the file format and its bounds | `nnue/network.cpp`, `nnue/nnue_common.h` | `read_header`, `read_leb_128` |
 | the per-ISA kernels | `nnue/simd.h` | one arm per `USE_*` macro |
