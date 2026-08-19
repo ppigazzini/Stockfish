@@ -210,7 +210,7 @@ grep -n 'options.add' src/shell/engine.cpp
 | `Threads` | spin | `resize_threads` | rebuilds the pool and re-snapshots the `Host` |
 | `Hash` | spin | `set_tt_size` | reallocates the table, cleared through the parallel-for |
 | `Clear Hash` | button | `search_clear` | clears TT, histories, and remaps the tablebases |
-| `Ponder` | check | -- | read as `SearchOptions::ponder` |
+| `Ponder` | check | -- | copied into `SearchOptions`'s `ponder` |
 | `MultiPV` | spin | -- | how many root lines are searched |
 | `Skill Level` | spin | -- | with `UCI_Elo`, drives `Search::Skill` |
 | `Move Overhead` | spin | -- | also the budget `syzygy_extend_pv` spends |
@@ -284,8 +284,9 @@ The callback's return value is that channel:
 using OnChange = std::function<std::optional<std::string>(const Option&)>;
 ```
 
-A returned string is handed to `OptionsMap::info`, the `InfoListener` that `UCIEngine` installs to
-print `info string`. **Only `NumaPolicy` uses it to report a failure.** `Threads` and `NumaPolicy`
+A returned string is handed to `OptionsMap`'s `info` member, the `InfoListener` that `UCIEngine`
+installs through `add_info_listener` to print `info string`. **Only `NumaPolicy` uses it to report
+a failure.** `Threads` and `NumaPolicy`
 return thread-allocation text on success; `Hash`, `SyzygyPath`, `EvalFile`, `Clear Hash` and
 `Debug Log File` all return `std::nullopt` unconditionally, so a `Hash` allocation that fails or a
 `SyzygyPath` that names nothing is not reported through this path at all.
