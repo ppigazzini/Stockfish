@@ -220,9 +220,20 @@ Bench: <node total>
 
 One block per test, blank line between. The four lines of a block are the label and link, the
 `LLR:` with its bounds, the `Total:` with the W/L/D split, and `Ptnml(0-2):` with the
-pentanomial counts. The label is `STC:` or `LTC:` for a gainer and `Passed STC non-reg:` or
-`Passed LTC non-reg:` for a change tested only to show it loses nothing; `VLTC` and `VVLTC`
-appear for the longest controls.
+pentanomial counts.
+
+The label is free text that upstream never standardised, so read the recent record rather than
+a rule:
+
+```sh
+git log -n 300 --format='%b' master | grep -oE '^[A-Za-z][A-Za-z0-9 ()-]*:' \
+  | grep -iE 'stc|ltc' | sort | uniq -c | sort -rn | head
+```
+
+`Passed STC:` and `Passed LTC:` are the majority forms; a run made only to show the change
+loses nothing adds `non-reg` or `non-regression`, in several spellings that all appear; `VLTC`
+and `VVLTC` name the longest controls. Copy the form the record shows rather than adding a
+spelling to the tail of that histogram.
 
 Both a short and a long control are expected for a gainer. A non-regression result is one
 block.
@@ -265,11 +276,17 @@ git log -n 200 --format='%b' master | grep -c '^closes https://github.com/'
 ./tests/docslint.sh
 ```
 
-fails on a dead internal link, a `src/`/`tests/`/`scripts/`/`.github/` path named in prose
-that is not in the tree, a bench signature quoted in a page, a script in `tests/` or
-`scripts/` that no page names, and a tracked file pointing into the untracked working area.
-A path `.gitignore` names is exempt from the path check, because prose legitimately describes
-the tool that writes an ignored artifact.
+runs six checks, and `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
+internal link, a `src/`/`tests/`/`scripts/`/`.github/` path named in prose that is not in the
+tree, a bench signature quoted in a page, a script in `tests/` or `scripts/` that no page
+names, a tracked file pointing into the untracked working area, and the two copies of the
+performance-gate selector table -- `AGENTS.md`'s and [10-tooling-ci.md](10-tooling-ci.md)'s --
+naming different gates. A path `.gitignore` names is exempt from the path check, because prose
+legitimately describes the tool that writes an ignored artifact.
+
+Only the last of the six derives a count, and it derives it from a table rather than from
+prose: it compares the gate column of the two selector tables and says nothing about the
+numeral written above either one.
 
 **It cannot tell you a sentence is false.** Prose can parse, link, name only real paths, and
 still describe code that has moved. The gate buys the mechanical half; the half that needs a
