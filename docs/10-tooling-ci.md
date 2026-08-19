@@ -55,11 +55,7 @@ Most of these can SKIP -- for a missing tool, a missing corpus, a missing PMU --
 answers nothing. Read the exit code, and for `negative_control.sh` read the skipped count
 besides, because a skipped row leaves its status at 0.
 
-## The value gates
-
-These answer "does the engine still do the same thing?".
-
-### `tests/signature.sh`
+## `tests/signature.sh`
 
 The anchor. `bench` must reproduce a reference node count.
 
@@ -81,22 +77,6 @@ That is the tree's ISA-divergence coverage, and it is what catches a change that
 differently at one vector width.
 
 **It says nothing about cost.** A change can shed no nodes and run measurably slower.
-
-### `tests/reprosearch.sh`
-
-Node counts repeat across `ucinewgame` at varying node limits.
-
-It compares one binary against itself, at the default thread count, so it establishes that
-`ucinewgame` resets everything a search reads -- and nothing about whether those node counts
-are the right ones, which is `signature.sh`'s question, or about what a second thread would
-do to them.
-
-**It drives the engine through `expect`, and exits 2 when `expect` is absent.** The
-comparison is a pipeline ending in `awk`, so the pipeline's status is `awk`'s: with no
-interpreter, `grep` matched nothing, `awk` rejected nothing, and the script printed
-`reprosearch testing OK`. A round that reports no node counts now fails for the same reason.
-Exit 2 is SKIPPED and proves nothing -- `tests.yml` installs `expect`, so the merge lane
-still runs it, but a local run on a box without it establishes nothing about `ucinewgame`.
 
 ## The performance gates
 
@@ -1486,95 +1466,6 @@ what tells the two apart.
 
 **The seed prints first, and every finding prints the seed that produced it.** A fuzz run whose
 failure cannot be replayed is an anecdote.
-
-## `tests/fuzzsearch.sh`
-
-Fuzz the search **in-process**, against engine objects only, under ASan and UBSan.
-
-```sh
-./tests/fuzzsearch.sh --seconds 600                      # a run
-./tests/fuzzsearch.sh --seconds 600 --corpus .fuzz-corpus-search   # keep what it learns
-```
-
-A different instrument from the harnesses above, not a fourth one of them. Those drive the
-shipped binary's stdin, so a mutation spends most of its budget in the command parser -- the
-table above says so of `uci` outright. This one puts nothing between libFuzzer and the node
-body, and it is the only fuzzing in the tree that runs under sanitizers.
-
-**The input is a walk, not a position.** Each byte selects one of the legal moves available, so
-every position searched is legal and reachable by construction. There is no illegal-board false
-positive to triage, which is the failure mode that gets a fuzzer switched off. It reaches
-positions no bench list and no golden corpus contains.
-
-It links `src/engine/` alone and registers no seam, exactly as `enginelink.sh` does, through
-`Search::go`. So any crash is in the engine with no host to blame -- and the seam defaults are
-under the fuzzer too.
-
-**It is the only gate that compiles the engine under ASan**, and the only one that reaches
-UBSan with no host registered -- `sanitizers.yml` runs UBSan too, but over the shipped binary
-with the shell driving it. That combination reaches a class of defect the others cannot: state
-that is valid only because a host assigned it. `SearchManager`'s members carry their own
-initial values for exactly that reason -- a search driven without `ThreadPool::start_thinking`
-reads them otherwise, and UBSan reports the load of a non-`bool` value into `ponder`.
-
-Three properties of the rig are load-bearing, and each fails by looking like success:
-
-- **`-print_funcs=0` is the difference between fuzzing and not.** By default libFuzzer
-  symbolizes and prints the new functions each corpus unit reaches, and on a statically linked
-  sanitized engine that `llvm-symbolizer` pass costs orders of magnitude more than the
-  executions it annotates -- charged to the fuzz budget, so the run spends its time in the
-  symbolizer. Without the flag the run still exits 0, so the guard below is what separates the
-  two.
-- **A run that executed almost nothing is a broken rig, not a pass.** The script refuses under a
-  thousand executions and reports its rate, on the same rule that says a SKIPPED gate is never
-  green. That guard exits 2 by itself; what `tests/negative_control.sh fuzzsearch` buys is the
-  other half, that the **finding** path can go red at all. It plants a null store in the
-  headless runner behind `Search::go`, which the driver reaches whatever the walk produced, so
-  the first input carries the defect out rather than a lucky one.
-- **The corpus is the fuzzer's memory.** Without `--corpus` every run starts empty and spends
-  its budget rediscovering the same shallow coverage, so a nightly job never gets deeper than
-  its first night. The CI lane caches it and uses `restore-keys`, so a key miss still starts
-  from the most recent corpus rather than from nothing.
-
-It needs clang, and skips loudly without it. It is not part of the shipped Makefile and adds
-nothing to the binary a player runs.
-
-`Hash` and `Threads` are the only options whose fuzzed value the engine turns straight into an
-allocation, so they are drawn from a bounded pool and emitted **verbatim**. Mangling defeats a
-bound, and truncation is the specific defeat: it rewrites a value the spin parser refuses into
-one it honours, turning `Hash value 99999999` into `9999` -- a table the box actually backs,
-which exhausts the machine rather than the process and takes the harness down with it, leaving
-no finding to read.
-
-A harness must also refuse to bank a broken **rig** as a finding. Two ways the tb rig can be
-wrong stop the run with a rig fault instead of a verdict -- an illegal fixture and no table
-loaded -- because either otherwise reads as a clean run over an input that never reached the
-decoder. **The third does not, and the comment beside it says it does**: a run that produced no
-`bestmove` is appended as a finding rather than refused, so a rig that never reached the search
-is credited with an experiment it did not run. `tests/negative_control.sh`'s `fuzz-rig` row is
-the only one exercising a rig detector, and it asserts the inverse property -- that a dead rig
-reads as a rig fault and never as a finding.
-
-**None of this is a merge gate**, and the nightly `fuzz.yml` gives each harness a job of its
-own with the whole budget rather than splitting one budget several ways -- they run at
-throughputs orders of magnitude apart, so a shared budget is really a budget for the fastest of
-them. A clean run means "nothing failed inside that budget", never "there is nothing to find".
-
-`tb` is in the matrix with the other three, and its corpus step is `continue-on-error`, so a
-mirror outage costs that harness its run and not the job. Without a corpus it **skips visibly**
-rather than passing.
-
-```sh
-./tests/tbfetch.sh && ./tests/fuzz.py --seconds 600 --harness tb
-```
-
-**Every defect this harness has found is a `malformed.sh` fixture** ([05-tablebases.md](05-tablebases.md)), which is where a found
-defect goes: a seed reproduces a harness, a byte list reproduces a defect and survives the
-harness changing. What the fixtures cover is tabulated there.
-
-The one thing this harness can reach that `malformed.sh` cannot is a field nobody has thought
-to break yet. That is the whole reason it runs on a nightly budget rather than as a merge gate,
-and the reason a round that finds nothing is not evidence of anything.
 
 ## Local hooks
 
