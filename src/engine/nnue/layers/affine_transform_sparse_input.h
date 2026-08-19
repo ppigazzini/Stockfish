@@ -271,6 +271,16 @@ class AffineTransformSparseInput {
             #define SF_BLOCK_BASE_BARRIER
         #endif
 
+        // Pin the input broadcast ahead of the weight offset. The chunk index is scaled by 4
+        // for the input and by 128 for the weights, and x86 addressing scales by at most 8,
+        // so one of the two reaches a register through a shift; pinning the load first leaves
+        // the index dead at the shift, and gcc then shifts it in place rather than copying it
+        // and shifting the copy. The barrier has to stand between the load and col: below col
+        // it buys nothing. clang already emits the shape it produces, and must not be told.
+        #if defined(__x86_64__) && defined(__GNUC__) && !defined(__clang__)
+            #define SF_PIN_INPUT_BROADCAST
+        #endif
+
         #if defined(FIX_GCC15_MISOPTIMIZATION) || defined(SF_BLOCK_BASE_BARRIER)
             asm("" : "+r"(base_addr), "+r"(weights_base));  // opt barrier
         #endif
@@ -354,7 +364,13 @@ class AffineTransformSparseInput {
             {
                 isize       i          = pop_lsb(bits);
                 const auto* input_addr = base_addr + i * sizeof(i32);
-                auto        col =
+                invec_t     in         = vec_load_32(input_addr);
+
+            #ifdef SF_PIN_INPUT_BROADCAST
+                asm("" : "+x"(in));  // opt barrier
+            #endif
+
+                auto col =
                   reinterpret_cast<const invec_t*>(&weights_base[i * OutputDimensions * ChunkSize]);
 
             #ifdef FIX_GCC15_MISOPTIMIZATION
@@ -362,7 +378,6 @@ class AffineTransformSparseInput {
                 #undef FIX_GCC15_MISOPTIMIZATION
             #endif
 
-                const invec_t in = vec_load_32(input_addr);
                 for (IndexType l = 0; l < NumAccums; ++l)
                     vec_add_dpbusd_32(acc[l], in, col[l]);
             }
