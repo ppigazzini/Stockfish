@@ -541,70 +541,6 @@ runs in. A null perturbation over two revisions with identical `src/` -- a docs-
 reports IDENTICAL, because both sides get a populated stamp. **A gate with two build paths needs a
 control per path**, and this one had one control and two paths.
 
-## `tests/anchor.sh`
-
-Holds the commit record to a shape the architecture lanes can read.
-
-```sh
-./tests/anchor.sh
-```
-
-`AGENTS.md` states the rule as *"the `Bench:` in the most recent commit body that carries one"*.
-Two things must hold for that sentence to be operable, and neither was checked.
-
-**There must be one, and it can be far back.** A branch that stacks non-functional commits on
-upstream puts the newest footer arbitrarily deep, because none of its own may carry one:
-
-```sh
-git rev-list --count "$(git log -1 --format=%H -E --grep='^Bench: [1-9][0-9]{5,7}$')..HEAD"
-```
-
-So **never bound the walk.** A reader with a fixed depth finds nothing once the branch outgrows
-it, and the depth that suffices today is the depth that stops sufficing at the next commit.
-`git log --format=%b` over the whole history costs 0.1 s, which is cheaper than a number that
-rots.
-
-**Nothing else may look like one.** The regex upstream's pre-push hook uses,
-`[Bb]ench[ :]+[0-9]{6,8}`, matches a run of spaces between the word and the number. So an
-**evidence row** inside a body -- `  bench      2829394`, a gate result quoted in a commit
-message -- is indistinguishable from a footer to anything scanning line by line. The lanes read
-one such row as the anchor and every architecture job failed against a value that was true when
-written and went stale at a rebase, while the engine benched correctly throughout.
-
-So **anchor the regex to the whole line**: `^Bench: <n>$`, which no prose mention and no gate
-row can satisfy. An unanchored `Bench: *[0-9]+` is not the safer-looking half of that choice --
-it finds a body sentence *carrying* `Bench: <n>` in backticks, and this branch has one, in the
-commit that introduced this very gate. Such a reader returns the right value exactly as long as
-the prose it landed on happens to quote the current anchor.
-
-Every workflow that benches carries its own copy of the reader, and each is one
-`git log --format=%b` captured into a variable with `^Bench: *<n>$` anchored on both ends,
-which is what the rule says and what `AGENTS.md`'s own command does. Check the second half
-rather than assume it -- prose describing a regex is not the regex:
-
-```sh
-grep -n "grep -m1 -oE" AGENTS.md .github/workflows/*.yml
-```
-
-Dispatched by `docs.yml`, whose checkout takes `fetch-depth: 0` for it. The gate scans commit
-bodies, so a shallow clone hands it fewer to scan and it reports clean over the ones it never
-saw -- there is no depth at which it refuses.
-
-**The scan matches anywhere in a line, not only a line that is nothing else.** The narrow rule
-misses the shape that costs most -- a value quoted inside a sentence, or padded into a table
-column beside a `|` -- and those are the ones an unanchored reader reaches first. Write
-`<bench_value>` where a body must name the anchor at all: it says the same to a reader, it
-survives a rebase, and no regex can take it for a number.
-
-`tests/anchor.baseline` carries the bodies that predate the check, with the reason. It expires in
-both directions and currently ships EMPTY, which is the state to keep it in: rewording an
-unpushed commit costs nothing, so a new entry is a finding rather than an exemption.
-
-The offender half cannot be driven from the tree -- `tests/negative_control.sh` mutates files and
-restores them, and a commit body is neither -- so `ANCHOR_EXTRA_BODY` names a file the body scan
-reads as one more commit. It can only ADD an offender, never drop one, so it cannot be used to
-quiet the gate.
-
 ## `tests/actionpins.sh`
 
 Holds every third-party GitHub Action to a commit, a stated version, and one version.
@@ -1252,40 +1188,6 @@ the `NetworkArchitecture::propagate` that survives at some tiers and folds in at
 on `Name::` when widening, or a bare identifier will claim same-named methods from the rows
 below it -- the file is first-match-wins.
 
-## `tests/docslint.sh`
-
-Six mechanical checks over this documentation set:
-
-1. every markdown link resolves;
-2. every `src/`, `tests/`, `scripts/` or `.github/` path named in prose exists;
-3. no page quotes a bench signature -- it moves every functional commit and nobody greps
-   documentation when it does;
-4. every script in `tests/` and `scripts/` is named by some page, because a gate nobody can
-   discover is a gate nobody runs;
-5. no **tracked** file references the untracked working area; the exemption list is in the
-   script, and every entry on it is a file whose *subject* is that area;
-6. the two copies of the performance-gate selector table -- `AGENTS.md`'s and this page's --
-   name the same gates.
-
-Check 6 is the one count this gate can derive, and it exists because the header above admits
-that "a list with the wrong count" is the rot it cannot see. That rot landed here: `AGENTS.md`
-grew a sixth row for `npsthreads.sh` and this page's copy kept five, under a sentence saying
-there were five because there were five questions. Set equality on the gate column needs no
-prose parsing and no numeral kept in step, and the numeral only goes stale when the table does.
-
-Check 5 sweeps every tracked file rather than every page, and that scope is load-bearing: a
-source comment or a workflow file dangles for a reader exactly as a doc line does. Check 2
-exempts a path that `.gitignore` names, since a page legitimately describes the tool that
-writes an ignored artifact -- and that exemption is exactly why check 5 must exist separately,
-because an ignored directory lands in it and reports clean.
-
-**It settles the mechanical half of documentation rot and no more.** It cannot tell you a
-sentence has become false. Three classes it will pass: a real symbol attributed to the wrong
-file, a behaviour described as absent from a build that has it, and a list with the wrong count
-or order **except** the two that checks 6 and 7 weld -- the performance selector, against its
-copy in `AGENTS.md`, and the CI table below, against `.github/workflows/`. Every other list on
-every page is prose. That half is yours.
-
 ## `tests/shellcheck.sh`
 
 Lints the shell the gates are written in.
@@ -1349,49 +1251,6 @@ cannot do that, because it installs the pin first.
 
 **What it cannot see**: whether a gate checks the thing it claims to. `negative_control.sh` is
 what proves a gate can fail, and a script can be shellcheck-clean and assert nothing.
-
-## `tests/devcite.sh`
-
-Citation hygiene for the untracked working area. Five checks: every cited SHA is an ancestor of
-`HEAD`; every rebase-fragile citation carries its commit subject; every relative link resolves;
-no SHA-shaped placeholder survives; every fenced code block is closed.
-
-```sh
-./tests/devcite.sh          # 0 clean, 1 findings, 2 skipped (no working area)
-```
-
-**Existence is the wrong test, and that is the whole reason this gate exists.** A rebase leaves
-its pre-rebase commits in the object store, and a backup ref pins them indefinitely, so
-
-```sh
-git cat-file -e "$sha^{commit}"          # WRONG -- asks about this clone
-git merge-base --is-ancestor "$sha" HEAD # asks whether it is on the branch
-```
-
-differ for every citation written before the last rebase. Two audits of this tree ran the first
-one; the second used it to retract a finding the first had got right.
-
-So the gate classifies rather than tests, into three tiers. **On the branch** resolves for
-anyone. **Off-branch but held by a ref** resolves on the author's machine and nowhere else --
-a warning, not a failure, because a tagged sitting head is *meant* to be off-branch.
-**Reachable from no ref** is one `git gc --prune` from unresolvable.
-
-**Only the missing subject fails.** A rebase already happened and no edit recovers those
-commits; what is repairable is whether the citation still means anything without its SHA. So
-the durable form is a subject beside it -- `` `46944a92` "fix(shell): stop the search before the
-critical-error exit" `` -- which survives any rebase and is greppable. Failing on the tier
-itself would leave the gate permanently red on a state nobody can fix, and a gate that cannot
-reach zero is ignored at zero plus one.
-
-**What it cannot see**: whether the commit a SHA names is the commit the sentence means. A
-remap that rewrites a citation to a reachable but *wrong* commit passes cleanly, and this
-branch has had one do exactly that.
-
-**No lane, and the reason is not that nobody wired one.** The working area is gitignored, so a
-clone has nothing for it to read; a lane would run against an empty corpus and pass.
-`lanecheck.sh` carries that excuse and `docslint.sh` exempts the gate from check 5 above --
-both because the area is this gate's subject rather than a reference it leaks. It SKIPs rather
-than passing when the corpus is absent, which is what makes shipping it safe.
 
 ## Fuzzing
 
