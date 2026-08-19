@@ -43,6 +43,21 @@ NUMA node, to keep a bank off a remote node. A host that groups differently gets
 sharing pattern and needs no engine change, and an engine that read the topology here would be
 naming a host type on the path a worker takes.
 
+`HistoryBankIndex` is `enum class HistoryBankIndex : usize` for that reason and not for tidiness.
+Both values that reach it are `NumaIndex` -- `thread.cpp` keys the map with one and passes
+`numaAccessToken.get_numa_index()` as a worker's bank -- and `NumaIndex` is also `usize`, so
+while both were aliases the separation existed only in this paragraph. Scoping it makes each of
+those two lines write `HistoryBankIndex(...)`, which is the sentence above stated where the
+conversion happens. See [09-type-design.md](09-type-design.md) for what it caught on the first
+build.
+
+**A bank's size is a `PowerOfTwo`, not a count.** Both tables are sized as a multiple of the
+worker count and indexed by masking a key with `size - 1`, so a count that is not a power of two
+selects a row the array does not hold. That was an assert, and `-DNDEBUG` is what ships;
+`SharedHistories` takes a type whose only factory rounds, so there is nothing left to assert.
+`thread.cpp` and `search_go.cpp` used to carry a `next_power_of_two` each, one over `msb` and one
+a loop; `PowerOfTwo::ceil` is the one that remains.
+
 ```cpp
 std::atomic_bool stop, increaseDepth;
 ```
