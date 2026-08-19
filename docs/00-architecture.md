@@ -556,3 +556,346 @@ and the races are typed rather than left undefined -- see `RelaxedAtomic` in
 
 `bench` is single-threaded, so every value gate in [10-tooling-ci.md](10-tooling-ci.md) stays
 green while a data race is present. The sanitizer lanes are what cover it.
+
+## The gates
+
+The zone boundary is checked, not described. Each of the four asks the same question of a
+different artifact, and each is blind where the next one sees.
+
+| gate | what it proves here | owned by |
+|---|---|---|
+| `tests/depcheck.sh` | no engine file includes a shell or platform header, and no platform file includes a shell header | this page |
+| `tests/buildcoverage.sh` | every tracked source is named by the build, which is what makes the two symbol checks mean anything | this page |
+| `tests/linkcheck.sh` | no object built from an engine file references a symbol only a shell or platform object defines | this page |
+| `tests/enginelink.sh` | `engine/` links alone against a stub `main`, and every seam default actually runs | this page |
+| `tests/iwyu.sh` | the include set of each file is minimal, at three tiers | this page |
+| `tests/fuzzsearch.sh` | the search runs with no host registered at all | [02-engine-search.md](02-engine-search.md) |
+
+An include check misses a template edge, a symbol check misses an inline header body, and the
+link misses what nothing calls. Run all four.
+
+### `tests/iwyu.sh`
+
+The include lane, and the only supported way to run it.
+
+```sh
+./tests/iwyu.sh                  # is the tree clean?
+./tests/iwyu.sh HEAD~1           # what did this commit add?
+./tests/iwyu.sh --arch x86-64-avx2 HEAD~1
+```
+
+**Three tiers by default**, because the include set of a file holding `#if` is a property of
+the tier and not of the file. `attacks.cpp` needs `prng.h` in the generic build and not in the
+vector ones; a lane running one tier would have missed it, and a lane running `ARCH=native`
+would give a different answer on every runner.
+
+**It reports which of two modes produced its answer, and they do not prove the same thing.**
+
+| mode | when | verdict |
+|---|---|---|
+| `native` | clang finds libc++ on its own search path, as on a runner with `libc++-17-dev` | absolute: a finding is a finding |
+| `shim` | no libc++ package; the pinned copy under `resources/iwyu/llvm` is reached with `-nostdinc++ -isystem` | differential only |
+
+Shim mode exists because the reconstruction does not reproduce the lane. IWYU needs
+`-resource-dir` or clang rejects libc++'s own headers with *reference to unresolved using
+declaration*, and once `-nostdinc++` is in play `-stdlib=libc++` is an unused argument, so IWYU
+stops detecting libc++ and its default `libcxx.imp` has to be passed by hand. The rig then
+reports findings the lane does not. It reports the *same* ones at every revision, so comparing
+two revisions through one rig still answers "did this change add anything" -- and that is all
+shim mode will answer. **Asked for an absolute verdict it skips**, because a green that means
+nothing is worse than no run.
+
+Quote the mode with the result. A report that does not say which mode produced it is not a
+report.
+
+**What neither mode can see is a use behind another host's `#ifdef`.** Three includes on this
+tree are needed only under `_WIN32` or under a packager knob, and all three read as unused
+here: `stringify` in `network.cpp` under `DEFAULT_NNUE_DIRECTORY`, `<vector>` for
+`CommandLine`'s Windows `argv_storage`, and the last `usize` in `misc.cpp` inside
+`path_from_utf8`'s `_WIN32` branch. Each carries a `// IWYU pragma: keep` and the reason.
+Deciding a finding is one of these is done by reading, not by deleting what the tool named.
+
+Dispatched by `iwyu.yml`, which the runner's `libc++` package puts in `native` mode; a local
+run without that package is `shim` mode and answers a narrower question.
+
+The analysis runs in a copy of the tree, never in `src/`. `make analyze` depends on `objclean`,
+so running it where you build destroys the objects you had and leaves no binary for
+`signature.sh`.
+
+### `tests/depcheck.sh`
+
+Enforces the dependency direction `## What depends on what` declares.
+
+```sh
+./tests/depcheck.sh
+```
+
+A zone is a **directory** under `src/` (`tests/zones.sh`), so a file joins one by where it is
+put. That is why the gate also reports **files in no zone**: a file added outside all three
+matches no rule, and without that check it would be silently exempt rather than caught.
+
+**Three** edges are checked, because each is a defect rather than a choice. Two out of the
+engine: an engine file that includes a shell header, and one that includes a platform header.
+One out of the platform: a platform file that includes a shell header, which is the direction
+nothing looked at for longest. Platform depending on engine is the intended direction, and
+shell depending on both is what a process does, so neither of those is asked about.
+
+The platform rule exists because `linkcheck.sh` cannot see that class. It reasons about symbols
+an object leaves undefined, and a dependency a header carries leaves none -- an inline function,
+a class used only as a member, a `constexpr` that folds. Both `linkcheck` baselines were empty
+while nineteen engine-to-platform includes existed, and the three dependencies that mattered
+inside them were all found by reading.
+
+The include target is resolved by **basename**, through `zone_of`, and not by matching the
+include path: `zone_of` asks git which zone directory holds that stem, so it is indifferent to
+how many `../` the include carries. Files under `engine/nnue/features/` reach the same headers
+through `../../../`, and a rule anchored on `../platform/` would report two thirds of the edges
+and read as an answer.
+
+**A stem naming two zones is refused, not resolved.** `zone_of` returns `ambiguous`, and every
+caller compares against a zone name -- so an ambiguous stem matches none of them and would be
+silently exempt. That is a property of the tree rather than of one lookup, so the gate asserts it
+once for every tracked source and header, and the other three callers can then never meet one on
+a green tree.
+
+`tests/buildcoverage.sh` asserts the other half, and the two are separate because they fail
+differently. Two same-named **sources** also break the build: `OBJS = $(notdir $(SRCS:.cpp=.o))`
+flattens every object into one name space and `VPATH` is flat, so the pair competes for one `.o`
+and one of them is never compiled -- while the covered-by-the-build loop finds both named by
+`SRCS` and reports clean. Two same-named **headers** break classification and not the build.
+`negative_control.sh zone-ambiguous` plants a header pair and asserts `depcheck` red with
+`buildcoverage` green, which is what makes them two checks rather than one restated.
+
+One baseline per edge -- `tests/depcheck.baseline`, `tests/depcheck-platform.baseline` and
+`tests/depcheck-platform-shell.baseline` -- carrying the edges that exist, one per line, with
+the reason each is there. All three **expire in both directions**: an edge missing from its
+baseline fails as new, and an entry that no longer happens fails as stale. A baseline that only
+grows is not a debt register, it is a permanent excuse, and the second direction is what keeps
+it from becoming one. Two of the three ship empty and are meant to stay that way:
+
+```sh
+grep -cvE '^[[:space:]]*(#|$)' tests/depcheck.baseline \
+    tests/depcheck-platform.baseline tests/depcheck-platform-shell.baseline
+```
+
+One entry is not debt. `types.h -> tune.h` is deliberate -- the include sits after `types.h`'s
+own `#endif` so the SPSA macros reach anywhere `types.h` does, and removing it would make every
+future tuning run add an include first. It is baselined with that reason rather than exempted,
+so it stays visible.
+
+**It reads includes, not the link.** A file that names no shell header but takes a shell type
+through a template parameter, or reaches one transitively through a platform header, passes.
+`linkcheck.sh` asks the same question of the symbol table and `enginelink.sh` asks it of the
+linker; run all three, because each is blind where the next one sees.
+
+### `tests/buildcoverage.sh`
+
+Every tracked source is named by the build.
+
+```sh
+./tests/buildcoverage.sh
+```
+
+`SRCS` is an explicit list rather than a wildcard, and that is worth protecting: a wildcard
+absorbs whatever is in the directory. The cost of the explicit list is the failure this gate
+exists for -- **a file in the tree and in no build list is not compiled, not linked, and covered
+by no gate, while still looking maintained.** It then rots against the files that do move, and
+the first symptom is a compile error months later in a file nobody was editing.
+
+**It is the prerequisite for the two zone checks.** `linkcheck.sh` reasons about *objects*: a
+source the build names nowhere produces none, so it could call straight into the shell with the
+zone check green. `depcheck.sh` reads the file and stays green too, because it reasons about
+files rather than builds -- `tests/negative_control.sh buildcoverage` asserts exactly that
+split.
+
+Comments are stripped before matching, so a filename mentioned only in a comment does not count
+as a build rule.
+
+**Two limits, both in what "named" means.** It reads `src/**/*.cpp` only, so a header that no
+translation unit includes is invisible to it. And it asks whether the bare filename appears
+anywhere in the comment-stripped `src/Makefile`, not whether the object reaches the binary at a
+given `ARCH` -- a source named only by a rule that never fires still counts as covered.
+
+### `tests/linkcheck.sh`
+
+The same rule as `depcheck.sh`, asked of the linker instead of the preprocessor.
+
+```sh
+./tests/linkcheck.sh
+```
+
+`depcheck.sh` reads `#include` lines, so it sees only edges an include spells. This one compiles
+the tree with LTO off, then asks whether any object built from an engine file references a
+symbol that only a shell object defines. An edge reached through a template parameter, or
+through a forward declaration with no include at all, is invisible to the first check and
+plain to this one -- `tests/negative_control.sh linkcheck` injects exactly that case and
+asserts **both** halves: `depcheck` stays green, and `linkcheck` goes red.
+
+The zone table lives in `tests/zones.sh`, and every check that needs it sources that file
+rather than restating it -- `grep -l zones.sh tests/*.sh` is the current set. Two checks that
+disagreed about which file is engine would be worse than either alone.
+
+It asks **two** questions, with a baseline each, and **both are empty**.
+`tests/linkcheck.baseline` is the engine-to-shell edge and
+`tests/linkcheck-platform.baseline` is the engine-to-platform edge; every host service the
+engine needs -- the arena, the output sink, the parallel-for, the worker set and NUMA topology,
+the tablebase prober, the NUMA network replica, the clock -- arrives through an injection seam
+instead. Both expire in both directions like the other baselines, and both are meant to stay
+empty: the next host dependency added to `engine/` fails the gate rather than joining a list.
+
+The two are reported separately because they fail for different reasons: a shell edge is
+protocol leaking into the chess library, a platform edge is a host service the engine reached
+for directly. The symbol-level record is finer-grained than the include baseline on purpose --
+a file that already includes a header has nothing new to announce when it adds a *call*, so
+only symbols make that visible.
+
+**It describes the non-LTO build**, and turning LTO off is not what it looks like. Under `-flto`
+an object holds IR and its symbol table is not the one the real link resolves.
+
+**`EXTRACXXFLAGS=-fno-lto` cannot turn it off.** `src/Makefile` interpolates `EXTRACXXFLAGS`
+into `CXXFLAGS` and appends `-flto` *after* it, so the Makefile's flag is last and wins. Both
+zone checks build through `COMPCXX` instead, a wrapper that drops every `-flto` argument and
+passes the rest through untouched.
+
+The two checks fail differently on LTO objects, which is worth knowing before trusting either.
+`nm` reads the plugin-readable symbol table GCC writes into an LTO object, so `linkcheck.sh`
+still answers correctly -- for the wrong reason. `ld` without the plugin cannot resolve those
+objects at all: it warns and **exits 0**, so `enginelink.sh` would report a clean standalone
+engine over a link that resolved nothing. That limit is the same one `textequal.sh` carries.
+
+### `tests/enginelink.sh`
+
+The strong form of the same rule: **link `engine/` alone.**
+
+```sh
+./tests/enginelink.sh
+```
+
+It compiles the tree with LTO off, takes only the engine objects, and links them with a stub
+`main` and nothing else. Either every symbol resolves from another engine object or from the
+language runtime, or the link fails and names what is missing. It links clean, and it names
+the object count it linked in its own output.
+
+**It is stronger than `linkcheck.sh`, which is why both exist rather than one.** The symbol-set
+check intersects definitions, so it sees an edge only when some platform or shell object
+*defines* the symbol; a reference to a symbol nothing in the tree defines is invisible to it
+and is an outright link failure here.
+
+**Its own limit is the inline call.** A host function defined entirely in a header is compiled
+into the engine object, so it leaves nothing undefined and no link can fail on it. That edge is
+`depcheck.sh`'s to catch, at the `#include` -- which is why the include check is not redundant
+with the two symbol checks stacked on top of it.
+
+`libstdc++`, libc and pthread are the language runtime, not host services, so they are allowed
+to resolve. Everything else must come from `engine/` or from a seam's **default** -- and that is
+what this gate is really for. A default is a claim until something links without the host that
+would override it.
+
+**It also runs.** A link resolves a symbol without ever calling it, so the link half says every
+default is *reachable* and nothing about whether it works. `tests/enginelink_main.cpp` is the
+host: it links against `engine/` only, registers **nothing**, and drives three depth-limited
+searches through `Search::go` (`src/engine/search_go.h`), then runs the first of them twice
+more, because the context is process-static and a worker that works only once leaks state
+between searches.
+So the arena's fallback actually allocates, the parallel-for actually clears the transposition
+table inline, the clock is actually read, and the tablebase source actually answers "none
+loaded".
+
+It asserts properties rather than a node count -- a result exists, the best move is not none,
+nodes are non-zero, the root is scored, and a repeat gives the same move. An exact count would
+be a second bench signature to maintain, and this gate is about whether the defaults run, not
+about what they compute.
+
+**Then it asks for two workers, which is the one thing a default cannot fake.** Every other
+default answers the same question more slowly; the worker set cannot, because fewer workers is
+a different answer. The order is the point:
+
+1. With nothing registered, `Search::go(..., 2)` must come back **empty**. The built-in
+   parallel-for runs the job inline and an inline helper never returns, so attempting it would
+   hang this gate rather than fail it -- and a hang is not a report.
+2. Then the host registers a parallel-for backed by real threads -- a thread per dispatch, not
+   a pool; the engine ships the pool and this is not it -- and asks again.
+
+Three counters decide it, and the one that matters is that the helper **finished**. A helper
+that never returns is this gate's failure mode and would show as a hang; recording that
+`start_searching` returned is the only way it leaves evidence either way. The dispatch counter
+is what stops a search that quietly ran one worker from satisfying every assertion about the
+result -- one worker searches the position perfectly well.
+
+Run it under ThreadSanitizer by pointing `CXX` at a wrapper that adds `-fsanitize=thread`,
+which instruments the engine objects, the host and the link:
+
+```sh
+printf '#!/bin/bash\nexec g++ -fsanitize=thread "$@"\n' > /tmp/tsan-g++ && chmod +x /tmp/tsan-g++
+CXX=/tmp/tsan-g++ ./tests/enginelink.sh
+```
+
+This is the only place in the tree where the concurrent search runs under a sanitizer with no
+host pool: `sanitizers.yml` covers the shipped engine, where the pool is the host's.
+
+Two constraints on the host, both of which fail quietly if broken. It is compiled from a
+`tests/` directory beside `src/`, because it includes `../src/engine/...` exactly as it does in
+the repo -- compiled from anywhere else those relative includes resolve somewhere else. And it
+is given the net's **directory**, not a path to a net: `src/` is gitignored and accumulates nets
+from older builds, so naming one from outside picks a net that will not parse against the
+feature set the objects were compiled for. The engine knows its own default name.
+
+#### Then it runs a second host, with a seam substituted
+
+Everything above establishes that a default is reachable and works. It cannot establish that the
+engine **consults the seam at all** -- a getter nothing calls would pass every check above,
+because the default would simply never be reached and no assertion would notice.
+
+`tests/seams_main.cpp` is the second host. It links against the same objects, registers a
+*recognisable* implementation, and asserts the engine used it: a clock returning a scripted
+reading, and an arena that tags every block it hands out.
+
+The clock assertion is the sharp one, because `clock.h`'s claim -- *a host substitutes one
+function and both views move together* -- has never had a second implementation to test it
+against; `set_clock_source` has a declaration, a definition and no caller anywhere else in the
+tree. The registered clock returns `1999999`, deliberately not a multiple of 1000, and the host
+asserts `now_us()` is that reading **and** `now()` is `1999`. A seam where `now()` kept reading a
+real clock while `now_us()` was substituted would pass every assertion about `now_us()` alone,
+and would hand a replay harness a deterministic search with one wall-clock component in it. No
+other gate can see it: an inline `std::chrono` call leaves no undefined symbol for `linkcheck.sh`
+or the link half here, and `depcheck.sh` reads includes, which `clock.cpp` legitimately has.
+`tests/negative_control.sh enginelink-seam` is that property going red -- it makes `now()` read
+the steady clock directly and asserts the gate notices.
+
+The arena is a second process rather than more cases in the first host, and the ordering
+invariant is why: `arena.h` requires registration before the first allocation and forbids a swap
+while a block from the previous arena is live, so asserting it means owning `main` from its first
+line. A tagging arena is the only proposed check for that invariant and it works in **one
+direction only** -- it catches a block that did not come from it arriving at its `free`, which is
+the cross-allocator release the header warns about. The reverse, a block from it freed by
+somebody else, is invisible from inside an allocator and stays invisible.
+
+**All six seams are asserted**, and two of them only became reachable because of what the other
+four made possible:
+
+| seam | how it is reached |
+|---|---|
+| clock | the quotient assertion above, plus a counting clock across a search |
+| tablebase source | `Search::go` takes a `Tablebases::Config`. A non-zero cardinality is the only way anything in-process clears Step 6's guard -- there is no root ranking on the headless path to set one -- so a depth-10 search on a three-man endgame reaches the registered prober |
+| output sink | **owning the clock is what makes this deterministic.** `debug_dump` fires from `check_time` on `tick - lastInfoTime >= 1000`, a wall-clock branch, so on a real clock a short run reaches it by luck. A substituted clock stepping a second per reading reaches it every time |
+| worker set | not observable during the search -- `Search::go` registers its own set for a multi-worker call -- so what is asserted is the **restore**: the host's `ctx` is back afterwards |
+| arena | the tagging allocator |
+| fatal | the `--abort` probe |
+
+`OutputSink::line` remains a gap and stays one: the engine's only `emit_line` call is in
+`syzygy_extend_pv` on the `time_abort` path, which needs a real corpus and a budget small enough
+to miss.
+
+**A substituted arena must match the alignment the default guarantees**, which is 4096. Nothing
+checks it -- `ASSERT_ALIGNED` is compiled out under `NDEBUG` -- so an under-aligned block is handed
+to placement new and the fault arrives later inside the NNUE's aligned vector loads, with nothing
+pointing back at the registration. This harness learned that by crashing: a first version wrapped
+plain `malloc` with a 64-byte header, glibc returns large requests page-aligned so every
+single-worker search passed, and the two-worker rebuild took a size that came back 16-aligned and
+segfaulted in `update_accumulator_refresh_cache`. `arena.h` now states the contract.
+
+`tests/negative_control.sh enginelink` plants an engine object calling a platform symbol through
+a forward declaration and asserts the gate goes red. **The failure that row guards against is a
+green run over a link that resolved nothing**: `ld` handed an LTO object without the plugin
+prints `plugin needed to handle lto object` and still exits 0. Both zone gates refuse outright
+on that warning rather than reading the exit code.
