@@ -105,8 +105,19 @@ because a prefetch to the wrong line is not a fault and no gate can see it.
 (piece, destination) of the *previous* move, each plane itself a history over the current
 move. That is what lets the ordering say "after a knight lands on f3, this reply has worked".
 
+Four of them live in a `ContinuationHistoryBlock`, a `[2][2]` selected by whether the side to
+move was in check and whether the move was a capture. **The table is private and the only way in
+is `block(InCheck, Capture)`**, because the two subscripts used to be `bool`s and
+`[capture][inCheck]` compiles, reads a real table and returns plausible statistics -- a search
+that continues, returns a legal move, and is quietly worse. There is no assert to hit and no
+bound to exceed; the bench signature is the only thing that would have noticed. The accessor
+inlines to the same two subscripts ([09-type-design.md](09-type-design.md)).
+
 `PawnHistory` is a `DynStats` sized from `PAWN_HISTORY_BASE_SIZE`, which is asserted to be a
-power of two because the index is a mask of the pawn key rather than a modulus.
+power of two because the index is a mask of the pawn key rather than a modulus. The same
+requirement on the per-bank size is a type rather than an assert: `SharedHistories` takes a
+`PowerOfTwo` and there is no way to build one without rounding
+([04-multithreading.md](04-multithreading.md)).
 
 **The split between per-worker and shared decides the entry type.** `mainHistory`,
 `lowPlyHistory`, `captureHistory`, `continuationCorrectionHistory` and `ttMoveHistory` are

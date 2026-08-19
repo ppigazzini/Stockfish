@@ -23,7 +23,8 @@ Audience: all contributors.
 | **the transposition table** | `src/engine/tt.cpp`: clusters of three `TTEntry` in 32 bytes, shared across threads without a lock. `depth8` is the occupancy test, which is why `DEPTH_UNSEARCHED` and `DEPTH_NONE` are negative and distinct |
 | **cluster** | the 32-byte unit the table is an array of, sized to divide a cache line so one probe touches one line |
 | **the history tables** | `src/engine/history.h`. Every one is a gravity table: `operator<<` moves the stored value toward the bonus in proportion to its distance from the clamp `D`, which is a template parameter, one per table |
-| **continuation history** | a plane per (piece, destination) of the *previous* move, each plane a history over the current move. `ContinuationHistory` in `src/engine/history.h` |
+| **continuation history** | a plane per (piece, destination) of the *previous* move, each plane a history over the current move. `ContinuationHistory` in `src/engine/history.h`, held in a `[2][2]` block reached only as `block(InCheck, Capture)` -- the two subscripts are one-bit scoped enums so the quadrant cannot be transposed |
+| **history bank** | one `SharedHistories`, shared by the workers the host grouped together and named by a `HistoryBankIndex`. Sized by a `PowerOfTwo`, because both its tables are indexed by masking with `size - 1` |
 | **correction history** | tables recording how far the static evaluation of positions sharing a pawn structure, minor-piece configuration or non-pawn material count has been from what the search found. The node starts from the corrected value |
 | **the move picker** | `src/engine/movepick.cpp`, staged: each stage is generated only when the previous one runs out. Four sequences -- main, evasion, probcut, quiescence |
 | **stand-pat** | the static evaluation used as a lower bound in quiescence, before any capture is tried |
@@ -90,7 +91,7 @@ None of this is chess-programming vocabulary.
 | **history** | an ordering table (`src/engine/history.h`), or git history |
 | **cluster** | the 32-byte transposition unit, or a machine cluster running fishtest |
 | **check** | the king being attacked, or a gate assertion |
-| **magic** | the multiplier in magic bitboards, or `DualMagic`, which despite the name uses hyperbola quintessence at avx2 and above |
+| **magic** | the multiplier in magic bitboards. Also three struct names that all get there differently: `BitboardMagic` (the multiplier), `HyperbolaMagic` and `DualMagic`, the last two using hyperbola quintessence despite the name. Each branch aliases its own to `Magic` |
 
 ## 4. The testing field's vocabulary
 
