@@ -280,3 +280,22 @@ same node limit from the same position must produce the same node count, twice, 
 **A multi-threaded search is not deterministic and is not meant to be.** The divergence is
 the mechanism -- threads that searched identically would contribute nothing to each other.
 The bench signature is therefore a single-threaded number.
+
+## The gates
+
+`bench` is single-threaded, so every gate that reads a node count stays green while a data race
+is live and while contention is getting worse. These are the ones that do not.
+
+| gate | what it proves here | owned by |
+|---|---|---|
+| `tests/npsthreads.sh` | the two revisions scale the same across thread counts -- the only axis that measures contention on the shared last level, the transposition table and the counters | [11-performance.md](11-performance.md) |
+| `tests/enginelink.sh` | a search asked for two workers actually dispatches two, and the host's worker set is restored afterwards; the only place the concurrent search runs under a sanitizer with no host pool | [00-architecture.md](00-architecture.md) |
+| `tests/instrumented.py` | the shipped engine under ThreadSanitizer, with the pool the host owns | [07-shell.md](07-shell.md) |
+
+A change to anything more than one thread reads or writes needs the sanitizer lanes as well as
+the value gates:
+
+```sh
+make -j build ARCH=x86-64-avx2 sanitize=thread \
+  && python3 ../tests/instrumented.py --sanitizer-thread ./stockfish
+```

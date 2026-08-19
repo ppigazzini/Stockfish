@@ -362,6 +362,22 @@ if selected docslint-selector; then
     restore
 fi
 
+row docslint-gates static
+if selected docslint-gates; then
+    echo "negative-control: docslint    -- a gate routed to a page that lost its section"
+    # Take the SECTION away rather than one row of it. That is the direction the
+    # convention decays in: a page is rewritten, the section goes with the
+    # rewrite, and every other page still points at it -- so the check has to
+    # notice from the far end as well as from the page itself.
+    mutate docs/01-engine-board.md '## The gates' '## Gates and things'
+    if ./tests/docslint.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a page with no gates section passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 row fingerprint
 if selected fingerprint; then
     if ! command -v valgrind >/dev/null; then

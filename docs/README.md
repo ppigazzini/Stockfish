@@ -45,10 +45,12 @@ Building, usage, UCI commands and user-facing terminology are the
 ./tests/docslint.sh
 ```
 
-runs seven checks -- `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
+runs eight checks -- `grep -n 'head_check "' tests/docslint.sh` is the list in order: a dead
 link, a named path that does not exist, a pinned bench signature, a gate no page names, a
 tracked file pointing into the untracked working area, the two copies of the performance-gate
-selector table naming different gates, and the CI table naming gates the workflows do not run.
+selector table naming different gates, the CI table naming gates the workflows do not run, and a
+page with no `## The gates` section or a section routing a gate to a page that does not carry
+it.
 **It cannot tell you a sentence has become false**, which is the half that decides whether this set is worth reading --
 [13-writing.md](13-writing.md) is how that half is bought.
 
