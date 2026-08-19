@@ -609,3 +609,16 @@ inside a wider symbol. Name both: `net parse` matches `read_leb_128` and the
 the `NetworkArchitecture::propagate` that survives at some tiers and folds in at others. Anchor
 on `Name::` when widening, or a bare identifier will claim same-named methods from the rows
 below it -- the file is first-match-wins.
+
+## The gates
+
+| gate | what it proves here | owned by |
+|---|---|---|
+| `tests/perfbudget.sh` | retired instructions, startup subtracted, base against head | this page |
+| `tests/textequal.sh` | per-symbol machine-code equivalence, LTO off | this page |
+| `tests/npsab.sh` | interleaved paired wall clock, with its own spread | this page |
+| `tests/npsthreads.sh` | how the two revisions SCALE across thread counts | this page |
+| `tests/perfcounters.sh` | what the hardware did: cycles, IPC, cache and branch misses, every tier | this page |
+| `tests/perfdecomp.sh` | where the cost is, per component, deterministically and in a model | this page |
+| `tests/fingerprint.sh` | the engine still reaches its answer by calling what it called, as often | this page |
+| `tests/signature.sh` | both sides searched the same tree, without which every figure above is void | [10-tooling-ci.md](10-tooling-ci.md) |

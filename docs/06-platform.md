@@ -344,3 +344,19 @@ runs by hand. `tests/instrumented.py` drives multi-threaded searches under the s
 lanes, which is the only automated coverage the threading path gets.
 
 A change here is therefore a change whose correctness the gates largely do not establish.
+
+## The gates
+
+| gate | what it proves here | owned by |
+|---|---|---|
+| `scripts/check_universal.sh` | the x86-64 runtime-dispatch binary selects the right architecture at run time, not merely that it built | this page |
+| `scripts/check_universal_arm.sh` | the same for aarch64 | this page |
+| `scripts/check_universal_macos.sh` | the same for the macOS universal binary | this page |
+| `scripts/check_universal_riscv.sh` | the same for riscv64 | this page |
+| `scripts/get_native_properties.sh` | the host ISA is detected and named as an enumerated `ARCH` | this page |
+| `scripts/net.sh` | the network the build expects is downloaded and verified | this page |
+| `tests/fuzz.py --harness shm` | a process that dies because a *peer* died is the defect; one killed on purpose is the stimulus | [10-tooling-ci.md](10-tooling-ci.md) |
+
+`universal_compilation.yml` is the only lane that compiles `src/universal/` and the only one
+running `scripts/check_universal.sh`, so dropping it would leave the dispatch layer with no
+coverage of either kind.
