@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import traceback
+import urllib.error
 import urllib.request
 from contextlib import redirect_stdout
 
@@ -103,8 +104,36 @@ class Syzygy:
                         "Accept": "application/vnd.github+json",
                     },
                 )
-                with urllib.request.urlopen(request) as response, open(tarball_path, "wb") as f:
-                    shutil.copyfileobj(response, f)
+                # Retry the transient statuses. GitHub answers 429 under a rate
+                # limit and 502/503/504 when its API is briefly unwell, and one
+                # of those took out two CI lanes that had nothing to do with
+                # the network: the whole job fails on a gateway timeout that a
+                # second attempt would have survived. A 4xx that is not 429 is
+                # a permanent answer and is raised on the first try, because
+                # retrying a 404 only delays the report.
+                transient = {429, 500, 502, 503, 504}
+                for attempt in range(5):
+                    try:
+                        with (
+                            urllib.request.urlopen(request) as response,
+                            open(tarball_path, "wb") as f,
+                        ):
+                            shutil.copyfileobj(response, f)
+                        break
+                    except urllib.error.HTTPError as e:
+                        if e.code not in transient or attempt == 4:
+                            raise
+                        reason = f"HTTP {e.code}"
+                    except urllib.error.URLError as e:
+                        if attempt == 4:
+                            raise
+                        reason = f"{e.reason}"
+                    delay = 2**attempt
+                    print(
+                        f"syzygy: {reason} from {url}, retrying in {delay}s ({attempt + 1}/4)",
+                        file=sys.stderr,
+                    )
+                    time.sleep(delay)
 
                 # Check the magic before untarring. A truncated or substituted body
                 # is a download problem, and saying so beats a decompression error
