@@ -33,8 +33,8 @@ cd src && ../tests/signature.sh <reference>
 **Read the reference from the commit record, never from memory or from a page here** -- it
 moves with every functional commit, which is why `docslint` refuses a page that quotes it.
 
-`tests.yml`, `arm_compilation.yml`, `wasm_compilation.yml` and `universal_compilation.yml`
-each invoke it after every architecture they build:
+`tests.yml`, `arm_compilation.yml`, `wasm_compilation.yml`, `universal_compilation.yml` and
+`platformbattery.yml` each invoke it after every architecture they build:
 
 ```sh
 grep -c signature.sh .github/workflows/*.yml
@@ -610,14 +610,18 @@ it finds a body sentence *carrying* `Bench: <n>` in backticks, and this branch h
 commit that introduced this very gate. Such a reader returns the right value exactly as long as
 the prose it landed on happens to quote the current anchor.
 
-The reader in `tests.yml`, `arm_compilation.yml`, `wasm_compilation.yml` and
-`universal_compilation.yml` is one `git log --format=%b` with `^Bench: <n>$` anchored, which is
-what the rule says and what `AGENTS.md`'s own command does. Check the second half rather than
-assume it -- prose describing a regex is not the regex:
+Every workflow that benches carries its own copy of the reader, and each is one
+`git log --format=%b` captured into a variable with `^Bench: *<n>$` anchored on both ends,
+which is what the rule says and what `AGENTS.md`'s own command does. Check the second half
+rather than assume it -- prose describing a regex is not the regex:
 
 ```sh
 grep -n "grep -m1 -oE" AGENTS.md .github/workflows/*.yml
 ```
+
+Dispatched by `docs.yml`, whose checkout takes `fetch-depth: 0` for it. The gate scans commit
+bodies, so a shallow clone hands it fewer to scan and it reports clean over the ones it never
+saw -- there is no depth at which it refuses.
 
 **The scan matches anywhere in a line, not only a line that is nothing else.** The narrow rule
 misses the shape that costs most -- a value quoted inside a sentence, or padded into a table
