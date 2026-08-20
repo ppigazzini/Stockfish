@@ -286,8 +286,13 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
         // Each worker points at its OWN rootState, as ThreadPool::start_thinking
         // does. They search the same position from separate threads and a shared
         // StateInfo would be written by all of them.
-        w.rootPos.set(fenStr, chess960, &w.rootState);
-        w.rootState = ctx->states.back();
+        //
+        // A copy, which is what the comment above the validation already said
+        // this was. It re-parsed `fenStr` per worker instead, and then
+        // overwrote every field the parse had computed with the state `root`
+        // was validated against -- the same round trip start_thinking used to
+        // do, on the one entry point that had already been handed the position.
+        w.rootPos.copy_from(root, &w.rootState);
     }
 
     Worker& main = *ctx->workers[0];
