@@ -29,8 +29,35 @@
 
 namespace Stockfish {
 // Define a custom comparator, because the UCI options should be case-insensitive
+//
+// ASCII by hand, and not std::tolower. UCI option names are ASCII by
+// specification, while tolower() is a locale-dependent libc call that no amount
+// of optimisation can inline: it was 10,010 retired instructions per `go` on
+// this tree, because Engine::search_options looks up thirteen names on the move
+// latency path and every character of every comparison went through it.
+//
+// It is also the safer of the two. Nothing here ever calls setlocale, so the
+// program runs in the "C" locale and tolower() already folds exactly A-Z -- but
+// that is an accident of what has not been called yet. In a Turkish locale
+// tolower('I') is not 'i', and "UCI_Elo" would stop matching itself.
+//
+// Defined here rather than in the .cpp so std::map's search inlines it.
 struct CaseInsensitiveLess {
-    bool operator()(const std::string&, const std::string&) const;
+
+    static constexpr unsigned char fold(char c) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        return u >= 'A' && u <= 'Z' ? static_cast<unsigned char>(u + 'a' - 'A') : u;
+    }
+
+    // std::lexicographical_compare's own ordering: the first differing
+    // character decides, and a prefix is less than what it is a prefix of.
+    bool operator()(const std::string& s1, const std::string& s2) const {
+        const usize n = s1.size() < s2.size() ? s1.size() : s2.size();
+        for (usize i = 0; i < n; ++i)
+            if (fold(s1[i]) != fold(s2[i]))
+                return fold(s1[i]) < fold(s2[i]);
+        return s1.size() < s2.size();
+    }
 };
 
 class OptionsMap;
