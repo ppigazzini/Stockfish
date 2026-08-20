@@ -302,6 +302,20 @@ static_assert(repetitionTable.maxDistance <= 255,
               "repetition table displacement must fit in one byte");
 static_assert(repetition_table_is_valid(), "repetition table lookup invariants must hold");
 
+// Installs `other`'s board and state history into this object.
+//
+// `st` is repointed last and unconditionally: the memberwise copy brings
+// `other.st` with it, a pointer into `other`'s state array, and leaving that in
+// place is the aliasing the deleted public copy exists to prevent.
+void Position::copy_from(const Position& other) {
+
+    *this = other;
+    st    = &stateInfos[stateIdx];
+
+    assert(pos_is_ok());
+}
+
+
 // Initializes the position object with the given FEN string.
 // The FEN string is strictly validated; if it is invalid or inconsistent,
 // a PositionSetError describing the problem is returned, otherwise std::nullopt.

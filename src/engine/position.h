@@ -84,9 +84,14 @@ std::string move_to_uci(Move m, bool chess960 = false);
 // traversing the search tree.
 class Position {
    public:
-    Position()                           = default;
-    Position(const Position&)            = delete;
-    Position& operator=(const Position&) = delete;
+    Position() = default;
+
+    // The one copy the engine wants, and the only one it can have: a worker's
+    // root. A plain copy would leave the copy's `st` pointing into the source's
+    // state array, so either one's do_move would corrupt the other's history;
+    // copy_from repoints it, which is what makes that unforgettable. The general
+    // copy stays out of reach below for the same reason.
+    void copy_from(const Position& other);
 
     // FEN string input/output
     std::optional<PositionSetError> set(const std::string& fenStr, bool isChess960);
@@ -183,6 +188,13 @@ class Position {
     void swap_piece(Square s, Piece pc, DirtyThreats* const dts = nullptr);
 
    private:
+    // Memberwise, and reachable only through copy_from, which repoints `st`
+    // immediately afterwards. Defaulted rather than spelled out field by field:
+    // a hand-written list is a copy that silently stops being complete the day
+    // a member is added.
+    Position(const Position&)            = default;
+    Position& operator=(const Position&) = default;
+
     // Initialization helpers (used while setting up a position)
     void set_castling_right(Color c, Square rfrom);
     Key  compute_material_key() const;

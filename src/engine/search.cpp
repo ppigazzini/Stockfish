@@ -278,18 +278,20 @@ Search::Worker* Search::best_worker(const std::vector<Search::Worker*>& workers)
 }
 
 // The field-for-field root install the pool used to perform through friendship.
-// Kept in the same order: rootPos.set() rebuilds the root from the fen, and
-// copy_state_infos() then brings in the state history a fen cannot carry.
+//
+// The root position arrives by copy, board and state history together. A FEN
+// round trip would parse a board the source already holds and recompute a
+// current state -- keys, checkers, blockers, pinners, check squares, material
+// -- that copying the state history then overwrites whole.
 void Search::Worker::set_root(const RootSetup& setup) {
-    limits           = *setup.limits;
-    nodes            = 0;
-    tbHits           = 0;
-    bestMoveChanges  = 0;
-    nmpMinPly        = 0;
-    rootDepth        = 0;
-    rootMoves        = *setup.rootMoves;
-    rootPos.set(setup.pos->fen(), setup.pos->is_chess960());
-    rootPos.copy_state_infos(*setup.pos);
+    limits          = *setup.limits;
+    nodes           = 0;
+    tbHits          = 0;
+    bestMoveChanges = 0;
+    nmpMinPly       = 0;
+    rootDepth       = 0;
+    rootMoves       = *setup.rootMoves;
+    rootPos.copy_from(*setup.pos);
     tbConfig = *setup.tbConfig;
 }
 
