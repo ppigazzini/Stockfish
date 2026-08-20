@@ -61,6 +61,7 @@ EXCUSED=(
 # cost no coverage -- that is B10's claim, and this is the run that tested it.
 EXCUSED_WORKFLOWS=(
   "stockfish.yml	upstream's orchestrator, master-only by upstream's choice. refish.yml is this branch's equivalent and calls the same reusable lanes; naming refish here is neither upstreamable nor removable once merged"
+  "official_release.yml	upstream's tagged-release pipeline, and a release is a human decision: it takes a tag and a title as dispatch inputs, so no trigger can supply them. It calls the same reusable build lanes every other umbrella does and dispatches no gate of its own, so nothing is out of a lane because of it"
   "clang-format.yml	pull_request_target on master, and it comments on a pull request. A fork-private branch opens none, so there is nothing for it to run on. Formatting is held by the pre-commit hook, and CI's own clang-format step is continue-on-error even upstream, so no blocking gate is lost"
 )
 
@@ -246,6 +247,12 @@ for w in .github/workflows/*.yml; do
         if why=$(excuse_for_workflow "$b"); then
             note "STALE EXCUSE: $b is reachable but excused -- remove the excuse"
         fi
+    elif [ "$manual" -gt 0 ] && why=$(excuse_for_workflow "$b"); then
+        # Manual-only is a finding for the same reason UNREACHABLE is -- nothing it
+        # names is in a lane -- so it answers to the same excuse, and to the same
+        # rule that an excuse naming nothing is itself a finding.
+        echo "  excused      $w (manual dispatch only) -- $why"
+        UNREACHABLE="$UNREACHABLE $b"
     elif [ "$manual" -gt 0 ]; then
         echo "  MANUAL ONLY  $w"
         note "$w runs only on a manual dispatch, so nothing it names is in a lane"
