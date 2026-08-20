@@ -350,38 +350,33 @@ void ThreadPool::start_thinking(const SearchOptions&  options,
     if (states.get())
         setupStates = std::move(states);  // Ownership transfer, states is now empty
 
-    // We use Position::set() to set root position across threads. But there are
-    // some StateInfo fields (previous, pliesFromNull, capturedPiece) that cannot
-    // be deduced from a fen string, so set() clears them and they are set from
-    // setupStates->back() later. The rootState is per thread, earlier states are
-    // shared since they are read-only.
-    // One pointer to a bundle, not five captured references. A std::function
-    // holds its callable inline only while the callable fits libstdc++'s
-    // 16-byte buffer; a `[&]` closure over limits, rootMoves, pos, this and
-    // tbConfig is 48 bytes, so every worker's setup job was an operator new and
-    // a matching free -- T of each per `go`, on the move latency path, before
-    // any thread starts searching. Two pointers fit the buffer.
-    //
-    // The bundle lives on this frame and every job that reads it has finished
-    // by the wait below, which is the same lifetime the references had.
-    // Search::RootSetup now, declared in engine/search.h beside the Worker it
-    // is for. The bundle-of-pointers shape and the 16-byte reasoning above are
-    // unchanged and are recorded there.
+    // The rootState a worker installs is its own; the earlier states are shared
+    // because they are read-only. One pointer to a bundle rather than five
+    // arguments, declared as Search::RootSetup in engine/search.h beside the
+    // Worker it is for; it lives on this frame and is read out before the last
+    // line of this function.
     const Search::RootSetup setup{&limits, &rootMoves, &pos, &setupStates->back(), &tbConfig};
 
-    for (auto&& th : threads)
-    {
-        // Capture the range-for's reference BY VALUE. `[&]` captured `th`
-        // itself, a reference whose lifetime ends with the iteration while the
-        // job it was handed to may still be running: formally undefined, and
-        // both compilers happen to capture the referent.
-        Thread* thread = th.get();
-        // Still exactly two captures, so the job still fits the 16-byte buffer.
-        thread->run_custom_job([&setup, thread]() { thread->worker->set_root(setup); });
-    }
-
+    // Every worker's root is installed from THIS thread. Handing each one a job
+    // instead cost two voluntary context switches per worker per `go` -- the
+    // wake that ran it and the park that ended it -- serialised on the move
+    // latency path before the first node, and bought nothing: set_root only
+    // writes storage the worker already owns.
+    //
+    // The wait is the precondition run_custom_job used to supply, kept for it
+    // and for nothing else: it proves every worker is parked in idle_loop, so
+    // no thread is reading what is written below. Already satisfied and
+    // uncontended, it is a mutex acquire rather than a sleep.
+    //
+    // What publishes these writes is the start_searching() at the end. Its
+    // run_custom_job stores under the main thread's mutex, idle_loop loads
+    // under the same one, and the main worker wakes the rest through their own
+    // -- so every store here happens-before every read of it, on all T.
     for (auto&& th : threads)
         th->wait_for_search_finished();
+
+    for (auto&& th : threads)
+        th->worker->set_root(setup);
 
     main_thread()->start_searching();
 }
