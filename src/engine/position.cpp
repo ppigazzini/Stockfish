@@ -155,6 +155,24 @@ void Position::init() {
 }
 
 
+// Installs `other`'s board into this object, with `si` as the state it owns.
+// `si` is filled from `other`'s current state, so the fields a FEN cannot carry
+// -- `previous`, `pliesFromNull`, `capturedPiece` -- arrive with the rest
+// instead of having to be repaired afterwards.
+//
+// `st` is assigned last and unconditionally: the memberwise copy above brings
+// `other.st` with it, and leaving that in place is the aliasing the deleted
+// public copy exists to prevent.
+void Position::copy_from(const Position& other, StateInfo* si) {
+
+    *si   = *other.st;
+    *this = other;
+    st    = si;
+
+    assert(pos_is_ok());
+}
+
+
 // Initializes the position object with the given FEN string.
 // The FEN string is strictly validated; if it is invalid or inconsistent,
 // a PositionSetError describing the problem is returned, otherwise std::nullopt.

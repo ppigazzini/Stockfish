@@ -272,20 +272,28 @@ Search::Worker* Search::best_worker(const std::vector<Search::Worker*>& workers)
 }
 
 // The field-for-field root install the pool used to perform through friendship.
-// Kept identical, including the order: rootPos.set() is given &rootState before
-// rootState is assigned, because set() clears the StateInfo fields a fen cannot
-// carry and the assignment below then fills them.
+//
+// The root position arrives by copy. It used to arrive as a FEN: `set()` was
+// handed &rootState, and `rootState = *setup.state` then repaired the three
+// StateInfo fields a fen cannot carry. That assignment overwrote the WHOLE
+// StateInfo, so everything `set()` recomputed into it -- keys, checkers,
+// blockers, pinners, check squares, material -- was dead the line after it was
+// produced, and what survived the round trip was a board the source already
+// held. `copy_from` takes both halves directly and the assert states the
+// premise that licensed dropping the second: the position's own state IS the
+// state the pool passes.
 void Search::Worker::set_root(const RootSetup& setup) {
-    limits           = *setup.limits;
-    nodes            = 0;
-    tbHits           = 0;
-    bestMoveChanges  = 0;
-    nmpMinPly        = 0;
-    rootDepth        = 0;
-    rootMoves        = *setup.rootMoves;
-    rootPos.set(setup.pos->fen(), setup.pos->is_chess960(), &rootState);
-    rootState = *setup.state;
-    tbConfig  = *setup.tbConfig;
+    assert(setup.pos->state() == setup.state);
+
+    limits          = *setup.limits;
+    nodes           = 0;
+    tbHits          = 0;
+    bestMoveChanges = 0;
+    nmpMinPly       = 0;
+    rootDepth       = 0;
+    rootMoves       = *setup.rootMoves;
+    rootPos.copy_from(*setup.pos, &rootState);
+    tbConfig = *setup.tbConfig;
 }
 
 void Search::Worker::ensure_network_replicated(const Eval::NNUE::Network& net) {
