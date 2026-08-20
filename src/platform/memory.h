@@ -20,7 +20,6 @@
 #define MEMORY_H_INCLUDED
 
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <type_traits>
 #include <utility>

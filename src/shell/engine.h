@@ -40,7 +40,6 @@
 #include "../platform/syzygy/tbprobe.h"  // for Stockfish::Depth
 #include "../platform/thread.h"
 #include "../engine/tt.h"
-#include "../engine/types.h"  // for Stockfish::Is64Bit, used by MaxHashMB
 #include "ucioption.h"
 #include "../engine/basetypes.h"
 #include "../platform/numa.h"
