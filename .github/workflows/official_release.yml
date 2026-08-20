@@ -11,14 +11,20 @@ on:
         required: true
         type: string
 
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   Matrix:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       universal_matrix: ${{ steps.set-universal-matrix.outputs.universal_matrix }}
       arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: set-universal-matrix
@@ -34,12 +40,13 @@ jobs:
     if: github.repository == 'official-stockfish/Stockfish'
     runs-on: ubuntu-latest
     needs: [Matrix]
+    timeout-minutes: 20
     outputs:
       release_tag: ${{ steps.release_metadata.outputs.release_tag }}
     permissions:
       contents: write # For creating the official release tag and draft
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
