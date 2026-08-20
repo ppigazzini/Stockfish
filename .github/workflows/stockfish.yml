@@ -219,6 +219,7 @@ jobs:
     if: github.repository == 'official-stockfish/Stockfish' && needs.Prerelease.outputs.release_tag != ''
     needs: [Prerelease, DevBinaries, DevARMBinaries]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write # For publishing the draft prerelease
     steps:
