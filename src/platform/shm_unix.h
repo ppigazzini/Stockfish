@@ -49,8 +49,10 @@
 
 #define SF_MAX_SEM_NAME_LEN NAME_MAX
 
-// align_ptr_up, for the 2 MiB-aligned shared mapping below. The drawer this
-// commit cuts out is misc.h; memory.h is this zone's own and is a real use.
+// For align_ptr_up. map_shared below lands the mapping on a 2 MiB boundary
+// because a file-backed huge page needs the virtual address and the file offset
+// aligned alike: the MADV_HUGEPAGE that open() asks for is accepted on an
+// unaligned mapping and does nothing.
 #include "memory.h"
 #include "thread_native.h"
 #include "../engine/hashing.h"

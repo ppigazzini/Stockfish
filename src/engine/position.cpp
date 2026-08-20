@@ -1220,17 +1220,14 @@ void Position::update_piece_threats(Piece               pc,
                                     [[maybe_unused]] Bitboard noRaysContaining) const {
     constexpr bool putPiece = PutPiece;
 
-    const Bitboard  occupied      = pieces();
-    const Bitboard  rookQueens    = pieces(ROOK, QUEEN);
-    const Bitboard  bishopQueens  = pieces(BISHOP, QUEEN);
-    const auto      attacks       = both_attacks_bb(s, occupied);
-    const Bitboard  bAttacks      = attacks.first;
-    const Bitboard  rAttacks      = attacks.second;
-    const Bitboard  sliderAttacks = bAttacks | rAttacks;
-    const Bitboard  occupiedNoK   = occupied ^ pieces(KING);
-    const PieceType pt            = type_of(pc);
-
-    Bitboard sliders = (rookQueens & rAttacks) | (bishopQueens & bAttacks);
+    const Bitboard occupied         = pieces();
+    const Bitboard rookQueens       = pieces(ROOK, QUEEN);
+    const Bitboard bishopQueens     = pieces(BISHOP, QUEEN);
+    const auto [bAttacks, rAttacks] = both_attacks_bb(s, occupied);
+    const Bitboard  sliderAttacks   = bAttacks | rAttacks;
+    const Bitboard  occupiedNoK     = occupied ^ pieces(KING);
+    const PieceType pt              = type_of(pc);
+    const Bitboard  sliders         = (rookQueens & rAttacks) | (bishopQueens & bAttacks);
 
     auto process_sliders = [&](bool addDirectAttacks) {
         Bitboard b = sliders;
