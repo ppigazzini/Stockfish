@@ -17,7 +17,6 @@
 */
 
 #include "benchmark.h"
-#include "engine.h"
 
 #include "../platform/numa.h"
 
