@@ -278,10 +278,14 @@ std::optional<GoResult> HeadlessRunner::run(Context&                   ctxRef,
         w.rootMoves        = rootMoves;
         w.tbConfig         = tbConfig;
 
-        // Each worker sets its OWN root, as ThreadPool::start_thinking does. They
-        // search the same position from separate threads, and the position
+        // Each worker gets its OWN root, as ThreadPool::start_thinking gives it.
+        // They search the same position from separate threads, and the position
         // carries the state history each of them writes.
-        w.rootPos.set(fenStr, chess960);
+        //
+        // A copy, which is what the comment above the validation already said
+        // this was: the root validated once is installed into each worker rather
+        // than re-parsed from `fenStr` per worker.
+        w.rootPos.copy_from(*root);
     }
 
     Worker& main = *ctx->workers[0];
