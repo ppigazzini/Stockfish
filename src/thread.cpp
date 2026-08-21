@@ -333,21 +333,23 @@ void ThreadPool::start_thinking(const OptionsMap&  options,
     // read-only. copy_from carries the StateInfo fields a fen cannot deduce
     // (previous, pliesFromNull, capturedPiece), so nothing needs repairing after
     // it; pos.state() is &setupStates->back() here.
-    for (auto&& th : threads)
-    {
-        th->run_custom_job([&]() {
-            th->worker->limits = limits;
-            th->worker->nodes = th->worker->tbHits = th->worker->bestMoveChanges = 0;
-            th->worker->nmpMinPly                                                = 0;
-            th->worker->rootDepth                                                = 0;
-            th->worker->rootMoves                                                = rootMoves;
-            th->worker->rootPos.copy_from(pos, &th->worker->rootState);
-            th->worker->tbConfig = tbConfig;
-        });
-    }
-
+    // Install every root from this thread: the block below writes only storage
+    // the worker already owns, and dispatching it cost two context switches per
+    // worker before the first node. The wait is the one run_custom_job did, kept
+    // to prove the workers are parked; start_searching() below publishes.
     for (auto&& th : threads)
         th->wait_for_search_finished();
+
+    for (auto&& th : threads)
+    {
+        th->worker->limits = limits;
+        th->worker->nodes = th->worker->tbHits = th->worker->bestMoveChanges = 0;
+        th->worker->nmpMinPly                                                = 0;
+        th->worker->rootDepth                                                = 0;
+        th->worker->rootMoves                                                = rootMoves;
+        th->worker->rootPos.copy_from(pos, &th->worker->rootState);
+        th->worker->tbConfig = tbConfig;
+    }
 
     main_thread()->start_searching();
 }
