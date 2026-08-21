@@ -163,6 +163,16 @@ void Position::init() {
 }
 
 
+// Copies `other` onto this position, with `si` as the state it owns. `st` is
+// assigned last: the memberwise copy brings `other.st` with it.
+void Position::copy_from(const Position& other, StateInfo* si) {
+
+    *si   = *other.st;
+    *this = other;
+    st    = si;
+}
+
+
 // Initializes the position object with the given FEN string.
 // The FEN string is strictly validated; if it is invalid or inconsistent,
 // a PositionSetError describing the problem is returned, otherwise std::nullopt.

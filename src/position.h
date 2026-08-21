@@ -87,9 +87,11 @@ class Position {
    public:
     static void init();
 
-    Position()                           = default;
-    Position(const Position&)            = delete;
-    Position& operator=(const Position&) = delete;
+    Position() = default;
+
+    // A worker's root is the one copy the engine wants. Taking the StateInfo to
+    // own is what keeps the copy from sharing the source's `st`.
+    void copy_from(const Position& other, StateInfo* si);
 
     // FEN string input/output
     std::optional<PositionSetError> set(const std::string& fenStr, bool isChess960, StateInfo* si);
@@ -190,6 +192,10 @@ class Position {
     void swap_piece(Square s, Piece pc, DirtyThreats* const dts = nullptr);
 
    private:
+    // Private, and reachable only through copy_from, which repoints `st`.
+    Position(const Position&)            = default;
+    Position& operator=(const Position&) = default;
+
     // Initialization helpers (used while setting up a position)
     void set_castling_right(Color c, Square rfrom);
     Key  compute_material_key() const;

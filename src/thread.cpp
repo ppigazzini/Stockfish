@@ -329,11 +329,10 @@ void ThreadPool::start_thinking(const OptionsMap&  options,
     if (states.get())
         setupStates = std::move(states);  // Ownership transfer, states is now empty
 
-    // We use Position::set() to set root position across threads. But there are
-    // some StateInfo fields (previous, pliesFromNull, capturedPiece) that cannot
-    // be deduced from a fen string, so set() clears them and they are set from
-    // setupStates->back() later. The rootState is per thread, earlier states are
-    // shared since they are read-only.
+    // The rootState is per thread, earlier states are shared since they are
+    // read-only. copy_from carries the StateInfo fields a fen cannot deduce
+    // (previous, pliesFromNull, capturedPiece), so nothing needs repairing after
+    // it; pos.state() is &setupStates->back() here.
     for (auto&& th : threads)
     {
         th->run_custom_job([&]() {
@@ -342,9 +341,8 @@ void ThreadPool::start_thinking(const OptionsMap&  options,
             th->worker->nmpMinPly                                                = 0;
             th->worker->rootDepth                                                = 0;
             th->worker->rootMoves                                                = rootMoves;
-            th->worker->rootPos.set(pos.fen(), pos.is_chess960(), &th->worker->rootState);
-            th->worker->rootState = setupStates->back();
-            th->worker->tbConfig  = tbConfig;
+            th->worker->rootPos.copy_from(pos, &th->worker->rootState);
+            th->worker->tbConfig = tbConfig;
         });
     }
 
