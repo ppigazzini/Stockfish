@@ -30,7 +30,21 @@
 namespace Stockfish {
 // Define a custom comparator, because the UCI options should be case-insensitive
 struct CaseInsensitiveLess {
-    bool operator()(const std::string&, const std::string&) const;
+    // Folded in ASCII rather than with std::tolower: option names are ASCII by
+    // specification, and tolower() is locale-dependent, so it is an out-of-line
+    // libc call per character per comparison. Defined here so std::map inlines it.
+    static constexpr unsigned char fold(char c) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        return u >= 'A' && u <= 'Z' ? static_cast<unsigned char>(u + 'a' - 'A') : u;
+    }
+
+    bool operator()(const std::string& s1, const std::string& s2) const {
+        const size_t n = s1.size() < s2.size() ? s1.size() : s2.size();
+        for (size_t i = 0; i < n; ++i)
+            if (fold(s1[i]) != fold(s2[i]))
+                return fold(s1[i]) < fold(s2[i]);
+        return s1.size() < s2.size();
+    }
 };
 
 class OptionsMap;

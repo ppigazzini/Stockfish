@@ -31,13 +31,6 @@
 
 namespace Stockfish {
 
-bool CaseInsensitiveLess::operator()(const std::string& s1, const std::string& s2) const {
-
-    return std::lexicographical_compare(
-      s1.begin(), s1.end(), s2.begin(), s2.end(),
-      [](unsigned char c1, unsigned char c2) { return std::tolower(c1) < std::tolower(c2); });
-}
-
 void OptionsMap::add_info_listener(InfoListener&& message_func) { info = std::move(message_func); }
 
 void OptionsMap::setoption(std::istringstream& is) {
