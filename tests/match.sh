@@ -51,6 +51,11 @@ SYZYGY=
 # side a real edge in every opening and is what a strength measurement uses;
 # pass one with --book. The two are not comparable to each other.
 BOOK=${BOOK:-}
+# What the two sides are CALLED in the report. This gate takes arbitrary
+# revisions, so fixed project names label whatever it was pointed at: a match
+# between two other branches came out recorded as refish against upstream.
+NAME_BASE=${NAME_BASE:-upstream}
+NAME_HEAD=${NAME_HEAD:-refish}
 
 usage() {
     cat <<'EOF'
@@ -71,6 +76,8 @@ usage: tests/match.sh [<base-rev>] [<head-rev>] [options]
   --syzygy DIR     give both engines this SyzygyPath. The bench list never
                    probes, so the tablebase reader is the one hot path no other
                    gate reaches under a clock
+  --name-base NAME what to call the base side in the report (default upstream)
+  --name-head NAME what to call the head side in the report (default refish)
 
 A match cannot measure strength at the sizes this runs. It measures whether the
 engine plays. Compare the Elo against the error bar fastchess prints beside it.
@@ -89,6 +96,8 @@ while [ $# -gt 0 ]; do
         --jobs)        JOBS=$2; shift 2 ;;
         --book)        BOOK=$2; shift 2 ;;
         --syzygy)  SYZYGY=$2; shift 2 ;;
+        --name-base)   NAME_BASE=$2; shift 2 ;;
+        --name-head)   NAME_HEAD=$2; shift 2 ;;
         -h|--help)     usage; exit 0 ;;
         -*) echo "match: unknown argument: $1" >&2; usage >&2; exit 2 ;;
         *) POS+=("$1"); shift ;;
@@ -176,7 +185,7 @@ build_side() {
     [ -x "$dir/src/stockfish" ]
 }
 
-echo "match: base=$BASE_SHA (upstream)  head=$HEAD_SHA (refish)"
+echo "match: base=$BASE_SHA ($NAME_BASE)  head=$HEAD_SHA ($NAME_HEAD)"
 echo "match: $((ROUNDS * 2)) games, tc=$TC, concurrency=$CONCURRENCY, arch=$ARCH, comp=$COMP, threads=$THREADS"
 echo "match: book $(basename "$BOOK") ($BOOKKIND), $(wc -l < "$BOOK") positions"
 echo "match: building both sides with profile-build, which is what ships ..."
@@ -185,7 +194,7 @@ build_side head || { echo "match: SKIPPED -- head did not build" >&2; tail -5 "$
 
 hb=$(sha256sum "$WORK/wt-base/src/stockfish" | cut -c1-12)
 hh=$(sha256sum "$WORK/wt-head/src/stockfish" | cut -c1-12)
-echo "match: binaries  upstream $hb   refish $hh"
+echo "match: binaries  $NAME_BASE $hb   $NAME_HEAD $hh"
 if [ "$hb" = "$hh" ] && [ "$BASE_SHA" != "$HEAD_SHA" ]; then
     echo "match: SKIPPED -- both sides are the same binary" >&2
     exit 2
@@ -215,8 +224,8 @@ set +e
 # its working directory on exit, and this gate used to run from the repo root:
 # every match left a config.json there, and one of them reached a commit.
 ( cd "$WORK" && "$CACHE/fastchess" \
-    -engine name=refish   cmd="$WORK/wt-head/src/stockfish" \
-    -engine name=upstream cmd="$WORK/wt-base/src/stockfish" \
+    -engine name="$NAME_HEAD" cmd="$WORK/wt-head/src/stockfish" \
+    -engine name="$NAME_BASE" cmd="$WORK/wt-base/src/stockfish" \
     -each proto=uci tc="$TC" option.Threads="$THREADS" option.Hash="$HASH" \
     "${TB_OPT[@]}" \
     -rounds "$ROUNDS" -games 2 -repeat \
