@@ -87,7 +87,7 @@ class SqrClippedReLU {
         auto       sqrOut  = reinterpret_cast<__m256i*>(squared);
         auto       clipOut = reinterpret_cast<__m256i*>(clipped);
 
-        const __m512i zero = _mm512_setzero_si512();
+        const __m256i zero = _mm256_setzero_si256();
 
         for (IndexType i = 0; i < NumChunks; ++i)
         {
@@ -97,9 +97,14 @@ class SqrClippedReLU {
               _mm512_srli_epi16(_mm512_mulhi_epi16(words, words), SimdShiftAmount);
             _mm256_store_si256(&sqrOut[i], _mm512_cvtsepi16_epi8(sqrWords));
 
-            const __m512i clipWords =
-              _mm512_srli_epi16(_mm512_max_epi16(words, zero), WeightScaleBitsLocal);
-            _mm256_store_si256(&clipOut[i], _mm512_cvtsepi16_epi8(clipWords));
+            // Clamp below after the narrowing, not before it, exactly as the AVX2 path
+            // does: an arithmetic shift leaves a negative input negative, cvtsepi16_epi8
+            // saturates it into i8 range, and one max_epi8 zeroes it. Same instruction
+            // count, but the max runs on a ymm instead of a zmm, which is one uop rather
+            // than two on a core that double-pumps 512 bits.
+            const __m512i clipWords = _mm512_srai_epi16(words, WeightScaleBitsLocal);
+            _mm256_store_si256(&clipOut[i],
+                               _mm256_max_epi8(_mm512_cvtsepi16_epi8(clipWords), zero));
         }
 
     #elif defined(USE_AVX2)
