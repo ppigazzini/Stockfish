@@ -23,6 +23,7 @@
 #include "../output_sink.h"
 
 #include <algorithm>
+#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -157,10 +158,16 @@ Value Network::evaluate(const Position&    pos,
 
     NNZInfo<L1> nnzInfo;
 
-    const int   pcBucket    = (pos.count<ALL_PIECES>() - 1) / 4;
+    // A legal position holds both kings, so the piece count is never below two and the
+    // numerator never goes negative. Signed division has to prove that at runtime: it
+    // materialises the numerator twice, biases one copy by three, tests the sign and
+    // conditionally moves, all to round toward zero on a value that cannot be negative.
+    // The piece-count bucket is (count - 1) / 4 scaled by four, which on a value that
+    // cannot be negative is the low two bits masked off, and the queen bucket fills them.
+    assert(pos.count<ALL_PIECES>() >= 1);
     const Color stm         = pos.side_to_move();
     const int   queenBucket = (pos.pieces(stm, QUEEN) ? 2 : 0) | (pos.pieces(~stm, QUEEN) ? 1 : 0);
-    const int   bucket      = pcBucket * 4 + queenBucket;
+    const int   bucket      = ((pos.count<ALL_PIECES>() - 1) & ~3) | queenBucket;
 
     featureTransformer.transform(pos, accumulatorStack, cache, transformedFeatures, nnzInfo);
     const auto positional = network[bucket].propagate(transformedFeatures, nnzInfo);
