@@ -487,10 +487,18 @@ class TBFile: public std::ifstream {
 
         constexpr u8 Magics[][4] = {{0xD7, 0x66, 0x0C, 0xA5}, {0x71, 0xE8, 0x23, 0x5D}};
 
+        // Declined, not fatal, and for the reason the size check above is: a bad
+        // magic is a CORRUPT FILE, which is the user's tablebase directory being
+        // wrong rather than the engine being unable to continue. exit() here took
+        // the whole session down mid-search -- one flipped byte in a .rtbw and a
+        // UCI host lost its engine with no bestmove for the go it had sent. The
+        // mapping has to go back first: unlike the size check this runs after
+        // mmap succeeded, so returning null without unmapping would leak it.
         if (memcmp(data, Magics[type == WDL], 4))
         {
             std::cerr << "Corrupted table in file " << fname.string() << std::endl;
-            exit(EXIT_FAILURE);
+            unmap(*baseAddress, *mapping);
+            return *baseAddress = nullptr, nullptr;
         }
 
         return data + 4;  // Skip Magics's header
