@@ -298,7 +298,13 @@ class AffineTransform {
             // the whole pass, and a full unroll makes gcc hold the input dwords there instead
             // and spill them. A smaller factor pays a register copy per accumulator on every
             // back edge.
-    #pragma GCC unroll 8
+            //
+            // `#pragma GCC unroll` is a clang 13 feature. Guard the VERSION, not clang
+            // as a whole: 13 and up honour the hint and have to keep it, while 11 and 12
+            // reach -Wunknown-pragmas under -Werror and fail the build outright.
+    #if defined(__GNUC__) && (!defined(__clang__) || __clang_major__ >= 13)
+        #pragma GCC unroll 8
+    #endif
             for (; i < NumChunks; ++i)
             {
                 const vec_t in0 = vec_load_32(input + i * sizeof(i32));
