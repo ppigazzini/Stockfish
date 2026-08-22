@@ -56,10 +56,58 @@
 
 namespace Stockfish {
 
-inline int lmr_divisor(int depth) {
+constexpr int lmr_divisor(int depth) {
     int d = std::min(depth, 16);
     return 3000 + 7 * (d - 8) * (d - 8);
 }
+
+// Reciprocals of lmr_divisor. lmrScale[i] is ceil(2^40 / lmr_divisor(i + 1)),
+// chosen so that
+//
+//     int((h * lmrScale[i]) >> 40) + (h < 0)
+//
+// is h / lmr_divisor(i + 1) for every h that can reach the shallow-depth history
+// term. Same construction as allNodeScale below: the magic is rounded UP, which
+// is what makes the `+ (h < 0)` correction uniform, turning the floor an
+// arithmetic shift gives into the truncation the division did, including where
+// the division is exact.
+//
+// The divisor depends on depth alone while the dividend does not, so the
+// quotient is loop-variant and cannot be hoisted -- it was the largest surviving
+// integer division in the engine at roughly one per node, on a divider that is
+// not pipelined. The multiply form costs a few more retired instructions and
+// none of the latency.
+//
+// h is three i16 history reads plus 69 * i16 / 32, so |h| <= 3 * 32768 +
+// 69 * 32768 / 32 = 168960 -- the identity is verified by exhaustion over
+// |h| <= 2^25 for all sixteen divisors, 198x that bound.
+//
+// Every magic is under 2^31, so the table is int and occupies 64 bytes; the
+// multiply is widened at the use site instead. lmr_divisor stays as the source
+// of truth so a tuner still edits the divisor it knows.
+static constexpr auto lmrScale = [] {
+    std::array<int, 16> scale{};
+    for (usize i = 0; i < scale.size(); ++i)
+    {
+        i64 divisor = lmr_divisor(int(i) + 1);
+        scale[i]    = int(((i64(1) << 40) + divisor - 1) / divisor);
+    }
+    return scale;
+}();
+
+static_assert([] {
+    for (usize i = 0; i < lmrScale.size(); ++i)
+    {
+        i64 divisor = lmr_divisor(int(i) + 1);
+        if (((i64(1) << 40) + divisor - 1) / divisor >= (i64(1) << 31))
+            return false;
+    }
+    return true;
+}(), "lmrScale magic does not fit in int");
+
+// lmr_divisor clamps depth to 16 and the table is indexed from depth 1, so the
+// index is that same clamp less one.
+constexpr int lmr_scale(int depth) { return lmrScale[std::min(depth, 16) - 1]; }
 
 // Scale-up factors for expected-ALL nodes. allNodeScale[d] is
 // ceil(2^40 * 276 / (256 * d + 268)), chosen so that
@@ -1439,7 +1487,7 @@ moves_loop:  // When in check, search starts here
                 history += 69 * mainHistory[us][move.raw()] / 32;
 
                 // (*Scaler): Generally, lower divisors scale well
-                lmrDepth += history / lmr_divisor(depth);
+                lmrDepth += int((i64(history) * lmr_scale(depth)) >> 40) + (history < 0);
 
                 Value futilityValue =
                   ss->staticEval + 119 * lmrDepth + 90 * (ss->staticEval > alpha) + 164;
