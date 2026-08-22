@@ -340,19 +340,25 @@ class AffineTransform {
         }
         else if constexpr (OutputDimensions == 1)
         {
+    // The branch above leaves vec_add_32 defined at its own vector width; this branch is
+    // narrower on AVX-512, so retake the name rather than inherit a zmm add.
+    #undef vec_add_32
     #if defined(USE_AVX2)
             using vec_t = __m256i;
         #define vec_setzero() _mm256_setzero_si256()
+        #define vec_add_32 _mm256_add_epi32
         #define vec_add_dpbusd_32 SIMD::m256_add_dpbusd_epi32
         #define vec_hadd SIMD::m256_hadd
     #elif defined(USE_SSSE3)
             using vec_t = __m128i;
         #define vec_setzero() _mm_setzero_si128()
+        #define vec_add_32 _mm_add_epi32
         #define vec_add_dpbusd_32 SIMD::m128_add_dpbusd_epi32
         #define vec_hadd SIMD::m128_hadd
     #elif defined(USE_NEON_DOTPROD)
             using vec_t = int32x4_t;
         #define vec_setzero() vdupq_n_s32(0)
+        #define vec_add_32 vaddq_s32
         #define vec_add_dpbusd_32(acc, a, b) \
             SIMD::dotprod_m128_add_dpbusd_epi32(acc, vreinterpretq_s8_s32(a), \
                                                 vreinterpretq_s8_s32(b))
@@ -360,11 +366,13 @@ class AffineTransform {
     #elif defined(USE_LASX)
             using vec_t = __m256i;
         #define vec_setzero() __lasx_xvldi(0)
+        #define vec_add_32 __lasx_xvadd_w
         #define vec_add_dpbusd_32 SIMD::lasx_m256_add_dpbusd_epi32
         #define vec_hadd SIMD::lasx_m256_hadd
     #elif defined(USE_LSX)
             using vec_t = __m128i;
         #define vec_setzero() __lsx_vldi(0)
+        #define vec_add_32 __lsx_vadd_w
         #define vec_add_dpbusd_32 SIMD::lsx_m128_add_dpbusd_epi32
         #define vec_hadd SIMD::lsx_m128_hadd
     #endif
@@ -376,17 +384,34 @@ class AffineTransform {
             static_assert(PaddedInputDimensions % InputSimdWidth == 0);
 
             constexpr IndexType NumChunks = PaddedInputDimensions / InputSimdWidth;
-            vec_t               sum0      = vec_setzero();
-            const auto          row0      = reinterpret_cast<const vec_t*>(&weights[0]);
 
-            for (int j = 0; j < int(NumChunks); ++j)
+            // Two accumulator chains, not one. Every dot-product here feeds the next, so a
+            // single accumulator serialises this layer at the dot product's LATENCY rather
+            // than its throughput -- and this is the last layer of the evaluation, with the
+            // horizontal reduce and the scalar tail behind it and nothing left to hide it
+            // under. Two chains halve that dependency height for one extra zeroing idiom
+            // and one extra add, only the add of which is on the critical path.
+            //
+            // An instruction count can only price the cost of this, never the win: the
+            // extra work is real and retires, the latency it removes is invisible to any
+            // count. Do not read a small instruction increase here as a regression.
+            vec_t      sum0 = vec_setzero();
+            vec_t      sum1 = vec_setzero();
+            const auto row0 = reinterpret_cast<const vec_t*>(&weights[0]);
+
+            int j = 0;
+            for (; j + 1 < int(NumChunks); j += 2)
             {
-                const vec_t in = inputVector[j];
-                vec_add_dpbusd_32(sum0, in, row0[j]);
+                vec_add_dpbusd_32(sum0, inputVector[j], row0[j]);
+                vec_add_dpbusd_32(sum1, inputVector[j + 1], row0[j + 1]);
             }
-            output[0] = vec_hadd(sum0, biases[0]);
+            if constexpr (NumChunks % 2 != 0)
+                vec_add_dpbusd_32(sum0, inputVector[NumChunks - 1], row0[NumChunks - 1]);
+
+            output[0] = vec_hadd(vec_add_32(sum0, sum1), biases[0]);
 
     #undef vec_setzero
+    #undef vec_add_32
     #undef vec_add_dpbusd_32
     #undef vec_hadd
         }
