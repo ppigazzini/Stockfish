@@ -59,6 +59,44 @@ namespace Stockfish {
 static constexpr std::array<int, 16> lmrDivisor = {3637, 2787, 2761, 2939, 3171, 3347, 3147, 2762,
                                                    2772, 3106, 3107, 3060, 3112, 2991, 3090, 3542};
 
+// Reciprocals of lmrDivisor. lmrScale[i] is ceil(2^40 / lmrDivisor[i]), chosen
+// so that
+//
+//     int((h * lmrScale[i]) >> 40) + (h < 0)
+//
+// is h / lmrDivisor[i] for every h that can reach the shallow-depth history
+// term. Same construction as allNodeScale below: the magic is rounded UP, which
+// is what makes the `+ (h < 0)` correction uniform, turning the floor an
+// arithmetic shift gives into the truncation the division did, including where
+// the division is exact.
+//
+// The divisor depends on depth alone while the dividend does not, so the
+// quotient is loop-variant and cannot be hoisted -- it was the largest surviving
+// integer division in the engine at roughly one per node, on a divider that is
+// not pipelined. The multiply form costs a few more retired instructions and
+// none of the latency.
+//
+// h is three i16 history reads plus 69 * i16 / 32, so |h| <= 3 * 32768 +
+// 69 * 32768 / 32 = 168960 -- the identity is verified by exhaustion over
+// |h| <= 2^25 for all sixteen divisors, 198x that bound.
+//
+// Every magic is under 2^31, so the table is int and occupies the same 64 bytes
+// lmrDivisor did; the multiply is widened at the use site instead. lmrDivisor
+// stays as the source of truth so a tuner still edits the divisors it knows.
+static constexpr auto lmrScale = [] {
+    std::array<int, lmrDivisor.size()> scale{};
+    for (usize i = 0; i < scale.size(); ++i)
+        scale[i] = int(((i64(1) << 40) + lmrDivisor[i] - 1) / lmrDivisor[i]);
+    return scale;
+}();
+
+static_assert([] {
+    for (usize i = 0; i < lmrScale.size(); ++i)
+        if (((i64(1) << 40) + lmrDivisor[i] - 1) / lmrDivisor[i] >= (i64(1) << 31))
+            return false;
+    return true;
+}(), "lmrScale magic does not fit in int");
+
 // Scale-up factors for expected-ALL nodes. allNodeScale[d] is
 // ceil(2^40 * 276 / (256 * d + 268)), chosen so that
 //
@@ -1431,7 +1469,7 @@ moves_loop:  // When in check, search starts here
                 history += 69 * mainHistory[us][move.raw()] / 32;
 
                 // (*Scaler): Generally, lower divisors scale well
-                lmrDepth += history / lmrDivisor[dIndex];
+                lmrDepth += int((i64(history) * lmrScale[dIndex]) >> 40) + (history < 0);
 
                 Value futilityValue =
                   ss->staticEval + 119 * lmrDepth + 90 * (ss->staticEval > alpha) + 164;
