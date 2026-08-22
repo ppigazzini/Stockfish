@@ -54,6 +54,21 @@ jobs:
       # The fallback is a real base rather than a skip. A skip here would be
       # reported as a pass by anything reading the exit code, and refish.yml
       # asserts on unexpected skips precisely so that cannot happen quietly.
+      #
+      # A REAL BASE STILL HAS TO BE A COMPARABLE ONE. perfbudget.sh voids a pair
+      # whose sides embed different nets or search different trees, and the fork
+      # point is neither guaranteed: `origin` here is the FORK, whose master had
+      # sat 180 commits behind upstream, on the previous net and the previous
+      # bench. So the fallback returned a base the gate could only ever report
+      # VOID against -- on exactly the force-push that triggers the fallback in
+      # the first place.
+      #
+      # The floor is the newest of the two boundaries, both readable from git
+      # without building anything: the commit that introduced HEAD's net, and
+      # the commit that introduced HEAD's `Bench:` anchor. Take whichever of the
+      # fork point and those two is newest, so the span measured is the largest
+      # one that can carry a verdict -- and so a fork whose master is current
+      # goes back to using the fork point with nothing to change here.
       - name: Resolve the two sides
         id: revs
         run: |
@@ -70,10 +85,43 @@ jobs:
               *) base="" ;;
             esac
             if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-              base=$(git merge-base HEAD origin/master 2>/dev/null \
-                     || git merge-base HEAD master 2>/dev/null \
-                     || echo "HEAD~1")
+              fork=$(git merge-base HEAD origin/master 2>/dev/null \
+                     || git merge-base HEAD master 2>/dev/null || true)
+              # A here-string, not a pipe into `grep -m1`: grep closes the pipe
+              # on the first match, git log dies of SIGPIPE, and a shell with
+              # pipefail turns finding the anchor into a failure. The anchor
+              # gate carries the same note for the same reason -- named without
+              # its path, because docslint reads a `tests/<name>.sh` anywhere in
+              # a workflow as that workflow RUNNING the gate.
+              history=$(git log --format=%b HEAD)
+              bench=$(grep -m1 -oE '^Bench: [1-9][0-9]{5,7}$' <<< "$history" \
+                      | grep -oE '[0-9]+' || true)
+              # Both paths: the net name moved to engine/ with the zone split, so
+              # a walk reaching upstream has to name where it used to live too.
+              net=$({ git show HEAD:src/engine/evaluate.h 2>/dev/null \
+                      || git show HEAD:src/evaluate.h 2>/dev/null; } \
+                    | grep -oE 'nn-[0-9a-f]+\.nnue' | head -1 || true)
+              # `tail -1`, not `--reverse | head -1`: the oldest commit that
+              # changed the count is the last line of a newest-first walk, and
+              # tail reads the whole stream rather than closing it early.
+              netbase=''
+              [ -n "$net" ] && netbase=$(git log --format=%H -S"$net" \
+                -- src/engine/evaluate.h src/evaluate.h | tail -1)
+              benchbase=''
+              [ -n "$bench" ] && benchbase=$(git log --format=%H -E \
+                --grep="^Bench: $bench\$" | tail -1)
+              base=''
+              for c in "$fork" "$netbase" "$benchbase"; do
+                [ -n "$c" ] || continue
+                git cat-file -e "$c^{commit}" 2>/dev/null || continue
+                git merge-base --is-ancestor "$c" HEAD 2>/dev/null || continue
+                if [ -z "$base" ] || git merge-base --is-ancestor "$base" "$c"; then
+                  base=$c
+                fi
+              done
+              [ -n "$base" ] || base="HEAD~1"
               echo "the push base was unusable; measuring against $base instead"
+              echo "  fork point $fork, net floor $netbase, bench floor $benchbase"
             fi
           fi
           echo "base=$base" >> "$GITHUB_OUTPUT"
