@@ -22,7 +22,10 @@
 #include <limits>
 #include <utility>
 
-#include "bitboard.h"
+// bitboard.h is reached only from the AVX-512 sorter below, which calls lsb() on
+// the vpcmpd hit mask. Below that tier nothing here needs it and IWYU says so at
+// two of the three tiers the lane runs -- deleting it breaks the third.
+#include "bitboard.h"  // IWYU pragma: keep
 #include "position.h"
 #include "basetypes.h"
 
@@ -145,6 +148,99 @@ void partial_insertion_sort(ExtMove* begin, ExtMove* end, int limit) {
             *q = tmp;
         }
 }
+
+#ifdef USE_AVX512
+// The same sort for the one call site whose limit is not INT_MIN.
+//
+// The scan above runs `p->value >= limit` once per move and branches on it --
+// 33.9 moves a call at a 34% true rate, which is the band a predictor cannot
+// learn. Here the test is a vpcmpd over eight moves at a time and there is no
+// branch left to mispredict: what remains is a walk of the ~11.5 bits that came
+// back set, a tzcnt and a blsr apiece.
+//
+// ExtMove is eight bytes with `value` in the upper half, so a 512-bit load holds
+// eight of them with the values in the ODD 32-bit lanes; 0xAAAA drops the halves
+// carrying the Move itself, and a set lane 2i+1 names move i of the block. The
+// tail block is loaded maskz and its dead lanes are dropped from `live` as well,
+// because a zeroed lane compares >= a negative limit and would otherwise read as
+// a move that qualifies.
+//
+// A block's mask survives while that block is consumed for the reason the scalar
+// scan can read a list it is permuting: the walk only ever WRITES positions it
+// has already passed. At the k-th qualification `*q = *++sortedEnd` stores to q
+// and reads index k, and k <= q always, so no value ahead of the walk moves.
+void sort_quiets(ExtMove* begin, ExtMove* end, int limit) {
+    if (begin == end)
+        return;
+
+    ExtMove*      sortedEnd = begin;
+    ExtMove*      p         = end;  // where the scan stops if the sorter never fills
+    MoveSorter    sorter(*begin);
+    const __m512i lim = _mm512_set1_epi32(limit);
+
+    u32 seed = 0b10;  // index 0 seeds the sorter, it is not an insertion
+
+    // Returns true when the sorter filled, leaving p at the move that did not fit.
+    auto consume = [&](ExtMove* block, u32 hits) {
+        while (hits)
+        {
+            ExtMove* q = block + (int(lsb(hits)) >> 1);
+
+            if (sortedEnd - begin + 1 >= MoveSorter::MAX_ELEMENTS)  // sorter full
+            {
+                p = q;
+                return true;
+            }
+
+            sorter.insert(*q);
+            *q = *++sortedEnd;
+            hits &= hits - 1;
+        }
+        return false;
+    };
+
+    // Whole blocks first. Eight moves is 64 bytes ending at or before `end`, so
+    // the load is plain and every lane is a move -- neither a length test nor a
+    // load mask reaches the common path.
+    ExtMove* block = begin;
+    for (; end - block >= 8; block += 8)
+    {
+        const u32 hits = u32(_mm512_cmpge_epi32_mask(_mm512_loadu_si512(block), lim)) & 0xAAAAu;
+
+        if (consume(block, hits & ~seed))
+            goto tail;
+        seed = 0;
+    }
+
+    if (block < end)
+    {
+        const isize   n = end - block;
+        const __m512i v = _mm512_maskz_loadu_epi64(__mmask8((1u << n) - 1), block);
+        const u32     live = 0xAAAAu & u32((u64(1) << (2 * n)) - 1);
+
+        consume(block, u32(_mm512_cmpge_epi32_mask(v, lim)) & live & ~seed);
+    }
+
+tail:
+    sorter.write_sorted(begin, sortedEnd - begin + 1);
+
+    // Use scalar implementation for any remaining elements
+    for (; p < end; ++p)
+        if (p->value >= limit)
+        {
+            ExtMove tmp = *p, *q;
+            *p          = *++sortedEnd;
+            for (q = sortedEnd; q != begin && *(q - 1) < tmp; --q)
+                *q = *(q - 1);
+            *q = tmp;
+        }
+}
+#else
+// Without the vector sorter there is no scan to replace.
+inline void sort_quiets(ExtMove* begin, ExtMove* end, int limit) {
+    partial_insertion_sort(begin, end, limit);
+}
+#endif
 
 }  // namespace
 
@@ -400,7 +496,7 @@ top:
 
             endCur = endGenerated = score<QUIETS>(ml);
 
-            partial_insertion_sort(cur, endCur, -3560 * depth);
+            sort_quiets(cur, endCur, -3560 * depth);
         }
 
         ++stage;
