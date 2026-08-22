@@ -269,12 +269,27 @@ class AffineTransform {
             for (IndexType k = NumAccums; k < NumRegs; ++k)
                 acc[k] = vec_set_32(0);
 
+            // Broadcast the input dwords from MEMORY, not out of the register the previous
+            // layer left them in. The activation feeding this layer ends in a vector
+            // register, and a compiler that can see that forwards it: every input chunk
+            // then costs a shuffle to move the wanted dword into lane 0 and a second
+            // instruction to broadcast it, and the upper half costs a lane-crossing
+            // shuffle on top. `vpbroadcastd zmm, m32` is one instruction on the load pipe
+            // instead of two on the shuffle pipe, and the buffer has to be written out
+            // once either way. Hiding the pointer is what forces the load; the barrier
+            // must stand before the first use, because below it the forwarding has
+            // already happened.
+            const InputType* inbuf = input;
+    #if defined(__GNUC__)
+            asm("" : "+r"(inbuf));  // opt barrier
+    #endif
+
             IndexType i = 0;
     #if defined(USE_VNNI) || defined(USE_NEON_DOTPROD)
             for (; i < NumChunks; i += 2)
             {
-                const vec_t in0 = vec_load_32(input + i * sizeof(i32));
-                const vec_t in1 = vec_load_32(input + (i + 1) * sizeof(i32));
+                const vec_t in0 = vec_load_32(inbuf + i * sizeof(i32));
+                const vec_t in1 = vec_load_32(inbuf + (i + 1) * sizeof(i32));
                 const auto  col0 =
                   reinterpret_cast<const vec_t*>(&weights[i * OutputDimensions * 4]);
                 const auto col1 =
@@ -307,7 +322,7 @@ class AffineTransform {
     #endif
             for (; i < NumChunks; ++i)
             {
-                const vec_t in0 = vec_load_32(input + i * sizeof(i32));
+                const vec_t in0 = vec_load_32(inbuf + i * sizeof(i32));
                 const auto  col0 =
                   reinterpret_cast<const vec_t*>(&weights[i * OutputDimensions * 4]);
 
