@@ -542,12 +542,17 @@ def harness_net(rng, deadline, findings):
             # random replacement can land on the value already there, and a
             # header iteration that mutated nothing would be reported as the
             # engine accepting a header it was never given.
+            # DISTINCT offsets, for the reason the XOR is non-zero: every byte
+            # this reports must really have moved. Drawing with replacement lets
+            # two mutations land on one offset, and two XORs of the same byte
+            # with the same value restore it -- header bytes [5, 5] with values
+            # [9, 9], at seed 865646719 iteration 303, handed the engine the
+            # shipped header and reported it for accepting a corrupt one.
             aimed = rng.random() < 0.5
-            offsets = []
+            span = NET_HEADER_BYTES if aimed else size
+            offsets = rng.sample(range(span), rng.randint(1, 6))
             with open(victim, "r+b") as fh:
-                for _ in range(rng.randint(1, 6)):
-                    off = rng.randrange(NET_HEADER_BYTES if aimed else size)
-                    offsets.append(off)
+                for off in offsets:
                     fh.seek(off)
                     old = fh.read(1)[0]
                     fh.seek(off)
