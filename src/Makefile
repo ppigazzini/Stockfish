@@ -633,7 +633,10 @@ endif
 
 # To cross-compile for Android, use NDK version r27c or later.
 ifeq ($(COMP),ndk)
-	CXXFLAGS += -stdlib=libc++
+	### The same constexpr budget every other clang lane gets. Without it the
+	### NNUE threat-index table blows clang's default step limit and armv7 and
+	### armv8 fail to compile at all.
+	CXXFLAGS += -stdlib=libc++ -fconstexpr-steps=500000000
 	comp=clang
 	ifeq ($(arch),armv7)
 		CXX=armv7a-linux-androideabi29-clang++
