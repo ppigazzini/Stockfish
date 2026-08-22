@@ -23,6 +23,7 @@
 #include "../output_sink.h"
 
 #include <algorithm>
+#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -145,9 +146,16 @@ bool Network::save(const EvalFile& evalFile, const std::optional<fs::path>& file
 }
 
 int Network::layer_stack(const Position& pos) const {
-    const Color stm    = pos.side_to_move();
-    const int   band   = (pos.count<ALL_PIECES>() - 1) / 4;
-    const int   queens = 2 * bool(pos.pieces(stm, QUEEN)) + bool(pos.pieces(~stm, QUEEN));
+    // A legal position holds both kings, so the piece count is never below two and the
+    // numerator never goes negative. Signed division has to prove that at runtime: it
+    // materialises the numerator twice, biases one copy by three, tests the sign and
+    // conditionally moves, all to round toward zero on a value that cannot be negative.
+    // The band is (count - 1) / 4 scaled by four, which on a value that cannot be
+    // negative is the low two bits masked off, and the queen bits fill them.
+    assert(pos.count<ALL_PIECES>() >= 1);
+    const Color stm        = pos.side_to_move();
+    const int   queens     = 2 * bool(pos.pieces(stm, QUEEN)) + bool(pos.pieces(~stm, QUEEN));
+    const int   bandQueens = ((pos.count<ALL_PIECES>() - 1) & ~3) | queens;
 
     // Pawn layout: 0 if pawns stand on both board halves, 1 if on one half only, 2 if there are no pawns
     constexpr Bitboard QueenSide = FileABB | FileBBB | FileCBB | FileDBB;
@@ -160,7 +168,7 @@ int Network::layer_stack(const Position& pos) const {
     };
     const bool many = std::max(officers(WHITE), officers(BLACK)) >= 2;
 
-    return layerStackIndex[((band * 4 + queens) * 3 + layout) * 2 + many];
+    return layerStackIndex[(bandQueens * 3 + layout) * 2 + many];
 }
 
 Value Network::evaluate(const Position&    pos,
