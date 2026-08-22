@@ -537,7 +537,11 @@ class Worker {
     template<NodeType nodeType>
     Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
 
-    int reduction(bool improving, Depth depth, int moveCount, int delta) const;
+    // deltaScaled is (beta - alpha) * 577 / rootDelta, already divided. The
+    // divisor is a search-wide constant and the dividend moves only when alpha
+    // does, so the caller keeps the quotient and this takes it -- see the move
+    // loop in search().
+    int reduction(bool improving, Depth depth, int moveCount, int deltaScaled) const;
 
     TimePoint elapsed() const;
 
