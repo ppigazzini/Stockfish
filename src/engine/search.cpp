@@ -98,10 +98,16 @@ constexpr int SEARCHEDLIST_CAPACITY = 32;
 using SearchedList                  = ValueList<Move, SEARCHEDLIST_CAPACITY>;
 
 // Reductions lookup table indexed by depth or move number.
-const std::array<int, MAX_MOVES> reductions = [] {
-    std::array<int, MAX_MOVES> table{};
+//
+// Unsigned because the table holds a scaled logarithm and has no negative
+// entry, and because that is what the type has to say for the compiler to
+// know it. reduction() divides their product by 512; as int it cannot rule
+// out a negative dividend, so the shift comes with the three-instruction
+// round-toward-zero correction on every move the search reduces.
+const std::array<u16, MAX_MOVES> reductions = [] {
+    std::array<u16, MAX_MOVES> table{};
     for (usize i = 1; i < table.size(); ++i)
-        table[i] = int(2872 / 128.0 * std::log(i));
+        table[i] = u16(int(2872 / 128.0 * std::log(i)));
     return table;
 }();
 
