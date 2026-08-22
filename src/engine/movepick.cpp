@@ -382,8 +382,32 @@ top:
         [[fallthrough]];
 
     case GOOD_QUIET :
-        if (!skipQuiets && select([&]() { return cur->value > goodQuietThreshold; }))
-            return *(cur - 1);
+        // A good quiet is one scoring above goodQuietThreshold, and select()
+        // walks to the END of the list looking for the next one. It cannot find
+        // one past the FIRST move that scores at or below the threshold: ahead
+        // of that move lies the rest of the sorted prefix, which descends, and
+        // then the unsorted tail, every member of which scores below the sort's
+        // own limit. That is only an argument when the limit is at or below the
+        // threshold -- -3560 * depth reaches -14000 at depth 4 -- so the walk
+        // stops early there and runs to the end below it, where a tail move can
+        // still outscore the threshold. Two thirds of the iterations this stage
+        // spends at depth 20 are past that first failing move: 1.70 of 2.54 per
+        // node, nearly all of them in the 7.7% of visits that exhaust the list.
+        if (!skipQuiets)
+        {
+            if (-3560 * depth <= goodQuietThreshold)
+            {
+                for (; cur < endCur; ++cur)
+                {
+                    if (cur->value <= goodQuietThreshold)
+                        break;
+                    if (*cur != ttMove)
+                        return *cur++;
+                }
+            }
+            else if (select([&]() { return cur->value > goodQuietThreshold; }))
+                return *(cur - 1);
+        }
 
         // Prepare the pointers to loop over the bad captures
         cur    = moves;
