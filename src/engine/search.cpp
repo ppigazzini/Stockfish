@@ -59,6 +59,30 @@ namespace Stockfish {
 static constexpr std::array<int, 16> lmrDivisor = {3637, 2787, 2761, 2939, 3171, 3347, 3147, 2762,
                                                    2772, 3106, 3107, 3060, 3112, 2991, 3090, 3542};
 
+// Scale-up factors for expected-ALL nodes. allNodeScale[d] is
+// ceil(2^40 * 276 / (256 * d + 268)), chosen so that
+//
+//     int((r * allNodeScale[depth]) >> 40) + (r < 0)
+//
+// is r * 276 / (256 * depth + 268) for every r a search can reach.
+//
+// The divisor is a function of depth alone, so the quotient is a multiplication
+// the engine was buying as a division: this part's integer divider is not
+// pipelined and the quotient is wanted once per move at an expected-ALL node.
+// The magic is rounded UP, which is what makes the `+ (r < 0)` correction
+// uniform -- it turns the floor an arithmetic shift gives into the truncation
+// the division did, including where the division is exact. The table is indexed
+// by depth on the same bound `reductions` already uses.
+static constexpr auto allNodeScale = [] {
+    std::array<i64, MAX_MOVES> scale{};
+    for (usize d = 1; d < scale.size(); ++d)
+    {
+        const i64 divisor = 256 * i64(d) + 268;
+        scale[d]          = ((i64(276) << 40) + divisor - 1) / divisor;
+    }
+    return scale;
+}();
+
 namespace TB = Tablebases;
 
 void syzygy_extend_pv(const Host&                  host,
@@ -1550,7 +1574,7 @@ moves_loop:  // When in check, search starts here
 
         // Scale up reductions for expected ALL nodes
         if (allNode)
-            r += r * 276 / (256 * depth + 268);
+            r += int((r * allNodeScale[depth]) >> 40) + (r < 0);
 
         // Step 17. Late moves reduction / extension (LMR)
         if (depth >= 2 && moveCount > 1)
