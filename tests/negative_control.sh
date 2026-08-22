@@ -483,20 +483,21 @@ if selected lanecheck-stale-workflow-excuse; then
     # The excuse list expires in BOTH directions, the same rule the script list
     # follows. Giving stockfish.yml a trigger this branch matches must report the
     # excuse as stale rather than quietly keeping it.
-    # Anchored through `tags:` so it names the PUSH block: `pull_request` below
-    # carries the same two branches, and an anchor matching both refuses. The
-    # branch added is the CURRENT one -- adding a fixed `refish` makes
+    # Anchored through `push:` so it names the PUSH block: `pull_request` below
+    # carries the same two branches, and an anchor matching both refuses. It was
+    # anchored through a `tags:` block that upstream's trigger no longer has, so
+    # the anchor matched nothing and mutate() died -- name a key that is part of
+    # the shape being mutated, never a neighbour that can be dropped without it.
+    # The branch added is the CURRENT one -- adding a fixed `refish` makes
     # stockfish.yml reachable only when that is the branch being checked, and
     # the row then reports NOT DETECTED everywhere else.
     nc_branch=$(git rev-parse --abbrev-ref HEAD)
     mutate .github/workflows/stockfish.yml \
-        '    tags:
-      - "*"
+        '  push:
     branches:
       - master
       - tools' \
-        "    tags:
-      - \"*\"
+        "  push:
     branches:
       - master
       - tools
