@@ -568,7 +568,13 @@ class Worker {
     usize threadIdx, numaThreadIdx, numaTotal;
 
     // Reductions lookup table initialized at startup
-    std::array<int, MAX_MOVES> reductions;  // [depth or moveNumber]
+    //
+    // Unsigned because the table holds a scaled logarithm and has no negative
+    // entry, and because that is what the type has to say for the compiler to
+    // know it. reduction() divides their product by 512; as int it cannot rule
+    // out a negative dividend, so the shift comes with the three-instruction
+    // round-toward-zero correction on every move the search reduces.
+    std::array<u16, MAX_MOVES> reductions;  // [depth or moveNumber]
 
     // The main thread has a SearchManager, the others have a NullSearchManager.
     //

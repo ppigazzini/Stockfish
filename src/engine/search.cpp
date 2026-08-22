@@ -888,7 +888,7 @@ void Search::Worker::clear() {
     }
 
     for (usize i = 1; i < reductions.size(); ++i)
-        reductions[i] = int(2872 / 128.0 * std::log(i));
+        reductions[i] = u16(int(2872 / 128.0 * std::log(i)));
 
     // Skip the refresh cache while no net is resident. clear() is reached from
     // the constructor, and Engine sizes the pool before any net is loaded; the
