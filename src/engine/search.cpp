@@ -121,6 +121,35 @@ static constexpr auto allNodeScale = [] {
     return scale;
 }();
 
+// Reciprocals of depth + 1, for the fail-high average in step 21. avgScale[d]
+// is 2^36 / (d + 1) + 1, chosen so that
+//
+//     int((x * avgScale[depth]) >> 36) + (x < 0)
+//
+// is x / (depth + 1) for every x that site can carry.
+//
+// floor + 1 rather than the ceil the two tables above use. depth + 1 runs over
+// every value in [1, MAX_MOVES], powers of two included, and where the divisor
+// divides 2^36 exactly a ceil leaves avgScale[d] * (d + 1) - 2^36 == 0 -- and
+// then the `+ (x < 0)` correction overshoots by one on every negative multiple
+// of the divisor. Adding one unconditionally keeps that error strictly
+// positive, which is what makes the correction uniform. The other two tables
+// escape this only because no divisor of theirs divides 2^40.
+//
+// The site is guarded by !is_decisive on both bestValue and alpha, with
+// bestValue >= beta > alpha, and search() asserts 0 < depth < MAX_PLY, so
+// |x| = |bestValue * depth + beta| <= 31506 * 245 + 31506. The identity is
+// verified by exhaustion over |x| <= 2^24 for all 256 divisors.
+//
+// Shift 36 rather than 40: at depth 0 the magic is 2^S itself, and 2^40 would
+// leave under a tenth of i64 spare against a dividend this size.
+static constexpr auto avgScale = [] {
+    std::array<i64, MAX_MOVES> scale{};
+    for (usize d = 0; d < scale.size(); ++d)
+        scale[d] = (i64(1) << 36) / i64(d + 1) + 1;
+    return scale;
+}();
+
 namespace TB = Tablebases;
 
 void syzygy_extend_pv(const Host&                  host,
@@ -1805,7 +1834,10 @@ moves_loop:  // When in check, search starts here
 
     // Adjust best value for fail high cases
     if (bestValue >= beta && !is_decisive(bestValue) && !is_decisive(alpha))
-        bestValue = (bestValue * depth + beta) / (depth + 1);
+    {
+        const int weighted = bestValue * depth + beta;
+        bestValue          = int((i64(weighted) * avgScale[depth]) >> 36) + (weighted < 0);
+    }
 
     // All legal moves have been searched: if there are no legal moves, it
     // must be a mate or a stalemate (just a fail low score if we are in a
