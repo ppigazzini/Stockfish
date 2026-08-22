@@ -1305,6 +1305,17 @@ moves_loop:  // When in check, search starts here
 
     int moveCount = 0;
 
+    // The window term of the reduction formula, carried across the move loop.
+    //
+    // It is the one runtime divisor in reduction(): rootDelta is fixed for the
+    // whole search and beta never moves inside this function, so the quotient
+    // can only change where alpha is raised, which is the single assignment in
+    // step 20. Computed per move instead, it is a hardware integer divide on
+    // every move the node searches -- and the entry assert pins alpha to
+    // beta - 1 at a non-PV node, where alpha cannot be raised at all, so there
+    // the divide ran once per move to produce the same constant every time.
+    int deltaScaled = (beta - alpha) * 577 / rootDelta;
+
     // Step 13. Loop through all pseudo-legal moves until no moves remain
     // or a beta cutoff occurs.
     while ((move = mp.next_move()) != Move::none())
@@ -1342,9 +1353,7 @@ moves_loop:  // When in check, search starts here
         // Calculate new depth for this move
         newDepth = depth - 1;
 
-        int delta = beta - alpha;
-
-        int r = reduction(improving, depth, moveCount, delta);
+        int r = reduction(improving, depth, moveCount, deltaScaled);
 
         // Increase reduction for ttPv nodes (*Scaler)
         // Larger values scale well
@@ -1717,7 +1726,8 @@ moves_loop:  // When in check, search starts here
                     depth -= 3;
 
                 assert(depth > 0);
-                alpha = value;  // Update alpha! Always alpha < beta
+                alpha       = value;  // Update alpha! Always alpha < beta
+                deltaScaled = (beta - alpha) * 577 / rootDelta;
             }
         }
 
@@ -2063,10 +2073,9 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     return bestValue;
 }
 
-int Search::Worker::reduction(bool improving, Depth depth, int moveCount, int delta) const {
+int Search::Worker::reduction(bool improving, Depth depth, int moveCount, int deltaScaled) const {
     int reductionScale = reductions[depth] * reductions[moveCount];
-    return reductionScale - delta * 577 / rootDelta + !improving * reductionScale * 197 / 512
-         + 982;
+    return reductionScale - deltaScaled + !improving * reductionScale * 197 / 512 + 982;
 }
 
 // elapsed() returns the time elapsed since the search started. If the
