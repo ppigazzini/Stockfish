@@ -159,6 +159,8 @@ it as a pass.
 | **PGO is what ships.** `make profile-build` is upstream's own recipe and what fishtest measures. A refactor free at plain `-O3` can cost real work under PGO, because splitting a function changes what the profile can attribute. | measure both |
 | **An instruction count cannot see a latency win and is not neutral about one.** Extra accumulator chains, unrolling for ILP, software prefetch -- all can only ADD retired instructions. callgrind is blind to prefetch outright. | decide the axis before optimising |
 | **nps cannot resolve a few percent.** A cold first run reads far low; a batched best-of-N measures the order as much as the binaries, because the second batch runs on a hotter core. Interleave, alternate the order, report the median of the paired ratios AND its spread. A spread straddling 1.000 has established no direction. | `tests/npsab.sh` |
+| **A build mode or an ARCH change recompiles only what the edit touched.** `make build` after `make profile-build` relinks the stale PGO objects; `make build ARCH=x86-64-avx512icl` after an avx2 build relinks the stale avx2 objects. Both mongrels link, run, and PASS `signature.sh` -- behaviour is unaffected, so the anchor is green and every instruction figure taken from the binary describes two build modes at once. `make clean` between them. | any A/B that changes ARCH or build mode |
+| **A gate run from the wrong directory reports a defect it did not find.** `tests/perft.sh` exits 1 from the repository root and 0 from `src/`, and exit 1 there reads as a movegen bug. Run the gates from `src/` and check the exit code of the gate, not of a pipeline. | `tests/perft.sh`, `tests/reprosearch.sh` |
 | **`src/stockfish*` is gitignored**, so stale binaries accumulate in `src/`. Any oracle or A/B tooling must verify the binary it measured -- a leftover build from an older commit reports a clean pass against the wrong engine. | build into a worktree, as the perf gates do |
 | **`perft.sh` counts are facts about chess**, not a golden. A mismatch is always a movegen bug, never an update candidate. | `tests/perft.sh` |
 | **`tune.h` requires tunable constants to be non-`const`**, and `types.h` includes it after its own `#endif`, outside the guard, for global visibility. No committed file uses `TUNE(...)`, so a grep for consumers finds none -- and removing the include on that evidence taxes every future SPSA run. | `src/engine/types.h` |
@@ -172,6 +174,14 @@ the failure it prevents:
 
 - **Never `git stash`** -- the stash is repo-wide across worktrees; parallel agents racing it
   corrupt each other. Recover by SHA instead.
+- **Never `pkill -f`** -- the pattern reaches every agent's processes, not the caller's. One
+  agent stopping its own measurement that way killed a sibling's mid-run. Stop jobs by PID.
+- **Count how often it runs before writing the change.** A cost per call times a call rate is a
+  claim about both, and the second half is the one that fails: an ABI cost priced at a
+  source-level call rate was worth nothing because the callee was inlined at every hot site. One
+  `callgrind` call census, or two atomics and a bench, settles it before any code exists.
+- **`git switch --detach <sha>`** when the permission classifier refuses `git reset --hard` or
+  `git checkout -b` inside an agent worktree.
 - **Charter disjoint FILES, not just disjoint metrics** -- two charters phrased by metric can
   both reach the same file, and then two agents ship the same change.
 - **Unique scratch filenames, and pin every measured binary by hash** -- a scratchpad

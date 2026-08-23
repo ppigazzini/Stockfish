@@ -546,6 +546,11 @@ anchor: the anchor only ever visits its own fixed position list from a cold tabl
 [10-tooling-ci.md](10-tooling-ci.md) records that a divergence off those positions is invisible
 to it. A run whose totals differ is VOID, not slow.
 
+`--counters` adds retired instructions, cache misses and branch misses per node, each binary's
+startup measured and subtracted -- the two sides do not load the net for the same price, and a
+whole-process ratio describes the loader as much as the engine. Read the instruction column;
+read the rest against the control described below.
+
 `--cold` sends `ucinewgame` before every move, which throws the table and the history bank away
 and leaves everything else identical. The difference between a `--cold` run and a warm one is
 what the accumulated state of a game is worth, in nodes, at a depth the long clock reaches.
@@ -558,6 +563,63 @@ engine is then simply a larger `--npmsec`** -- at 1000 nodes per millisecond a 1
 1,000 nodes, at 2000 it buys 2,000 -- with the real time manager, the real search and the real
 table in the loop. What that measures is how much of a speed advantage each time control lets an
 engine keep, which is not the same quantity as nps and does not have the same shape.
+
+## What each axis can resolve
+
+An axis that cannot resolve the effect in front of it does not report "unknown". It reports a
+number, and the number is the box.
+
+Measure the floor the same way you measure a change, with the same revision on both sides:
+
+```sh
+./tests/ltcab.sh --counters --comp clang --pgo --arch x86-64-avx512icl \
+    --depths 13,20 --plies 60 --rounds 3 <rev> <rev>
+```
+
+Two properties separate the columns, and they decide which one may carry a claim.
+
+**Retired instructions and retired branches are deterministic.** They reproduce to five decimals
+across independently built binaries, so a ratio on either is a fact about the code. A change too
+small to move them has not been shown to cost or save anything.
+
+**Every other column is a hardware counter sampling a shared machine.** Cycles, cache misses and
+branch mispredicts vary between two runs of the SAME binary by more than most refactors move
+them. On this host the same base binary has read a cache-miss rate spanning a quarter of its own
+value across six runs. Report those columns beside their control and claim nothing from them
+alone.
+
+**The instruction axis has a layout floor and it is not noise.** A semantically null statement
+swap -- two calls that write disjoint state, exchanged -- costs a few tenths of an instruction
+per node. It is reproducible, because it is a register-allocation shift rather than scatter, and
+it bounds attribution rather than measurement: a change that reads below it has not been shown
+to cost anything, while one that reads above it genuinely retires more instructions.
+
+## A control taken inside one session bounds only that session
+
+A tight A/A is the weakest evidence that looks strong. An instruction-cache counter built on
+this tree reported a clean win with every comparison round below every control round, and the
+same two executables copied to different paths inverted it: the counter was describing the file
+mapping rather than the code, and the control could not see that because every run in it shared
+one mapping.
+
+The control that decides is the one that varies what you are not measuring: **build both sides
+twice, from scratch, and compare the ratios.** A figure that survives an independent rebuild is
+a property of the change; one that does not is a property of the build.
+
+**This tree has no working instruction-cache instrument.** A change whose claim is hot-text
+footprint can be measured statically -- `nm --size-sort` on the symbols it merges or removes --
+and cannot be measured dynamically here at all. Say which of the two a claim rests on.
+
+## Ratios multiply only along the chain they were measured on
+
+A stack figure is a measurement, not a product. Three ratios each taken against a common base
+multiply to something the stack does not read, because each one describes a different starting
+binary.
+
+A product is valid only where each factor was measured against the previous factor's result --
+`A->B`, then `B->C`, then `C->D`. Measured that way the product and the direct `A->D` reading
+agree to four decimals. Measured against a shared base they do not, and the direct reading is
+the one to quote.
 
 ## `tests/perfdecomp.sh`
 
