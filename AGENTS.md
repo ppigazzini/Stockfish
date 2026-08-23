@@ -204,6 +204,11 @@ the failure it prevents:
   base and verify with `git log` before building any baseline.
 - **Worktree commits are candidates, not integrations.** The integrator cherry-picks onto a
   clean HEAD, re-runs the gates there, and owns the evidence.
+- **A fleet's ratios are all against one base, so none of them is the stack's.** Every agent
+  measures from the base it was chartered on, and those figures do not add: the assembled stack
+  is a separate measurement, on both compilers, and it belongs to the integrator. On disjoint
+  files the product has landed within a tenth of a percent here, which is a reason to assemble
+  and measure, not a reason to skip it.
 
 ## Commits
 
