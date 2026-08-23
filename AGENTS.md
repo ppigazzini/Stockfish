@@ -87,10 +87,10 @@ single-threaded, so every gate above stays green while a data race is present.
 make -j build ARCH=x86-64-avx2 sanitize=thread && python3 ../tests/instrumented.py --sanitizer-thread ./stockfish
 ```
 
-## Performance: the six axes, and which one answers what
+## Performance: the seven axes, and which one answers what
 
 `signature.sh` proves the engine searched the SAME TREE. It says nothing about what that tree
-cost. These six do, and they are not interchangeable.
+cost. These seven do, and they are not interchangeable.
 
 ```sh
 ../tests/perfbudget.sh   <base-rev> [<head-rev>]  # retired instructions, deterministic
@@ -99,6 +99,7 @@ cost. These six do, and they are not interchangeable.
 ../tests/perfcounters.sh [<base>] [<head>]        # PMU: cycles, IPC, cache/branch, ALL tiers
 ../tests/perfdecomp.sh   [<base>] [<head>]        # per-component Ir/misses, deterministic
 ../tests/npsthreads.sh   <base-rev> [<head-rev>]  # SCALING across thread counts
+../tests/ltcab.sh        <base-rev> [<head-rev>]  # a WARM game, at a long clock's depth
 ```
 
 `perfcounters.sh` and `perfdecomp.sh` default their base to `git merge-base HEAD master`, which
@@ -131,6 +132,7 @@ anything. A regression under PGO still does not land.
 | "this moved no cache line" | `perfcounters.sh` | the ONLY axis that sees a miss or a mispredict, and the only one that runs above avx2 |
 | "and if it did, where?" | `perfdecomp.sh` | per-component instructions and misses, deterministic -- but a simulated cache, not this one |
 | "this scales" -- anything touching the TT, the histories or the pool | `npsthreads.sh` | every other axis runs ONE thread, so a contention change is invisible to all five. It needs a node budget, not a depth: a threaded fixed-depth bench is not reproducible against itself |
+| "this still pays at a LONG clock" | `ltcab.sh` | every other axis runs `bench`, which is a COLD search at depth 8 or 13. A played 10+0.1 move is a WARM one at depth 20 to 25, on a table the game has already filled, and the two do not cost the same per node |
 
 **The trap, measured on this repository.** `ee72cf49f` "Optimize RankAttacks" is marked *No
 functional change* and passed a 212,800-game SPRT. It shrinks a table 4x, trading instructions
