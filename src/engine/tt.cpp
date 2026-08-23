@@ -62,6 +62,16 @@ static constexpr u8 BOUND_MASK      = 0b11 << BOUND_SHIFT;
 static constexpr u8 PV_SHIFT        = BOUND_SHIFT + 2;
 static constexpr u8 PV_MASK         = 1 << PV_SHIFT;
 
+// wide() is named on the two i16 fields and on NOTHING else here, and the line
+// between them was measured, not guessed. clang keeps genBound8's
+// `(curr_generation - genBound8) & GENERATION_MASK` and depth8's
+// `std::max(depth8 - 1, 0)` entirely in byte operations -- the latter as
+// `cmp $1; adc $-1` -- so widening those adds an instruction. The six depth8
+// sites that DO carry a redundant extension are a separate, equal-sized saving
+// that cannot be taken together with this one: each set alone retires fewer
+// instructions per node under clang PGO and the two together retire more,
+// because both inline into Worker::search<NonPV> through probe() and the pair
+// crosses a register-allocation threshold neither reaches alone.
 struct TTEntry {
 
     // Convert internal bitfields to external types. depth8 is a parameter rather
@@ -71,8 +81,8 @@ struct TTEntry {
     TTData read(int d8) const {
         const u8 gb = genBound8;
         return TTData{Move(move16),
-                      Value(value16),
-                      Value(eval16),
+                      Value(value16.wide()),
+                      Value(eval16.wide()),
                       Depth(DEPTH_NONE + d8),
                       Bound((gb & BOUND_MASK) >> BOUND_SHIFT),
                       bool(gb & PV_MASK)};
@@ -128,12 +138,15 @@ void TTEntry::save(
     else if (depth8 + DEPTH_NONE >= 5
              && Bound((genBound8 & BOUND_MASK) >> BOUND_SHIFT) != BOUND_EXACT)
     {
-        // `auto` here deduces RelaxedAtomic<i16>, not i16: the copy is an object
+        // Named `int`, never `auto`, for two separate reasons. `auto` over the
+        // member itself deduces RelaxedAtomic<i16>: the copy is an object
         // holding a std::atomic, so it lands on the stack, every use reloads it
         // from there, and its address being taken pulls a stack-protector
-        // prologue and epilogue into save() on every call. The shared entry is
-        // read exactly once either way.
-        const i16 v16 = value16;
+        // prologue and epilogue into save() on every call. `auto` over wide()
+        // deduces Wide<i16>, which is int on one toolchain and i16 on the
+        // others -- a local whose type is a property of the compiler. The
+        // shared entry is read exactly once in every spelling.
+        const int v16 = value16.wide();
         if (std::abs(v16) < VALUE_INFINITE && is_decisive(v16))
             depth8 = std::max(int(depth8) - 1,
                               0);  // guard against racy underflows, default to "unoccupied"
