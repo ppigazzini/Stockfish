@@ -222,6 +222,61 @@ in the search is the whole subject of this gate. It is a real quantity either wa
 has moved it by a sixth -- and before it was gated it was measured, printed, and decided by
 nobody in either direction.
 
+## The two compilers do not optimise the same program
+
+A codegen observation is a claim about ONE compiler until it has been checked on the other.
+
+On the accumulator path at `x86-64-avx512icl`, both under `make profile-build`, both green on
+`signature.sh`:
+
+| | clang PGO | gcc PGO |
+|---|---|---|
+| `apply_combined` | inlined into `Eval::evaluate` | out of line, 1497 bytes |
+| the threat loop | four iterations peeled | rolled, one body copy |
+| the psq loop | one peeled, remainder outlined cold | rolled, one body copy |
+| trip-count equality tests in the path | 16 | **0** |
+
+gcc's profile peels nothing there. **"The profile already does this, so a hand-written shape can
+only lose" is a clang sentence**, and on the other compiler there is nothing to reproduce: the
+same source pays roughly 24 instructions a node for the missing peel and another 27 for the
+out-of-line call and its argument marshalling, about a seventh of the 7.2% lane gap above.
+
+**Neither column stands in for the missing one.** gcc's rolled psq body is one instruction
+SHORTER than clang's rolled one, because gcc folds the load and the shift into a single `shlx`
+with a memory operand; clang only wins there by peeling. A reading taken on one compiler bounds
+that compiler.
+
+## The shape of a refactor decides which compiler keeps it
+
+The same saving, written two ways, lands on one compiler and regresses on the other. What
+differs is which function the inliner chooses, not which instructions the source removes.
+
+Sharing one magic lookup across a capture's two scans has two shapes. As a thin wrapper -- the
+body in a helper taking the two attack sets, the outer function reduced to a wrapper that takes
+the lookup and calls it -- clang keeps the helper out of line and takes the saving, **-0.120%**;
+gcc inlines the WRAPPER into `do_move`, leaves the helper behind a six-argument call, and so
+expands the lookup at every one of `do_move`'s five call sites, **+0.345%**. As a template
+parameter pair, with no wrapper left to inline, gcc emits `.constprop` clones with the dead
+arguments stripped, `do_move` shrinks by 172 bytes, and the sign is **-0.314%**.
+
+**A symbol-size diff names the function the profile moved.** It separates an inliner ripple from
+a code change, and no ratio answers it:
+
+```sh
+nm -C -S --size-sort base/stockfish > base.sym
+nm -C -S --size-sort head/stockfish > head.sym
+diff base.sym head.sym
+```
+
+`emit_piece_threats<true, false>` present in the gcc head and absent from the clang head is that
+whole difference, in one line.
+
+The mirror case is a local saving the disassembly confirms and the program never sees.
+Hoisting a movepick cursor out of memory removes exactly the store it targets -- loop bodies
+fall from 8 instructions to 7, at two tiers -- and reads **+0.775% on clang PGO** against
+-0.071% on gcc PGO, with byte-identical symbol sizes at plain `-O3`. A sign that appears only
+under PGO and only on one compiler is that compiler's profile-guided layout. It does not land.
+
 ## `tests/textequal.sh`
 
 Per-symbol machine-code equivalence, LTO disabled.
@@ -593,7 +648,9 @@ or save anything.
 **Absolute figures are not comparable across compilers.** The same binary pair at the same tier
 and the same node count retires materially more instructions under one compiler than the other,
 so a per-node figure is a number about a lane. Ratios within a lane are comparable; absolutes
-across lanes are not.
+across lanes are not. On the identical 34,582,748-node warm tree at `x86-64-avx512icl` under
+`make profile-build`: **5611.7 instructions per node on gcc against 5233.5 on clang**, a gap of
+7.2% that no change on this branch approaches.
 
 **Deterministic is not the same as attributable.** A ratio on those columns is a fact about the
 code AND the base it was measured on. A small diff can cross a profile-guided inlining threshold
