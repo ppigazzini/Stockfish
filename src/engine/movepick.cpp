@@ -382,7 +382,16 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
         pawnHist  = sharedHistory->pawn_entry(pos).data()->data();
     }
 
-    ExtMove* it = cur;
+    // Walked by INDEX rather than by two pointers. A range-for over the source
+    // and a `*it++` on the destination give the loop three induction variables
+    // that the end test then has to reconstruct a pointer from; one count that
+    // both sides address off leaves the trip count in a register and the exit
+    // test a compare against it, and it is also what tells the caller where the
+    // list ended without a second variable tracking that.
+    ExtMove* const    it  = cur;
+    const Move* const src = ml.begin();
+    const isize       n   = isize(ml.size());
+
     // clang vectorises the capture arm at AVX-512 and pays a masked
     // `vpgatherdd` for PieceValue[piece_on(to)]. A gather is 16 scattered
     // loads issued as one instruction, and the loop it replaces is a handful
@@ -390,10 +399,10 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
 #if defined(__clang__)
     #pragma clang loop vectorize(disable)
 #endif
-    for (auto move : ml)
+    for (isize i = 0; i < n; ++i)
     {
-        ExtMove& m = *it++;
-        m          = move;
+        ExtMove& m = it[i];
+        m          = src[i];
 
         const Square    from          = m.from_sq();
         const Square    to            = m.to_sq();
@@ -471,12 +480,12 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
             const auto& lowPlyRow = (*lowPlyHistory)[ply];
             const int   divisor   = 1 + ply;
 
-            for (ExtMove* p = cur; p != it; ++p)
-                p->value += 8 * lowPlyRow[p->raw()] / divisor;
+            for (isize i = 0; i < n; ++i)
+                it[i].value += 8 * lowPlyRow[it[i].raw()] / divisor;
         }
     }
 
-    return it;
+    return it + n;
 }
 
 // Returns the next move satisfying a predicate function.
