@@ -333,6 +333,15 @@ cd <kept dir> && diff <(grep '^<mangled>	' base.txt | cut -f2-) \
                       <(grep '^<mangled>	' head.txt | cut -f2-)
 ```
 
+**A whole-binary hash answers the stronger question, in the one direction it answers at all.**
+Where this gate compares bodies per symbol with LTO off, two builds made the same way with the
+build stamp neutralised can be compared by hash: an identical hash proves the change reached
+that compiler's output not at all, LTO, layout and padding included. It says nothing when the
+hashes differ, so it is a proof and not a measurement. A change guarded to one compiler is
+exactly the shape it settles, and it costs one `md5sum` against a paired campaign -- an atomic
+load spelled through clang-only inline asm hashes identically under gcc at two ARCHes, while
+clang retires 0.77% fewer instructions for it.
+
 ## `tests/npsab.sh`
 
 Interleaved paired wall-clock A/B, reporting the median of the paired ratios and its spread.
