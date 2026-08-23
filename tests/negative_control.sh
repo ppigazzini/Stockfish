@@ -2123,6 +2123,8 @@ COVERAGE_EXCUSED_NAMES=(
   perfdecomp.sh
   perfdecomp.py
   match.sh
+  ltcab.sh
+  ltcreplay.py
 )
 COVERAGE_EXCUSED_WHY=(
   "a wall-clock measurement rather than a pass/fail gate; it carries its own A/A control, which is the same check from the inside"
@@ -2135,6 +2137,8 @@ COVERAGE_EXCUSED_WHY=(
   "a report rather than a pass/fail gate, and its VOID refusal is the same one perfbudget's row covers"
   "the decomposition half of perfdecomp.sh, invoked by it rather than run"
   "plays games under a time control; a planted defect would be scored by the same clock the box perturbs, so a control here measures the runner"
+  "a wall-clock measurement rather than a pass/fail gate: it exits 0 for any ratio and 1 only when the two binaries' node totals differ, and that VOID refusal is the one perfbudget's row already covers. It runs each binary twice per depth, so it carries its own A/A control, as npsab's does"
+  "the replay driver under ltcab.sh: it plays a fixed move list and reports nodes and time rather than asserting a property of the tree, so ltcab.sh's refusals are the pass/fail half and its row is the one that would cover them"
 )
 
 echo
