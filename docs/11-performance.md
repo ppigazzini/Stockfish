@@ -689,6 +689,53 @@ per node. It is reproducible, because it is a register-allocation shift rather t
 it bounds attribution rather than measurement: a change that reads below it has not been shown
 to cost anything, while one that reads above it genuinely retires more instructions.
 
+## An instruction saving is not a time saving
+
+The instruction axis answers "does the CPU execute less work", and that is not the same question
+as "does the move finish sooner". A saving lands on the clock only if the instructions removed
+were on the critical path.
+
+Measured on an idle box, one stack of eleven commits, seven paired rounds at depth 20, each
+lane's A/A control taken on the same box in the same session:
+
+| lane | Ir ratio | time ratio | its A/A band | miss/node | brmiss/node |
+|---|---|---|---|---|---|
+| clang PGO | **0.98237** | 1.0104 | +/-0.0303 | 1.0022 | 0.9989 |
+| gcc PGO | **0.98056** | 0.9886 | +/-0.0106 | 1.0013 | 0.9877 |
+
+**1.8% of clang's retired instructions vanish and the clock does not move.** The miss and
+mispredict columns sit at their control values, so nothing was traded for them -- the removed
+instructions simply were not what the machine was waiting on. The same source on gcc, whose lane
+retires 7% more instructions to begin with, does move.
+
+So an instruction ratio is a fact about the work, and a claim about SPEED needs the clock or a
+mechanism. `AGENTS.md` records the mirror case: `ee72cf49f` shrinks a table 4x, passes a
+212,800-game SPRT, and reads +0.16% on instructions. The axis is blind in both directions.
+
+**Retired branches are not a proxy for mispredicts.** One accumulator change moved retired
+branches +0.80% per node, deterministic across independently built binaries, and moved branch
+MISPREDICTS -1.2% on the same pair. More branches, fewer wrong ones. Only `--counters` on a
+quiet box separates them, and the deterministic column cannot stand in.
+
+**Trading an ALU operation for a table is a memory change, and it shows up as one.** A
+reciprocal table replacing a hardware divide that executes 0.139 times per node read Ir 1.00014
+and **miss/node 1.0269 against a +/-0.4% control** -- the only column outside its floor, moving
+the wrong way, for a divide that barely fires at the depth a long clock reaches.
+
+## The clock's floor is wider between sessions than inside one
+
+An A/A control bounds the runs beside it. It does not bound a reading taken after a rebuild.
+
+Two measurements of stacks differing by ONE commit, same base, same box, same seven-round
+protocol, minutes apart, gcc PGO at depth 20: **0.9886 +/-0.0106** and **0.9997 +/-0.0145**.
+The two disagree by 1.1% while each reports a band of about 1%. The instruction column of those
+same runs read 0.98056 and 0.98045 -- a difference of 0.011%.
+
+**So a wall-clock difference near one percent is not resolved by this workload, whatever the
+printed band says.** Establishing one needs more than a tight control: repeat the whole
+measurement, rebuilt, and treat the spread ACROSS those repeats as the floor. A single run with
+a narrow band is the shape a false positive takes here.
+
 ## A control taken inside one session bounds only that session
 
 A tight A/A is the weakest evidence that looks strong. An instruction-cache counter built on
