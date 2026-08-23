@@ -716,6 +716,13 @@ On this tree at depth 20 the split is roughly: NNUE two thirds of all retired in
 which the accumulator update is half again; the search node itself around a seventh; move
 picking a tenth; `do_move` a twelfth. `qsearch` and `see_ge` are each around one percent.
 
+**The map is an avx2 map, and the tier changes the answer.** callgrind implements no AVX-512, so
+a component whose code path differs above avx2 is mis-sized by it: the network's dense layers
+take an emulated-`dpbusd` bitset path at avx2 and a `vpdpbusd` path above it, which moves that
+component's share by more than half its own size. Read the map for the components whose code is
+tier-independent, and size a vector component from a hand-count against its own disassembly at
+the tier that ships.
+
 The consequence is a sizing rule. **A change confined to the search node cannot reach one
 percent of the program without deleting an eighth of everything that node does**, and the
 largest single source line there is a third of a percent. Time spent hunting inside a component
