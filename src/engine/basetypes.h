@@ -267,6 +267,48 @@ using MaterialKey = TypedKey<KeySpace::Material>;
 
 
 
+// Whether wide() may name the widening load itself. x86-64 only, because the
+// widening load is the whole point; clang only, because gcc already folds it;
+// and never under ThreadSanitizer, which cannot see inline asm.
+#if defined(__clang__) && defined(__x86_64__)
+    #if defined(__SANITIZE_THREAD__)
+        // no
+    #elif __has_feature(thread_sanitizer)
+        // no
+    #else
+        #define SF_WIDE_ATOMIC_LOAD_ASM 1
+    #endif
+#endif
+
+#if defined(SF_WIDE_ATOMIC_LOAD_ASM)
+constexpr bool HasWideAtomicLoad = true;
+#else
+constexpr bool HasWideAtomicLoad = false;
+#endif
+
+// A narrow integer promoted to the type its arithmetic happens in -- but only
+// where widening it is free. Everywhere else the type is left alone, and that
+// is deliberate rather than tidy: a toolchain that already folds the widening
+// into its load gains nothing from the wider type and can lose a little to it.
+// gcc at plain -O3 read +0.028% of bench instructions from carrying the wider
+// one, so it goes on compiling the source it always did.
+//
+// Nothing deduces this type, which is what keeps a per-toolchain width from
+// being a per-toolchain semantics. Every use of the conversion is an operand of
+// int arithmetic, and every `auto` over a history table binds a REFERENCE to
+// the entry rather than a copy of its value:
+//
+//   grep -rnE '\bauto\b' src/engine/{search.cpp,movepick.cpp,history.h}
+//     | grep -iE 'hist|stats|entry|bundle|correction'
+//
+// A site that dropped the `&` would take i16 under gcc and int under clang, so
+// add one only where the value is used as this one is.
+template<typename T>
+using Wide = std::conditional_t<HasWideAtomicLoad && std::is_integral_v<T>
+                                  && (sizeof(T) < sizeof(int)),
+                                int,
+                                T>;
+
 // Wrapper around std::atomic<T> which uses relaxed accesses or plain
 // accesses, depending on the config. Intended use is e.g. wasm where
 // the overhead of atomic instructions can be significant, and we only
@@ -306,6 +348,66 @@ class RelaxedAtomic {
             return inner.load(std::memory_order_relaxed);
         else
             return inner;
+    }
+
+    // The value already widened to int, for a caller that is going to do
+    // integer arithmetic with it -- which is every caller of a narrow one.
+    //
+    // clang lowers a 1- or 2-byte relaxed atomic load to `movzwl (mem)` and
+    // then a SEPARATE reg-reg extension, because LLVM has no sextload or
+    // zextload pattern for ATOMIC_LOAD: the DAG node's result is i16 and the
+    // widening cannot fold into it. gcc emits the one `movswl (mem)` a plain
+    // load gets. The defect is per LOAD, and the shared histories are read six
+    // times per quiet move scored.
+    //
+    // On x86-64 a naturally aligned 1- or 2-byte load IS the relaxed atomic
+    // load -- so naming the widening one asserts nothing the hardware does not
+    // already give, and the operand is `inner` itself rather than a punned
+    // pointer. Inline asm with a memory operand is opaque to LLVM's memory
+    // analysis, so it is not forwarded across a store to the same entry nor
+    // hoisted across a call; it is strictly MORE ordered than the relaxed load
+    // it replaces, never less.
+    //
+    // The sanitizer lane keeps the real atomic: ThreadSanitizer instruments
+    // the atomic API and cannot see inline asm, and a lane that stops finding
+    // races is worth more than the instruction.
+    Wide<T> wide() const {
+#if defined(SF_WIDE_ATOMIC_LOAD_ASM)
+        if constexpr (UseAtomic && std::is_integral_v<T> && sizeof(T) < sizeof(int))
+        {
+            // What the asm operand assumes, as build-time facts rather than as
+            // a hope about the standard library's layout: the atomic holds the
+            // scalar and nothing else, at its own alignment, and the hardware
+            // does the access in one go. A libstdc++ that padded or over-
+            // aligned it would fail the build, not miscompile the search.
+            static_assert(sizeof(decltype(inner)) == sizeof(T));
+            static_assert(alignof(decltype(inner)) == alignof(T));
+            static_assert(std::atomic<T>::is_always_lock_free);
+
+            // ONE instruction, which is what makes "=r" rather than "=&r"
+            // correct: x86 reads every source operand of an instruction before
+            // it writes the destination, so clang may -- and does -- allocate
+            // the output over a register holding part of the address.
+            int r;
+            if constexpr (std::is_signed_v<T>)
+            {
+                if constexpr (sizeof(T) == 2)
+                    __asm__("movswl %1, %0" : "=r"(r) : "m"(inner));
+                else
+                    __asm__("movsbl %1, %0" : "=r"(r) : "m"(inner));
+            }
+            else
+            {
+                if constexpr (sizeof(T) == 2)
+                    __asm__("movzwl %1, %0" : "=r"(r) : "m"(inner));
+                else
+                    __asm__("movzbl %1, %0" : "=r"(r) : "m"(inner));
+            }
+            return r;
+        }
+        else
+#endif
+            return static_cast<T>(*this);
     }
 
     RelaxedAtomic& operator+=(T val) {
