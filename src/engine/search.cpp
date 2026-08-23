@@ -150,6 +150,34 @@ static constexpr auto avgScale = [] {
     return scale;
 }();
 
+// Reciprocal of the root aspiration window, for the move loop's window term.
+// rootDeltaScale is ceil(577 * 2^DeltaShift / rootDelta), chosen so that
+//
+//     int((y * rootDeltaScale) >> DeltaShift)
+//
+// is y * 577 / rootDelta for every window y = beta - alpha a node can hold.
+// Unlike the three tables above the divisor is not a function of depth, so
+// there is no table: the reciprocal is taken once per aspiration iteration,
+// where rootDelta is set, and the two sites that wanted the quotient multiply.
+//
+// No sign correction. search() asserts -VALUE_INFINITE <= alpha < beta <=
+// VALUE_INFINITE, so both y and rootDelta lie in [1, 2 * VALUE_INFINITE] and
+// the shift's floor is the truncation the division did. That assert is also
+// what the bound below rests on: with e = rootDeltaScale * rootDelta -
+// (577 << DeltaShift) in [0, rootDelta), the identity holds wherever
+// y * e < 2^DeltaShift, and e < 2 * VALUE_INFINITE.
+//
+// The identity is verified by exhaustion over all 8,192,576,010 pairs with
+// y <= 2 * (2 * VALUE_INFINITE) and rootDelta <= 2 * VALUE_INFINITE, twice the
+// bound the assert admits.
+static constexpr int DeltaShift = 33;
+static constexpr i64 DeltaNum   = i64(577) << DeltaShift;
+
+static_assert(i64(2 * VALUE_INFINITE) * i64(2 * VALUE_INFINITE) < (i64(1) << DeltaShift),
+              "rootDeltaScale error term can exceed the shift");
+static_assert(DeltaNum <= (i64(1) << 62) / i64(2 * VALUE_INFINITE),
+              "rootDeltaScale product can overflow i64");
+
 namespace TB = Tablebases;
 
 void syzygy_extend_pv(const Host&                  host,
@@ -609,8 +637,8 @@ bool Search::Worker::iterative_deepening() {
                 // effective increment for every four searchAgain steps (see issue #2717).
                 Depth adjustedDepth =
                   std::max(1, rootDepth - failedHighCnt - 3 * (searchAgainCounter + 1) / 4);
-                rootDelta = beta - alpha;
-                bestValue = search<Root>(rootPos, ss, alpha, beta, adjustedDepth, false);
+                rootDeltaScale = (DeltaNum + (beta - alpha) - 1) / (beta - alpha);
+                bestValue      = search<Root>(rootPos, ss, alpha, beta, adjustedDepth, false);
 
                 // Bring the best move to the front. It is critical that sorting
                 // is done with a stable algorithm because all the values but the
@@ -1387,11 +1415,11 @@ moves_loop:  // When in check, search starts here
     // It is the one runtime divisor in reduction(): rootDelta is fixed for the
     // whole search and beta never moves inside this function, so the quotient
     // can only change where alpha is raised, which is the single assignment in
-    // step 22. Computed per move instead, it is a hardware integer divide on
-    // every move the node searches -- and the entry assert pins alpha to
-    // beta - 1 at a non-PV node, where alpha cannot be raised at all, so there
-    // the divide ran once per move to produce the same constant every time.
-    int deltaScaled = (beta - alpha) * 577 / rootDelta;
+    // step 22. Computed per move instead, it is a widening multiply on every
+    // move the node searches -- and the entry assert pins alpha to beta - 1 at
+    // a non-PV node, where alpha cannot be raised at all, so there it ran once
+    // per move to produce the same constant every time.
+    int deltaScaled = int((i64(beta - alpha) * rootDeltaScale) >> DeltaShift);
 
     // Step 14. Loop through all pseudo-legal moves until no moves remain
     // or a beta cutoff occurs.
@@ -1813,7 +1841,7 @@ moves_loop:  // When in check, search starts here
 
                 assert(depth > 0);
                 alpha       = value;  // Update alpha! Always alpha < beta
-                deltaScaled = (beta - alpha) * 577 / rootDelta;
+                deltaScaled = int((i64(beta - alpha) * rootDeltaScale) >> DeltaShift);
             }
         }
 
