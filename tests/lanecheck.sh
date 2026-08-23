@@ -36,6 +36,8 @@ cd "$ROOT" || exit 2
 # array cannot express the state.
 EXCUSED=(
   "npsab.sh	wall-clock A/B; a hosted runner is not an idle box, so a ratio measured there is noise"
+  "ltcab.sh	a warm game replayed at depth; it wants an idle box for its wall clock and its counter columns, and one depth-20 replay is 34.6 M nodes per side per round -- a hosted runner measures the hypervisor and times out"
+  "ltcreplay.py	the replay driver ltcab.sh invokes, and the node-clock instrument, rather than a gate run on its own"
   "npsthreads.sh	thread scaling; it needs an idle box AND real cores, and a hosted runner has two shared vCPUs -- a scaling curve measured there describes the hypervisor"
   "testing.py	a harness imported by instrumented.py rather than a gate"
   "get_native_properties.sh	invoked by the Makefile, not by a workflow"
