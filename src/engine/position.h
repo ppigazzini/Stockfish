@@ -223,11 +223,19 @@ class Position {
     // literal, and the function is still a real symbol in the profile at 81.7 M
     // Ir -- so it was never inlined and the constant never reached it. It is
     // read inside the slider loop and stored into every DirtyThreat record.
-    template<bool ComputeRay = true, bool PutPiece = true>
+    // HaveAttacks hands the slider lookup from `s` in rather than taking it, so
+    // that the two halves of a capture can share one; swap_piece below is the
+    // only caller that does. It is a parameter pair and not a thin wrapper
+    // around a common body on purpose: with a wrapper, gcc inlines the wrapper
+    // into do_move and expands both_attacks_bb at every one of its call sites,
+    // which reads +0.345% Ir/node at -O3 where clang reads -0.120%.
+    template<bool ComputeRay = true, bool PutPiece = true, bool HaveAttacks = false>
     void update_piece_threats(Piece               pc,
                               Square              s,
                               DirtyThreats* const dts,
-                              Bitboard            noRaysContaining = -1ULL) const;
+                              Bitboard            noRaysContaining = -1ULL,
+                              Bitboard            bAttacksIn       = 0,
+                              Bitboard            rAttacksIn       = 0) const;
     void move_piece(Square from, Square to, DirtyThreats* const dts = nullptr);
     template<bool Do>
     void do_castling(Color               us,
@@ -448,18 +456,25 @@ inline void Position::move_piece(Square from, Square to, DirtyThreats* const dts
         update_piece_threats<true, true>(pc, to, dts, fromTo);
 }
 
+// Both halves of a capture scan the same board. Every set either scan reads is
+// masked by an attack set computed FROM `s`, and no attack set from `s` contains
+// `s`, so the one bit that differs between "s is empty" and "s holds pc" is the
+// one bit none of those masks can select. Putting the piece down first therefore
+// changes nothing either scan can see, and it leaves the slider lookup from `s`
+// -- the expensive part of both -- common to the pair.
 inline void Position::swap_piece(Square s, Piece pc, DirtyThreats* const dts) {
     Piece old = board[s];
 
     remove_piece(s);
-
-    if (dts)
-        update_piece_threats<false, false>(old, s, dts);
-
     put_piece(pc, s);
 
     if (dts)
-        update_piece_threats<false, true>(pc, s, dts);
+    {
+        const auto [bAttacks, rAttacks] = Attacks::both_attacks_bb(s, pieces());
+
+        update_piece_threats<false, false, true>(old, s, dts, -1ULL, bAttacks, rAttacks);
+        update_piece_threats<false, true, true>(pc, s, dts, -1ULL, bAttacks, rAttacks);
+    }
 }
 
 inline void Position::do_move(Move m, StateInfo& newSt, const TranspositionTable* tt = nullptr) {
