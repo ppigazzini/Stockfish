@@ -45,8 +45,19 @@
     #include <emmintrin.h>
     #include <immintrin.h>
     #include <smmintrin.h>
-    #include "basetypes.h"  // DualMagic's rankAttacksLookup is a u8*
+    // Kept: DualMagic's rankAttacksLookup is a `const u8*`, and its member sits
+    // under `#ifndef USE_GFNI_RANK`. A GFNI host compiles that member out --
+    // x86-64-avx512icl is one -- so IWYU sees no use at that tier and asks for a
+    // removal that reds every avx2 build without GFNI, the tier a player ships.
+    #include "basetypes.h"  // IWYU pragma: keep
     #define USE_DUAL_HYPERBOLA_QUINT
+    #ifdef __GFNI__
+        // vgf2p8affineqb reverses the bits inside every byte of a vector in one
+        // instruction, which turns the byte reversal DualMagic already does into
+        // a full 64-bit bit reversal -- the one thing a rank needs to be solved
+        // by hyperbola quintessence like the other three rays.
+        #define USE_GFNI_RANK
+    #endif
 #endif
 
 namespace Stockfish::Attacks {
@@ -108,29 +119,43 @@ const Magic& magic(Square s, PieceType pt);
 #elif defined(USE_DUAL_HYPERBOLA_QUINT)
 
 struct alignas(32) DualMagic {
-    // file, diagonal, unused, antidiagonal
-    Bitboard maskFile, maskDiag, maskNone, maskAntidiag;
-    // Precomputed 2 * square_bb(sq), 2 * reverse(square_bb(sq))
+    // file, diagonal, rank, antidiagonal. maskRank is zero without
+    // USE_GFNI_RANK: the reversal below is then a byte reversal, which leaves a
+    // rank's bits inside their own byte and so solves nothing on that lane.
+    Bitboard maskFile, maskDiag, maskRank, maskAntidiag;
+    // Precomputed 2 * square_bb(sq), 2 * reverse(square_bb(sq)), where reverse
+    // is the FULL bit reversal -- which is what the GFNI lane performs and what
+    // the byte-reversing lane agrees with wherever a mask can reach.
     Bitboard r, rr;
 
+    #ifndef USE_GFNI_RANK
     const u8* RESTRICT rankAttacksLookup;
     // 8 * rank_of(sq)
     int shift;
+    #endif
 
     // We always compute [bishop, rook] attacks at once, then rely on
     // compiler's DCE and CSE to eliminate unneeded re-computations or extractions.
     //
     // When using hyperbola quintessence, file, diagonal and antidiagonal attacks
     // can use a byte reversal rather than a full bit reversal (because all squares
-    // reside in different bytes). Rank attacks cannot. Thus, for rank attacks
-    // only, we use a compact lookup table indexed by the 6 inner bits of the rank's
-    // occupancy (the edge squares never affect the attack set).
+    // reside in different bytes). Rank attacks cannot: without GFNI they take a
+    // compact lookup table indexed by the 6 inner bits of the rank's occupancy
+    // (the edge squares never affect the attack set), and with it they take the
+    // lane the three ray masks leave empty.
     std::pair<Bitboard, Bitboard> both_attacks_bb(Bitboard occupied) const {
-        // Byteswap within 128-bit elements
-        const auto bswap = [](__m256i v) {
-            return _mm256_shuffle_epi8(v, _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-                                                          13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-                                                          10, 11, 12, 13, 14, 15));
+        // Reverse each 64-bit lane: vpshufb reverses the bytes, and under GFNI
+        // the affine transform by the anti-diagonal matrix reverses the bits
+        // inside each byte. Byte order across the two halves of a 128-bit lane
+        // is immaterial -- rrs below is broadcast and the second call undoes it.
+        const auto reverse = [](__m256i v) {
+            v = _mm256_shuffle_epi8(v, _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+                                                       14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                                                       12, 13, 14, 15));
+    #ifdef USE_GFNI_RANK
+            v = _mm256_gf2p8affine_epi64_epi8(v, _mm256_set1_epi64x(0x8040201008040201ULL), 0);
+    #endif
+            return v;
         };
 
         // Each lane contains a mask and we follow the same HQ algorithm as
@@ -141,18 +166,23 @@ struct alignas(32) DualMagic {
 
         __m256i o      = _mm256_and_si256(mask, _mm256_set1_epi64x(occupied));
         __m256i fwd    = _mm256_sub_epi64(o, rs);
-        __m256i rev    = bswap(_mm256_sub_epi64(bswap(o), rrs));
+        __m256i rev    = reverse(_mm256_sub_epi64(reverse(o), rrs));
         __m256i result = _mm256_and_si256(_mm256_xor_si256(fwd, rev), mask);
 
-        // Lane 0: rook attacks (file only); lane 1: bishop attacks
+        // Lanes 0 and 2: rook attacks (file, rank); lanes 1 and 3: bishop
         __m128i rookBishop =
           _mm_or_si128(_mm256_extracti128_si256(result, 1), _mm256_castsi256_si128(result));
 
+    #ifdef USE_GFNI_RANK
+        // [bishop, rook]
+        return {_mm_extract_epi64(rookBishop, 1), _mm_cvtsi128_si64(rookBishop)};
+    #else
         Bitboard rowOccupancy = rankAttacksLookup[(occupied >> (shift + 1)) & 0x3f];
         Bitboard rankAttacks  = rowOccupancy << shift;
 
         // [bishop, rook]
         return {_mm_extract_epi64(rookBishop, 1), _mm_cvtsi128_si64(rookBishop) + rankAttacks};
+    #endif
     }
 };
 
