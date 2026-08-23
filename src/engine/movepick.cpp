@@ -333,6 +333,7 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     Color us = pos.side_to_move();
 
     [[maybe_unused]] Bitboard threatByLesser[KING + 1];
+    [[maybe_unused]] Bitboard checkSquare[KING + 1];
 
     // The tables the QUIETS arm reads are at the same ADDRESS for every move in
     // the list, and pos.see_ge() below is a call the compiler cannot see
@@ -377,6 +378,17 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
         contHist3 = continuationHistory[3]->data()->data();
         contHist5 = continuationHistory[5]->data()->data();
         pawnHist  = sharedHistory->pawn_entry(pos).data()->data();
+
+        // Copied beside threatByLesser so the per-move read is one instruction.
+        // pos.check_squares(pt) is st->checkSquares[pt], and `st` is one more
+        // loop-invariant pointer than the loop has registers for -- it comes
+        // back off the stack once a move and the plane load hangs off it, two
+        // instructions where a local array indexed off rsp is one. clang copies
+        // the eight bitboards as two 256-bit moves, so the whole hoist is four
+        // instructions per generated quiet list against one saved per move in
+        // it.
+        for (int pt = PAWN; pt <= KING; ++pt)
+            checkSquare[pt] = pos.check_squares(PieceType(pt));
     }
 
     // Walked by INDEX rather than by two pointers. A range-for over the source
@@ -439,7 +451,7 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
             // is 98.93% of the moves scored -- a callgrind count at depth 12
             // puts the see_ge() below at 24,917 calls over 2,324,412 quiets --
             // so the two instructions are paid on essentially every move.
-            if ((pos.check_squares(pt) & to) && pos.see_ge(m, -75))
+            if ((checkSquare[pt] & to) && pos.see_ge(m, -75))
                 value += 16384;
 
             // penalty for moving to a square threatened by a lesser piece
