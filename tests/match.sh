@@ -125,16 +125,32 @@ WORK=$(mktemp -d) || exit 2
 # evidence, and this is what stops the trap from deleting it one line later:
 # the two worktrees are gigabytes of build output and always go, the two logs
 # are kilobytes and are the only reason anyone re-reads a failed match.
+# A CLEAN match used to delete its own transcript. KEEP_LOGS was set only on the
+# FINDINGS path, so the runs whose numbers are worth quoting -- every one that
+# played cleanly -- had their log and their transcript rm -rf'd on exit, and the
+# only surviving record of a 2000-game match was terminal scrollback. Dozens of
+# matches were lost that way. It is inverted now: the evidence is kept whenever
+# fastchess produced any, and a one-line summary is appended to a ledger so a
+# sequence of matches accumulates without anyone remembering to write it down.
 KEEP_LOGS=0
+LEDGER=${SF_MATCH_LEDGER:-$ROOT/resources/matches.tsv}
+# Both are read by cleanup(), which runs on EXIT from anywhere, and `set -u` is
+# on: they are set here rather than beside their use so no early exit reaches an
+# unbound name inside the trap.
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+SAFE_TC=untimed
 # shellcheck disable=SC2329
 # invoked by `trap cleanup EXIT INT TERM` below, which shellcheck cannot see
 cleanup() {
     for d in "$WORK"/wt-*; do
         [ -d "$d" ] && git worktree remove --force "$d" >/dev/null 2>&1
     done
-    if [ "$KEEP_LOGS" = 1 ]; then
+    if [ "$KEEP_LOGS" = 1 ] && [ -s "$WORK/match.out" ]; then
         local evid
-        evid=$(mktemp -d -t match-evidence-XXXXXX) && {
+        # Beside the ledger, not in /tmp: a transcript the OS reaps in a week is
+        # the same defect one line later.
+        evid=$(dirname "$LEDGER")/match-evidence/$STAMP-${BASE_SHA:0:8}-${HEAD_SHA:0:8}-$SAFE_TC
+        mkdir -p "$evid" && {
             cp "$WORK/match.log" "$WORK/match.out" "$evid/" 2>/dev/null
             echo "match: the log and the transcript are in $evid" >&2
         }
@@ -268,12 +284,40 @@ echo
 echo "== score =="
 grep -E 'Score of|Elo|LOS|Games:|Points:|Ptnml' "$WORK/match.out" | tail -12 | sed 's/^/  /'
 
+# ---------------------------------------------------------------- the ledger
+# One line per completed match, appended. A field that fastchess did not print
+# is written as "-" rather than left empty: an empty column silently shifts
+# every column after it when anything reads the file back.
+SAFE_TC=$(printf '%s' "$TC" | tr -c 'A-Za-z0-9.+_-' '_')
+KEEP_LOGS=1
+pick() { grep -aoE "$1" "$WORK/match.out" | tail -1 | sed -E "s/$2//" || true; }
+# `Elo:` also matches inside `nElo:`, and the two sit on one line -- taking the
+# last match wrote the normalised Elo into the Elo column. Anchor each one.
+ELO=$(grep -aE '^[[:space:]]*Elo:' "$WORK/match.out" | tail -1 \
+      | sed -E 's/^[[:space:]]*Elo: *//; s/,.*//' || true)
+NELO=$(grep -aoE 'nElo: *-?[0-9.]+ \+/- *[0-9.]+' "$WORK/match.out" | tail -1 \
+      | sed -E 's/nElo: *//' || true)
+LOS=$(pick 'LOS: *[0-9.]+' 'LOS: *')
+PTN=$(pick 'Ptnml\(0-2\): *\[[0-9, ]+\]' 'Ptnml\(0-2\): *')
+PTS=$(pick 'Points: *[0-9.]+ *\([0-9.]+ *%\)' 'Points: *')
+mkdir -p "$(dirname "$LEDGER")" 2>/dev/null
+if [ ! -s "$LEDGER" ]; then
+    printf 'utc\tbase\thead\ttc\tgames\tconc\tthreads\thash\tarch\tcomp\tbook\tsyzygy\telo\tnelo\tlos\tpoints\tptnml\tfaults\texit\n' \
+        >> "$LEDGER"
+fi
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$STAMP" "$BASE_SHA" "$HEAD_SHA" "$TC" "$((ROUNDS * 2))" "$CONCURRENCY" \
+    "$THREADS" "$HASH" "$ARCH" "$COMP" "$(basename "$BOOK")" \
+    "${SYZYGY:--}" "${ELO:--}" "${NELO:--}" "${LOS:--}" "${PTS:--}" "${PTN:--}" \
+    "$fail" "$rc" >> "$LEDGER"
+echo
+echo "match: appended to $LEDGER"
+
 echo
 echo "match: base=$BASE_SHA head=$HEAD_SHA, $((ROUNDS * 2)) games at $TC"
 if [ "$fail" != 0 ]; then
     echo "match: FINDINGS -- at least one game did not play cleanly"
     echo "match: the log is the evidence; re-run on an idle box before blaming the engine"
-    KEEP_LOGS=1
     exit 1
 fi
 echo "match: every game played -- no crash, no disconnect, no illegal move, no timeout"
