@@ -19,7 +19,11 @@
 #include "movepick.h"
 
 #include <cassert>
-#include <limits>
+// Kept: std::numeric_limits, used by MoveSorter below -- the branch compiled
+// when the vector paths are. IWYU asks to drop it at every ARCH that takes
+// the scalar path, and dropping it stops the tree building at the ones that
+// do not.
+#include <limits>  // IWYU pragma: keep
 #include <type_traits>
 #include <utility>
 
@@ -126,30 +130,48 @@ struct MoveSorter {
 };
 #endif
 
-// Sort moves in descending order up to and including a given limit.
-// The order of moves smaller than the limit is left unspecified.
-void partial_insertion_sort(ExtMove* begin, ExtMove* end, int limit) {
-    ExtMove *sortedEnd = begin, *p = begin + 1;
+// Sort every move in the range, descending.
+//
+// This is the shape the call sites with no limit need, and naming it is what
+// removes a copy they were paying per move. With no score able to fail,
+// `sortedEnd` advances on every move and so tracks `p` exactly -- which makes
+// `*p = *++sortedEnd` a copy of a slot onto itself. clang keeps it: at
+// avx512icl the unrolled sorter reloads the eight bytes through a vector
+// extract and a `shld` and stores them back, on every move of every capture and
+// evasion list. The ladder below starts at the same slot the general form's
+// `sortedEnd` would name, so the order out is the same order.
+void sort_all(ExtMove* begin, ExtMove* end) {
+    ExtMove* p = begin + 1;
 
 #ifdef USE_AVX512
     if (begin == end)
         return;
 
-    MoveSorter sorter(*begin);
-    for (; p < end; ++p)
-    {
-        if (p->value >= limit)
-        {
-            if (sortedEnd - begin + 1 >= MoveSorter::MAX_ELEMENTS)  // sorter full
-                break;
+    MoveSorter     sorter(*begin);
+    ExtMove* const sorterEnd =
+      end - begin < MoveSorter::MAX_ELEMENTS ? end : begin + MoveSorter::MAX_ELEMENTS;
 
-            sorter.insert(*p);
-            *p = *++sortedEnd;
-        }
-    }
-    sorter.write_sorted(begin, sortedEnd - begin + 1);
+    for (; p < sorterEnd; ++p)
+        sorter.insert(*p);
+
+    sorter.write_sorted(begin, p - begin);
     // Use scalar implementation for any remaining elements
 #endif
+
+    for (; p < end; ++p)
+    {
+        ExtMove tmp = *p, *q;
+        for (q = p; q != begin && *(q - 1) < tmp; --q)
+            *q = *(q - 1);
+        *q = tmp;
+    }
+}
+
+#ifndef USE_AVX512
+// Sort moves in descending order up to and including a given limit.
+// The order of moves smaller than the limit is left unspecified.
+void partial_insertion_sort(ExtMove* begin, ExtMove* end, int limit) {
+    ExtMove *sortedEnd = begin, *p = begin + 1;
 
     for (; p < end; ++p)
         if (p->value >= limit)
@@ -161,11 +183,13 @@ void partial_insertion_sort(ExtMove* begin, ExtMove* end, int limit) {
             *q = tmp;
         }
 }
+#endif
 
 #ifdef USE_AVX512
-// The same sort for the one call site whose limit is not INT_MIN.
+// The sort for the one call site that HAS a limit, where a score can fail and
+// the walk cannot just run to the sorter's capacity.
 //
-// The scan above runs `p->value >= limit` once per move and branches on it --
+// A scalar scan runs `p->value >= limit` once per move and branches on it --
 // 33.9 moves a call at a 34% true rate, which is the band a predictor cannot
 // learn. Here the test is a vpcmpd over eight moves at a time and there is no
 // branch left to mispredict: what remains is a walk of the ~11.5 bits that came
@@ -498,7 +522,7 @@ top:
         cur = endBadCaptures = moves;
         endCur = endCaptures = score<CAPTURES>(ml);
 
-        partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
+        sort_all(cur, endCur);
         ++stage;
         goto top;
     }
@@ -534,7 +558,7 @@ top:
         cur    = moves;
         endCur = endGenerated = score<EVASIONS>(ml);
 
-        partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
+        sort_all(cur, endCur);
         ++stage;
         [[fallthrough]];
     }
