@@ -100,7 +100,17 @@ struct StatsEntry {
 
     void operator=(const T& v) { entry = v; }
 
-    operator T() const { return entry; }
+    // The conversion WIDENS. A history counter is only ever read into int
+    // arithmetic, so handing out the narrow type just moves the promotion to
+    // the caller -- and on a shared table that promotion is a second
+    // instruction rather than a part of the load. RelaxedAtomic::wide() says
+    // why.
+    operator Wide<T>() const {
+        if constexpr (Shared)
+            return entry.wide();
+        else
+            return entry;
+    }
 
     void operator<<(int bonus) {
         // Make sure that bonus is in range [-D, D]
