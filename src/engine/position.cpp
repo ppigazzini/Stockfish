@@ -1230,22 +1230,33 @@ constexpr bool can_slider_threat(Piece pc, Piece slider) {
     return type_of(pc) != QUEEN || type_of(slider) == QUEEN;
 }
 
-template<bool ComputeRay, bool PutPiece>
+template<bool ComputeRay, bool PutPiece, bool HaveAttacks>
 void Position::update_piece_threats(Piece               pc,
                                     Square              s,
                                     DirtyThreats* const dts,
                                     // Silence spurious warning on GCC 10
-                                    [[maybe_unused]] Bitboard noRaysContaining) const {
+                                    [[maybe_unused]] Bitboard noRaysContaining,
+                                    Bitboard                  bAttacksIn,
+                                    Bitboard                  rAttacksIn) const {
     constexpr bool putPiece = PutPiece;
 
-    const Bitboard occupied         = pieces();
-    const Bitboard rookQueens       = pieces(ROOK, QUEEN);
-    const Bitboard bishopQueens     = pieces(BISHOP, QUEEN);
-    const auto [bAttacks, rAttacks] = both_attacks_bb(s, occupied);
-    const Bitboard  sliderAttacks   = bAttacks | rAttacks;
-    const Bitboard  occupiedNoK     = occupied ^ pieces(KING);
-    const PieceType pt              = type_of(pc);
-    const Bitboard  sliders         = (rookQueens & rAttacks) | (bishopQueens & bAttacks);
+    const Bitboard occupied     = pieces();
+    const Bitboard rookQueens   = pieces(ROOK, QUEEN);
+    const Bitboard bishopQueens = pieces(BISHOP, QUEEN);
+
+    Bitboard bAttacks = bAttacksIn, rAttacks = rAttacksIn;
+
+    if constexpr (!HaveAttacks)
+    {
+        const auto [b, r] = both_attacks_bb(s, occupied);
+        bAttacks          = b;
+        rAttacks          = r;
+    }
+
+    const Bitboard  sliderAttacks = bAttacks | rAttacks;
+    const Bitboard  occupiedNoK   = occupied ^ pieces(KING);
+    const PieceType pt            = type_of(pc);
+    const Bitboard  sliders       = (rookQueens & rAttacks) | (bishopQueens & bAttacks);
 
     auto process_sliders = [&](bool addDirectAttacks) {
         Bitboard b = sliders;
