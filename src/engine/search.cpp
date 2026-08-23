@@ -97,6 +97,24 @@ static_assert([] {
     return true;
 }(), "lmrScale magic does not fit in int");
 
+// The precondition the `+ (h < 0)` correction rests on, stated so a tuner
+// cannot break it silently. Rounding the magic up leaves an error term
+//
+//     e = lmrScale[i] * lmrDivisor[i] - 2^40
+//
+// and the correction turns the shift's floor into truncation only while e is
+// strictly positive; where the divisor divides 2^40 exactly, e collapses to
+// zero and the correction adds one to every negative exact multiple. Off the
+// bench positions, invisible to the anchor. e is zero exactly for a divisor
+// that is a power of two, and no entry is one today -- but that is a property
+// of the tuned numbers, not of the construction, so it is checked here.
+static_assert([] {
+    for (usize i = 0; i < lmrScale.size(); ++i)
+        if (i64(lmrScale[i]) * lmrDivisor[i] - (i64(1) << 40) <= 0)
+            return false;
+    return true;
+}(), "a lmrDivisor entry divides 2^40, so the lmrScale correction overshoots");
+
 // Scale-up factors for expected-ALL nodes. allNodeScale[d] is
 // ceil(2^40 * 276 / (256 * d + 268)), chosen so that
 //
@@ -120,6 +138,17 @@ static constexpr auto allNodeScale = [] {
     }
     return scale;
 }();
+
+// The same precondition, for the same reason. Here it holds because the odd
+// part of 256 * d + 268 is 64 * d + 67, which is at least 131 for every d the
+// table holds and so cannot divide the odd part of 276, which is 69. Move
+// 276, 256 or 268 and that stops being true without any other symptom.
+static_assert([] {
+    for (usize d = 1; d < allNodeScale.size(); ++d)
+        if (allNodeScale[d] * (256 * i64(d) + 268) - (i64(276) << 40) <= 0)
+            return false;
+    return true;
+}(), "an allNodeScale divisor divides 276 * 2^40, so the correction overshoots");
 
 // Reciprocals of depth + 1, for the fail-high average in step 21. avgScale[d]
 // is 2^36 / (d + 1) + 1, chosen so that
