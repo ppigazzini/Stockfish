@@ -110,7 +110,17 @@ number stops being comparable.
 
 **Measure with gcc AND clang, and let PGO decide.** One compiler cannot distinguish a change
 from its own codegen. Run `perfbudget.sh` with `--comp gcc` and `--comp clang`, and with
-`--pgo`, and put all of them in the commit body.
+`--pgo`, and put all of them in the commit body. **`ltcab.sh --counters` takes `--comp` too, and
+a single-compiler campaign does not announce itself**: a loop peel reading -0.92% under clang
+reads +7.2% under gcc at the same tier, deterministically, reproducibly, and with nothing in the
+clang column to hint at it.
+
+**Assess in this order**, cheapest first, each step having killed candidates on its own:
+count how often the code runs; predict the taken-rate of any branch you add and treat 20-80% as
+a regression; measure instructions on both compilers; diff symbol sizes when a small change
+moves the number a lot; prove neutrality with a preprocessor hash where a guard makes it
+possible; and only then reach for cycles.
+[docs/11-performance.md](docs/11-performance.md) carries each step with its command.
 
 A sign that **flips between gcc and clang** means the change is not an instruction-count change
 at all -- it is one compiler's layout. A header change on this tree reads as a regression under
