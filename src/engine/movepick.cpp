@@ -31,6 +31,18 @@
     #include <immintrin.h>
 #endif
 
+// Spelled here rather than in compiler.h because one function needs it and the
+// reason is local: MovePicker::generate_stage() has a single call site, which
+// is the shape every inliner folds, and folding it is exactly what puts its
+// frame back on the calls that do not use it.
+#if defined(__GNUC__)
+    #define SF_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+    #define SF_NOINLINE __declspec(noinline)
+#else
+    #define SF_NOINLINE
+#endif
+
 namespace Stockfish {
 
 namespace {
@@ -452,38 +464,19 @@ Move MovePicker::select(Pred filter) {
     return Move::none();
 }
 
-// This is the most important method of the MovePicker class. We emit one
-// new pseudo-legal move on every call until there are no more moves left,
-// picking the move with the highest score from a list of generated moves.
-Move MovePicker::next_move() {
+// The stages that have no list to walk yet: the TT move, the three that
+// generate and score one, and the two that filter a list through see_ge().
+//
+// It is out of line and never inlined because of what it costs its caller to
+// hold. A MoveList<> is 512 bytes of stack and the generating arms need six
+// callee-saved registers between them, so a single function pays a 680-byte
+// frame and a six-push prologue on EVERY next_move() call -- and 56.7% of them
+// only ever walk a list. A warm 60-ply game at depth 20 spends 22.6 Ir a node
+// entering that frame and 26.7 leaving it, over 3.20 calls, which is 6% of the
+// whole of next_move() and buys nothing on the calls that do not generate.
+SF_NOINLINE Move MovePicker::generate_stage() {
 
-    constexpr int goodQuietThreshold = -14000;
 top:
-    // Essentially every indirect mispredict the engine pays is this jump table.
-    // A callgrind --branch-sim profile at avx2, marginal depth 12 to 16, puts
-    // whole-engine indirect mispredicts at 1.41 per node and attributes 1.409 of
-    // them here, over about 8.8 entries at a simulated 47.9% rate. Over a warm
-    // 60-ply game at depth 20 the dispatch runs 3.20 times per node, and 56.7%
-    // of those ask for one of the three consecutive stages that do nothing but
-    // walk a list: GOOD_QUIET 22.5%, BAD_CAPTURE 6.5%, BAD_QUIET 27.7%. Those
-    // three are hoisted below the switch and reached by a range test, so more
-    // than half of the dispatches become direct branches and the table keeps the
-    // rest. They still chain by fallthrough exactly as they did as cases; only
-    // QUIET_INIT reaches the first of them by a jump rather than by falling in.
-    //
-    // Naming them AHEAD of the switch while they were still cases of it did
-    // nothing: clang folds a test whose target is a case label back into the
-    // table, and the emitted dispatch was byte-identical. They have to leave the
-    // switch for the test to survive.
-    if (unsigned(stage - GOOD_QUIET) <= unsigned(BAD_QUIET - GOOD_QUIET))
-    {
-        if (stage == GOOD_QUIET)
-            goto good_quiet;
-        if (stage == BAD_CAPTURE)
-            goto bad_capture;
-        goto bad_quiet;
-    }
-
     switch (stage)
     {
 
@@ -530,7 +523,7 @@ top:
         }
 
         ++stage;
-        goto good_quiet;
+        return walk_lists();
 
     case EVASION_INIT : {
         MoveList<EVASIONS> ml(pos);
@@ -553,6 +546,26 @@ top:
 
     assert(false);
     return Move::none();  // Silence warning
+}
+
+// The three stages that only walk a list, chained by fallthrough exactly as
+// they were when they were cases of the switch above. Reached by a range test
+// rather than through the jump table, so more than half of the dispatches are a
+// direct branch and the table keeps the rest.
+//
+// Naming them AHEAD of the switch while they were still cases of it did
+// nothing: clang folds a test whose target is a case label back into the table,
+// and the emitted dispatch was byte-identical. They have to leave the switch
+// for the test to survive -- and leaving the FUNCTION is what drops the frame.
+Move MovePicker::walk_lists() {
+
+    constexpr int goodQuietThreshold = -14000;
+
+    if (stage == GOOD_QUIET)
+        goto good_quiet;
+    if (stage == BAD_CAPTURE)
+        goto bad_capture;
+    goto bad_quiet;
 
 good_quiet:
         // A good quiet is one scoring above goodQuietThreshold, and select()
@@ -614,6 +627,25 @@ bad_quiet:
             return select([&]() { return cur->value <= goodQuietThreshold; });
 
         return Move::none();
+}
+
+// This is the most important method of the MovePicker class. We emit one
+// new pseudo-legal move on every call until there are no more moves left,
+// picking the move with the highest score from a list of generated moves.
+//
+// Essentially every indirect mispredict the engine pays is the jump table in
+// generate_stage(). A callgrind --branch-sim profile at avx2, marginal depth 12
+// to 16, puts whole-engine indirect mispredicts at 1.41 per node and attributes
+// 1.409 of them there, over about 8.8 entries at a simulated 47.9% rate. Over a
+// warm 60-ply game at depth 20 the dispatch runs 3.20 times per node, and 56.7%
+// of those ask for one of the three consecutive stages that do nothing but walk
+// a list: GOOD_QUIET 22.5%, BAD_CAPTURE 6.5%, BAD_QUIET 27.7%.
+Move MovePicker::next_move() {
+
+    if (unsigned(stage - GOOD_QUIET) <= unsigned(BAD_QUIET - GOOD_QUIET))
+        return walk_lists();
+
+    return generate_stage();
 }
 
 void MovePicker::skip_quiet_moves() { skipQuiets = true; }
