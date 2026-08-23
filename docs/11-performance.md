@@ -764,14 +764,24 @@ A map is worth more than a guess about which file to open. Take it with the same
 the counters use, so the two describe the same tree:
 
 ```sh
-valgrind --tool=callgrind --callgrind-out-file=cg.out \
-    ./stockfish bench 16 1 20 <fen> depth
+python3 tests/ltcreplay.py replay --bin ./stockfish --depth 20 --hash 16 --threads 1 \
+    --moves game.moves --plies 60 \
+    --wrap "valgrind --tool=callgrind --callgrind-out-file=cg.out"
 callgrind_annotate cg.out | head -40
 ```
+
+`--wrap` puts the launcher OUTSIDE the counter harness, so the profile describes the engine and
+not the driver. Mapping `bench` maps a cold search of an unrelated position against an empty
+table, which is the regime `tests/ltcab.sh` exists because a long clock does not reach.
 
 On this tree at depth 20 the split is roughly: NNUE two thirds of all retired instructions, of
 which the accumulator update is half again; the search node itself around a seventh; move
 picking a tenth; `do_move` a twelfth. `qsearch` and `see_ge` are each around one percent.
+
+Warm at depth 20, `MovePicker::next_move` is **9.64% of retired instructions, 791.7 per node**:
+move scoring 185.5, the partial insertion sort 105.1, and the hottest single source line, the
+sort's insertion ladder, 46.2. A tenth of the program in one function, and no line inside it
+above six tenths of a percent.
 
 **The map is an avx2 map, and the tier changes the answer.** callgrind implements no AVX-512, so
 a component whose code path differs above avx2 is mis-sized by it: the network's dense layers
