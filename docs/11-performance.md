@@ -194,6 +194,14 @@ investigate it when it is large, and do not let it alone veto a change. That is 
 about which measurement answers the question, not a licence to skip one. A change still reports
 both, and a regression under PGO still does not land.
 
+**The same rule binds the warm-game axis, and it is the one that is easy to skip.**
+`tests/ltcab.sh --counters` takes `--comp`, and a single-compiler campaign will not tell you it
+is single-compiler. A loop peel that reads -0.92% under clang reads **+7.2% under gcc** at the
+same tier: at `x86-64-avx512icl` the peel leaves a remainder of exactly one trip, clang deletes
+it, and gcc emits the tile body twice and keeps the counted loop around the copy. Nothing in the
+clang column hints at it -- the ratio is deterministic, it reproduces across independent builds,
+and it is wrong about the other compiler.
+
 **One `-O3` lane is not evidence; the pattern across lanes is.** A header change can exceed
 tolerance at one (tier, compiler) pair and be free at every other, and which pair that is does
 not repeat from change to change. A reading that changes sign or vanishes when the compiler or
@@ -579,8 +587,29 @@ Measure the floor the same way you measure a change, with the same revision on b
 Two properties separate the columns, and they decide which one may carry a claim.
 
 **Retired instructions and retired branches are deterministic.** They reproduce to five decimals
-across independently built binaries, so a ratio on either is a fact about the code. A change too
-small to move them has not been shown to cost or save anything.
+across independently built binaries. A change too small to move them has not been shown to cost
+or save anything.
+
+**Absolute figures are not comparable across compilers.** The same binary pair at the same tier
+and the same node count retires materially more instructions under one compiler than the other,
+so a per-node figure is a number about a lane. Ratios within a lane are comparable; absolutes
+across lanes are not.
+
+**Deterministic is not the same as attributable.** A ratio on those columns is a fact about the
+code AND the base it was measured on. A small diff can cross a profile-guided inlining threshold
+and move functions it never touched: one source delta read +0.04% against one base and -0.53%
+against another, both clang under PGO, with the whole difference coming from the inliner
+declining to fold a history-update cascade into two search instantiations. The effect is worth
+up to half a percent of total instructions -- a hundred times the layout floor below -- and no
+A/A can see it, because it is perfectly reproducible.
+
+Two checks catch it, and they are cheap:
+
+- **Take one plain `-O3` or gcc cell beside every PGO number.** The ripple needs the profile; a
+  change whose own cost is real reads the same sign on the lane without one.
+- **Diff the symbol sizes when a small diff produces a large ratio.** `nm --size-sort` on both
+  binaries: if `Worker::search` or a caller the diff never mentions changed size, the ratio
+  belongs to the inliner rather than to the change.
 
 **Every other column is a hardware counter sampling a shared machine.** Cycles, cache misses and
 branch mispredicts vary between two runs of the SAME binary by more than most refactors move
@@ -620,6 +649,77 @@ A product is valid only where each factor was measured against the previous fact
 `A->B`, then `B->C`, then `C->D`. Measured that way the product and the direct `A->D` reading
 agree to four decimals. Measured against a shared base they do not, and the direct reading is
 the one to quote.
+
+The same reason forbids carrying a candidate's ratio from one base to another. A figure measured
+on last round's stack is not that change's figure on this one; re-measure it where it will land.
+
+## The order to assess a change
+
+Each step is cheaper than the one after it and each one has killed candidates outright.
+
+**1. Count how often it runs.** A cost per call is half a claim; the other half is the call
+rate, and the other half is what fails. One `callgrind` call census, or two relaxed atomics and
+a bench, settles it before any code exists.
+
+```sh
+grep -E '^(c?fn=|calls=)' cg.out      # resolve ids, then sum calls= into the symbol
+```
+
+An ABI cost priced at a source-level call rate came to nothing because the callee was inlined at
+every hot site; a guard aimed at an empty mask was worth nothing because its list was empty on
+1.3% of calls rather than the 43% the neighbouring function saw. Both were one census away.
+
+**2. Predict the taken-rate of any branch you add.** A data-dependent test near 50% is maximum
+entropy for the predictor and costs more than the work it skips. A guard firing on 48% of calls
+removed 0.45% of instructions and added 4.9% of mispredicts. Near 5% or 95% the same guard is
+nearly free. State the rate; treat 20% to 80% as a regression until measured otherwise.
+
+**3. Measure instructions, on both compilers.** `Ir/node` and `branches/node` are the two
+columns that reproduce across independently built binaries. Take gcc beside clang every time --
+see above for what one compiler alone hides.
+
+**4. Diff the symbol sizes when a small diff moves the number a lot.**
+
+```sh
+nm --size-sort -S base/src/stockfish > a; nm --size-sort -S head/src/stockfish > b; diff a b
+```
+
+If a caller the diff never mentions changed size, the ratio belongs to the inliner. A ten-line
+change to one file moved `Worker::search<PV>` by 3341 bytes and `update_all_stats` by 1416, and
+the same ripple appeared for a different diff of the same function -- which is what identifies
+it as a threshold crossing rather than an effect of either change.
+
+**5. Prove neutrality where you can, rather than measuring it.** A change guarded for one
+compiler is neutral on the other if the preprocessed translation unit is unchanged:
+
+```sh
+clang++ -E -P -Isrc src/engine/nnue/nnue_accumulator.cpp | sha256sum   # base and head
+```
+
+That is a proof. A ratio of 1.00000 is a measurement, and a weaker statement.
+
+**6. Only then reach for cycles**, on an idle box, with the control beside it -- and expect it
+to decide nothing below a few percent.
+
+## Where the instructions are
+
+A map is worth more than a guess about which file to open. Take it with the same warm workload
+the counters use, so the two describe the same tree:
+
+```sh
+valgrind --tool=callgrind --callgrind-out-file=cg.out \
+    ./stockfish bench 16 1 20 <fen> depth
+callgrind_annotate cg.out | head -40
+```
+
+On this tree at depth 20 the split is roughly: NNUE two thirds of all retired instructions, of
+which the accumulator update is half again; the search node itself around a seventh; move
+picking a tenth; `do_move` a twelfth. `qsearch` and `see_ge` are each around one percent.
+
+The consequence is a sizing rule. **A change confined to the search node cannot reach one
+percent of the program without deleting an eighth of everything that node does**, and the
+largest single source line there is a third of a percent. Time spent hunting inside a component
+is bounded by that component's share, and the share is one command away.
 
 ## `tests/perfdecomp.sh`
 
