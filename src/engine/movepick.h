@@ -56,6 +56,8 @@ class MovePicker {
     Move select(Pred);
     template<GenType T>
     ExtMove* score(const MoveList<T>&);
+    Move     generate_stage();
+    Move     walk_lists();
 
     const Position&              pos;
     const ButterflyHistory*      mainHistory;
