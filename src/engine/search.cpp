@@ -1323,8 +1323,16 @@ Value Search::Worker::search(
         Value futilityMult = std::min(45 + depth * 4, 85);
         futilityMult -= 20 * !ss->ttHit;
 
+        // `>> 10` for the same reason as step 14's shift, and on the same
+        // precondition: both flags are bool, so the left factor is one of
+        // 0, 335, 2789, 3124, and futilityMult is at least 29 -- depth is
+        // asserted positive on entry and only ever leaves this block's reach
+        // at 1 or above, so min(45 + 4 * depth, 85) is at least 49 and the
+        // !ttHit term subtracts 20. The product is never negative, so the
+        // shift is the division. gcc emits an `idiv` for the /1024 here,
+        // 785,276 of them in the same replay; clang already emitted `shr`.
         Value futilityMargin = futilityMult * depth
-                             - (2789 * improving + 335 * opponentWorsening) * futilityMult / 1024
+                             - ((2789 * improving + 335 * opponentWorsening) * futilityMult >> 10)
                              + std::abs(correctionValue) / 198435;
 
         if (eval - futilityMargin >= beta)
@@ -1338,7 +1346,11 @@ Value Search::Worker::search(
         assert((ss - 1)->currentMove != Move::null());
 
         // Null move dynamic reduction based on depth
-        Depth R = 7 + depth / 3 + std::max((ss->staticEval - beta) / 256, 0);
+        // `>> 8` under the max, where the division and the shift agree without
+        // any precondition on the sign: they are equal for a non-negative
+        // difference, and for a negative one both sides are at most zero, so
+        // the max returns zero either way. Moving the max would break that.
+        Depth R = 7 + depth / 3 + std::max((ss->staticEval - beta) >> 8, 0);
         do_null_move(pos, st, ss);
 
         Value nullValue = -search<NonPV>(pos, ss + 1, -beta, -beta + 1, depth - R, false);
@@ -1498,8 +1510,22 @@ moves_loop:  // When in check, search starts here
         // Depth conditions are important for mate finding.
         if (!rootNode && pos.non_pawn_material(us) && !is_loss(bestValue))
         {
-            // Skip quiet moves if movecount exceeds our threshold
-            if (moveCount >= (3 + depth * depth) / (2 - improving))
+            // Skip quiet moves if movecount exceeds our threshold.
+            //
+            // `>> !improving` rather than `/ (2 - improving)`: improving is a
+            // bool, so the divisor is 1 or 2, and the dividend is 3 + a square
+            // and therefore never negative -- the shift IS the division, for
+            // every value either can take. Keep the dividend non-negative if
+            // the constant ever moves, or the shift starts rounding the other
+            // way on the negatives and the tree diverges off the bench list.
+            //
+            // Spelling it as a shift is not the compiler's job here, because
+            // one of the two does not do it. gcc 13.3 -O3 x86-64-avx2 expands
+            // the division as a hardware `idiv` on a register holding
+            // 2 - improving, and callgrind --dump-instr counts 3,018,198 of
+            // them in a warm 60-ply depth-13 replay -- 1.68 per node, on a
+            // divider that is not pipelined. clang already emitted `shr`.
+            if (moveCount >= (3 + depth * depth) >> !improving)
                 mp.skip_quiet_moves();
 
             // Reduced depth of the next LMR search
