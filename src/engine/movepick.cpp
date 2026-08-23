@@ -20,6 +20,7 @@
 
 #include <cassert>
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 // bitboard.h is reached only from the AVX-512 sorter below, which calls lsb() on
@@ -308,9 +309,25 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     // invariant by construction, since a position does not change while its own
     // move list is scored. Only the addresses are named here; every counter is
     // still loaded per move.
-    [[maybe_unused]] const PieceToHistory *   contHist0, *contHist1, *contHist2, *contHist3,
-      *contHist5;
-    [[maybe_unused]] const PawnHistoryEntry* pawnHist;
+    //
+    // Each is the FIRST ELEMENT of its plane rather than the plane, because the
+    // six are all read at the same [pc][to] and clang lowers `(*t)[pc][to]` as
+    // `t + pc * 128` and then an index of `to * 2`: one add per plane that the
+    // addressing mode could have carried for free. A flat element index named
+    // once leaves `base + hi * 2`, and the add goes away six times a move.
+    //
+    // MultiArray is a std::array of std::array of a two-byte entry with nothing
+    // between them, so [pc][to] is element pc * SQUARE_NB + to of one run --
+    // which is the same layout MultiArray::fill() writes through. The
+    // static_asserts below are what hold that; a padded entry breaks the build
+    // rather than the ordering.
+    using ContEntry = std::remove_pointer_t<decltype(continuationHistory[0]->data()->data())>;
+    using PawnEntry =
+      std::remove_pointer_t<decltype(sharedHistory->pawn_entry(pos).data()->data())>;
+    static_assert(sizeof(PieceToHistory) == PIECE_NB * SQUARE_NB * sizeof(ContEntry));
+    static_assert(sizeof(PawnHistoryEntry) == PIECE_NB * SQUARE_NB * sizeof(PawnEntry));
+    [[maybe_unused]] ContEntry *contHist0, *contHist1, *contHist2, *contHist3, *contHist5;
+    [[maybe_unused]] PawnEntry* pawnHist;
 
     if constexpr (Type == QUIETS)
     {
@@ -321,12 +338,12 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
         threatByLesser[QUEEN] = pos.attacks_by<ROOK>(~us) | threatByLesser[ROOK];
         threatByLesser[KING]  = 0;
 
-        contHist0 = continuationHistory[0];
-        contHist1 = continuationHistory[1];
-        contHist2 = continuationHistory[2];
-        contHist3 = continuationHistory[3];
-        contHist5 = continuationHistory[5];
-        pawnHist  = &sharedHistory->pawn_entry(pos);
+        contHist0 = continuationHistory[0]->data()->data();
+        contHist1 = continuationHistory[1]->data()->data();
+        contHist2 = continuationHistory[2]->data()->data();
+        contHist3 = continuationHistory[3]->data()->data();
+        contHist5 = continuationHistory[5]->data()->data();
+        pawnHist  = sharedHistory->pawn_entry(pos).data()->data();
     }
 
     ExtMove* it = cur;
@@ -364,20 +381,36 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
             // AND 476 K more instructions on a depth-9 search, so it is not even
             // a trade. Stopping the accumulator at the store leaves the tail
             // where it was, and the mispredicts fall with the instruction count.
-            int value = 2 * (*mainHistory)[us][m.raw()];
-            value += 2 * (*pawnHist)[pc][to];
-            value += (*contHist0)[pc][to];
-            value += (*contHist1)[pc][to];
-            value += (*contHist2)[pc][to];
-            value += (*contHist3)[pc][to];
-            value += (*contHist5)[pc][to];
+            const int hi = int(pc) * SQUARE_NB + int(to);
 
-            // bonus for checks
-            value += ((pos.check_squares(pt) & to) && pos.see_ge(m, -75)) * 16384;
+            int value = 2 * (*mainHistory)[us][m.raw()];
+            value += 2 * pawnHist[hi];
+            value += contHist0[hi];
+            value += contHist1[hi];
+            value += contHist2[hi];
+            value += contHist3[hi];
+            value += contHist5[hi];
+
+            // bonus for checks. A statement rather than a multiply by the
+            // predicate: the short circuit is already a branch, and the product
+            // makes its not-taken arm materialise a zero and add it. That arm
+            // is 98.93% of the moves scored -- a callgrind count at depth 12
+            // puts the see_ge() below at 24,917 calls over 2,324,412 quiets --
+            // so the two instructions are paid on essentially every move.
+            if ((pos.check_squares(pt) & to) && pos.see_ge(m, -75))
+                value += 16384;
 
             // penalty for moving to a square threatened by a lesser piece
             // or bonus for escaping an attack by a lesser piece.
-            int v = 20 * (bool(threatByLesser[pt] & from) - bool(threatByLesser[pt] & to));
+            //
+            // Both halves are the same bit test on the same bitboard, but
+            // `b & square_bb(s)` gives clang a VALUE to test where a shift gives
+            // it a bit position: from `bool(threat & to)` it builds 1 << to and
+            // tests it, four instructions, where the `from` half it had already
+            // lowered to a `bt`. Written as shifts it emits `bt` for both and
+            // the difference falls out of the carry.
+            const Bitboard threat = threatByLesser[pt];
+            const int      v      = 20 * (int(threat >> from & 1) - int(threat >> to & 1));
             m.value = value + PieceValue[pt] * v;
         }
 
