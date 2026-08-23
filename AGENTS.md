@@ -144,6 +144,14 @@ anything. A regression under PGO still does not land.
 | "this scales" -- anything touching the TT, the histories or the pool | `npsthreads.sh` | every other axis runs ONE thread, so a contention change is invisible to all five. It needs a node budget, not a depth: a threaded fixed-depth bench is not reproducible against itself |
 | "this still pays at a LONG clock" | `ltcab.sh` | every other axis runs `bench`, which is a COLD search at depth 8 or 13. A played 10+0.1 move is a WARM one at depth 20 to 25, on a table the game has already filled, and the two do not cost the same per node |
 
+**An instruction ratio is a claim about work, not about time.** Eleven commits took 1.8% off
+clang's retired instructions on an idle box and moved the clock not at all, with misses and
+mispredicts both at their control values: the instructions removed were not on the critical
+path. The same source moved gcc's clock. A `perf` commit claiming speed needs `npsab.sh` or
+`ltcab.sh` without `--counters`, or a named mechanism -- and a wall-clock difference near one
+percent is not resolved by this workload however narrow the printed band is, so repeat the whole
+measurement rebuilt and take the spread across repeats as the floor.
+
 **The trap, measured on this repository.** `ee72cf49f` "Optimize RankAttacks" is marked *No
 functional change* and passed a 212,800-game SPRT. It shrinks a table 4x, trading instructions
 for cache footprint. `perfbudget.sh` scores it **+0.16%, a regression**. The instruction axis
