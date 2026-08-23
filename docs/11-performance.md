@@ -1,6 +1,6 @@
 # Performance
 
-The six axes that decide what a change costs, and `tests/fingerprint.sh` beside them.
+The seven axes that decide what a change costs, and `tests/fingerprint.sh` beside them.
 
 `tests/signature.sh` proves the engine searched the same tree ([10-tooling-ci.md](10-tooling-ci.md));
 it says nothing about what that tree cost. These do, and they are not interchangeable.
@@ -16,7 +16,7 @@ each axis cannot see is stated with what it can.
 
 ## Which axis answers which claim
 
-**There are six of them because there are six questions.** Picking the wrong one produces a
+**There are seven of them because there are seven questions.** Picking the wrong one produces a
 confident wrong verdict, so pick by what the change CLAIMS:
 
 | the change claims | gate | why |
@@ -27,6 +27,7 @@ confident wrong verdict, so pick by what the change CLAIMS:
 | "this moved no cache line" | `tests/perfcounters.sh` | the only axis that measures a miss or a mispredict on the hardware, and the only counting axis that runs above AVX2 |
 | "and if it did, where?" | `tests/perfdecomp.sh` | per-component instructions, misses and mispredicts; deterministic, and a model |
 | "this scales" | `tests/npsthreads.sh` | every other axis runs one thread, so a contention change is invisible to all five |
+| "this still pays at a LONG clock" | `tests/ltcab.sh` | every other axis runs `bench`, which is a COLD search at depth 8 or 13; a played move is a warm one at depth 20 to 25 |
 
 The last two divide one question between them. `perfcounters.sh` measures the hardware and
 cannot say which code moved; `perfdecomp.sh` says which code moved and is measuring a simulator.
@@ -514,6 +515,50 @@ whole-process result that is not in doubt. A round in which any counter came bac
 the run than in its own startup probe is dropped from the search table rather than clamped to
 zero, because a clamped zero reports noise as a measurement.
 
+## `tests/ltcab.sh`
+
+Paired A/B in the regime a LONG clock reaches: a warm game, at depth.
+
+```sh
+./tests/ltcab.sh --depths 18,20,22 --plies 100 --rounds 5 229f6339 HEAD
+./tests/ltcab.sh --comp clang --pgo --arch x86-64-avx512icl --depths 20 229f6339 HEAD
+./tests/ltcab.sh --cold --depths 20 229f6339 HEAD        # the state-value control
+```
+
+**Every other axis on this page measures `bench`, and `bench` is a COLD search.** It probes an
+unrelated position at depth 8 or 13 with a table and a history bank the previous position
+barely warmed. A move at fishtest's own STC of 10+0.1 is the opposite workload in three ways at
+once: it runs at ply 40 of ONE game, on a transposition table every earlier move has already
+written end to end and on history, pawn and correction banks those moves populated; it reaches
+depth 20 to 25; and the tree it searches is far smaller per ply because the move ordering it
+inherits is already good.
+
+A per-node ratio measured in the first regime does not transfer to the second. Measured on this
+tree, replaying one 60-ply game at `Hash 16`: a warm depth-20 search needs **34,582,748** nodes
+where the same game searched cold needs **43,725,031**, and the ratio carries no trend with
+depth -- 1.42 at depth 10, 1.26 at depth 20. The cold search also slows with depth (736 knps at
+10, 668 at 18) where the warm one does not (790, 820).
+
+**The move list is fixed input and every search is `go depth D`**, so one thread makes the node
+count a function of the position and the table alone. Two revisions that search the same tree
+MUST report the same node total, and that equality is a stronger fidelity check than the bench
+anchor: the anchor only ever visits its own fixed position list from a cold table, and
+[10-tooling-ci.md](10-tooling-ci.md) records that a divergence off those positions is invisible
+to it. A run whose totals differ is VOID, not slow.
+
+`--cold` sends `ucinewgame` before every move, which throws the table and the history bank away
+and leaves everything else identical. The difference between a `--cold` run and a warm one is
+what the accumulated state of a game is worth, in nodes, at a depth the long clock reaches.
+
+The driver underneath is `tests/ltcreplay.py`, which is also usable alone. Its `clock` mode is
+the one that answers a question no gate here can: it sets `nodestime`, which makes the engine's
+own `elapsed()` return NODES and the budget a node bank the engine keeps itself, so a whole game
+becomes a deterministic function of the move list with no wall clock anywhere in it. **A faster
+engine is then simply a larger `--npmsec`** -- at 1000 nodes per millisecond a 1 ms budget buys
+1,000 nodes, at 2000 it buys 2,000 -- with the real time manager, the real search and the real
+table in the loop. What that measures is how much of a speed advantage each time control lets an
+engine keep, which is not the same quantity as nps and does not have the same shape.
+
 ## `tests/perfdecomp.sh`
 
 Where the cost is, per component, deterministically.
@@ -620,5 +665,7 @@ below it -- the file is first-match-wins.
 | `tests/npsthreads.sh` | how the two revisions SCALE across thread counts | this page |
 | `tests/perfcounters.sh` | what the hardware did: cycles, IPC, cache and branch misses, every tier | this page |
 | `tests/perfdecomp.sh` | where the cost is, per component, deterministically and in a model | this page |
+| `tests/ltcab.sh` | the same paired A/B in the WARM, deep regime a played long-clock move reaches | this page |
+| `tests/ltcreplay.py` | the driver under `ltcab.sh`, and the node clock that prices a speed advantage per time control | this page |
 | `tests/fingerprint.sh` | the engine still reaches its answer by calling what it called, as often | this page |
 | `tests/signature.sh` | both sides searched the same tree, without which every figure above is void | [10-tooling-ci.md](10-tooling-ci.md) |
