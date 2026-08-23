@@ -539,7 +539,7 @@ class Worker {
     template<NodeType nodeType>
     Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
 
-    // deltaScaled is (beta - alpha) * 577 / rootDelta, already divided. The
+    // deltaScaled is (beta - alpha) * 577 / rootDelta, already scaled. The
     // divisor is a search-wide constant and the dividend moves only when alpha
     // does, so the caller keeps the quotient and this takes it -- see the move
     // loop in search().
@@ -561,7 +561,14 @@ class Worker {
     StateInfo rootState;
     RootMoves rootMoves;
     Depth     rootDepth;
-    Value     rootDelta;
+
+    // The root aspiration window, as a fixed-point reciprocal rather than the
+    // window itself: rootDeltaScale is ceil(577 * 2^33 / (beta - alpha)) for
+    // the window this iteration searches. It is what the move loop's window
+    // term is scaled by, and taking it here leaves that term a widening
+    // multiply and a shift where it was the last hardware divide in search().
+    // The window is nowhere else read, so the divisor is not kept beside it.
+    i64 rootDeltaScale;
 
     PVMoves lastIterationIdxPV;
 
