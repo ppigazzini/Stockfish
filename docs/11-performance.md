@@ -696,6 +696,14 @@ a property of the change; one that does not is a property of the build.
 footprint can be measured statically -- `nm --size-sort` on the symbols it merges or removes --
 and cannot be measured dynamically here at all. Say which of the two a claim rests on.
 
+**A timing axis on a shared machine establishes nothing, and does not report that it failed.**
+A PGO binary measured against a second build of its own source reads `ms 0.9637` under clang and
+`ms 1.2553` under gcc in one session -- 25.5% apart, on a node total identical to the node --
+while the instruction column of those same runs repeats to five decimals. `npsthreads.sh`
+answers "no direction" at every thread count under that load. Retired instructions and retired
+branches survive a busy box; cycles, misses and milliseconds do not, and a figure from those
+columns taken under load is not weak evidence, it is none.
+
 ## Ratios multiply only along the chain they were measured on
 
 A stack figure is a measurement, not a product. Three ratios each taken against a common base
@@ -709,6 +717,14 @@ the one to quote.
 
 The same reason forbids carrying a candidate's ratio from one base to another. A figure measured
 on last round's stack is not that change's figure on this one; re-measure it where it will land.
+
+**How far apart depends on how much the changes interact, and the gap can be small.** Five
+commits from three charters over disjoint files, each measured against the base they shared,
+predict 0.97707 by product and read **0.97602** assembled, under clang PGO at depth 20 -- the
+stack a tenth of a percent BETTER than its own factors. The same five predict 0.98874 and read
+0.98871 under gcc. A tenth of a percent is still a gap on an axis that repeats to five decimals,
+and the assembled reading is the one to quote; but a product that lands close is evidence the
+changes do not fight each other, which is worth knowing before assembling.
 
 ## The order to assess a change
 
