@@ -57,3 +57,6 @@ __DEV/
 # The 3-4-man Syzygy set, fetched by tests/tbfetch.sh --men 4 and used by the
 # golden tablebase case. Same rule as tests/syzygy-3man: fetched, never committed.
 tests/syzygy-34man
+
+# tests/ltcab.sh --keep copies the recorded move list here
+ltcab.moves
