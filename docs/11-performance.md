@@ -44,6 +44,20 @@ Retired instructions under callgrind, base against head, built and measured in t
 ./tests/perfbudget.sh --syzygy DIR HEAD~1       # a PROBING workload, not the bench list
 ```
 
+**Every option goes BEFORE the revisions.** The parser breaks its loop at the first
+non-option, so a flag written after `<base-rev> <head-rev>` is not refused -- it is dropped,
+and the run measures the defaults. The gate echoes what it resolved before it builds anything,
+which is what makes the trap visible in one second:
+
+```sh
+./tests/perfbudget.sh HEAD~1 HEAD --comp clang --pgo   # header: comp=gcc   mode=-O3
+./tests/perfbudget.sh --comp clang --pgo HEAD~1 HEAD   # header: comp=clang mode=PGO
+```
+
+Read that first line whenever the run is one cell of a grid. A dropped `--comp` yields a clean
+measurement of the wrong binary, and the only thing distinguishing it from the intended one is
+a header nobody looks at. Every example in this file puts the options first.
+
 **`--syzygy` is not an option, it is a different workload.** The bench list never probes, so
 without it the whole tablebase reader is absent from every figure this gate produces and a
 bound placed inside `decompress_pairs` reads as free. Anything touching
@@ -517,6 +531,19 @@ tiers outright -- and those are tiers players build. `npsab.sh` builds whatever 
 given, but it times rather than counts and cannot resolve a small difference. The default tier
 set spans plain `x86-64` up to an AVX-512 tier; `TIERS` at the top of the script is the current
 list.
+
+**Whether the default set reaches the tier a player builds is a thing to check, not to
+assume.** `x86-64-avx512icl` is a separate ARCH from `x86-64-vnni512`: it additionally enables
+GFNI, VBMI, VBMI2, BITALG and VPOPCNTDQ, so code guarded on those compiles out below it and a
+run that does not name the tier never executes it at all. Read the list, then name the tier
+when the change touches anything so guarded, or when the counters are to be read beside a
+match -- `tests/match.sh` builds whatever `--arch` it is given, and a counter ratio from one
+tier says nothing about a game played on another.
+
+```sh
+grep -m1 '^TIERS=' tests/perfcounters.sh          # what a default run covers
+./tests/perfcounters.sh --tiers "x86-64-avx2 x86-64-avx512icl"
+```
 
 **It answers a question the instruction axis cannot even ask.** A change that keeps
 instructions and loses IPC has moved a cache line; the budget scores that as free. This is the
