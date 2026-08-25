@@ -153,6 +153,28 @@ and the unused rows are the price.
   `engine/tb_source.h` rather than in the prober because `rankDTZ` crosses the seam: it is in
   `TbSource::rank_root_moves`'s function-pointer type, so the engine has to be able to name it
   without naming the prober.
+- **The bound atoms cannot be reordered.** `covers(Bound, bool)` answers the one question the
+  search asks of the bound lattice -- does this bound cover the direction the window was crossed
+  in -- and it reads the atom a fail-high predicate selects as `1 << failHigh`. That is a fact
+  about the enumerator ORDER, not about the names, and swapping `BOUND_UPPER` with `BOUND_LOWER`
+  would invert all five call sites into a silently worse search that still returns a legal move.
+  The `static_assert` beside `covers()` makes the swap a build failure instead.
+
+  ```sh
+  grep -n 'covers(' src/engine/types.h src/engine/search.cpp
+  ```
+
+  `./tests/negative_control.sh b21-bound` is that assert watched to fire.
+
+  **`covers()` is spelled as the mask and not as the shift, and that is measured.** The atom is
+  `1 << failHigh`, so the test is also `(b >> failHigh) & 1`, which reaches `bt` -- the rewrite
+  `movepick.cpp` already makes for a bitboard, in its own comment. It does not transfer:
+  the shift form costs gcc **+0.0141%** under PGO and its sign flips against clang, while the
+  mask form is within 16,000 instructions of zero on both. `movepick.cpp` earns its `bt` inside
+  a loop over a move list; these five sites are terms in a `&&` chain the compiler is already
+  keeping in flags, and forcing the predicate into a register to shift by is a cost. **Naming
+  the operation is free here; changing its lowering is not.**
+
 - **An enumerator that outgrows its enum is a hard error**, and no assertion is needed for it.
   Every enum in `types.h` fixes an underlying type -- `Color : u8`, `Square : u8`,
   `Direction : i8`, `MoveType : u16` -- and a fixed underlying type makes an enumerator outside
@@ -216,7 +238,8 @@ legal form -- because a row that only checked the rejections would pass if the h
 compiling at all. `b13-colour` is the same shape for `NonPawnKey<Color>`, and `b13-dirtythreat`
 for the `explicit` on `DirtyThreat(u32)`. `b20-conthist` carries `InCheck`/`Capture`,
 `b20-rootprobe` `Rule50`/`RankDTZ`, `b20-powtwo` `PowerOfTwo`, `b20-bank`
-`HistoryBankIndex` and `b21-castling` the closure of the castling algebra. Every one requires the illegal form to be refused **and** the legal ones to
+`HistoryBankIndex`, `b21-castling` the closure of the castling algebra and `b21-bound` the
+bound encoding. Every one requires the illegal form to be refused **and** the legal ones to
 build.
 
 ```sh
