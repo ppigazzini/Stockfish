@@ -54,6 +54,16 @@ Almost every domain quantity here is in the third tier: `Color`, `Square`, `File
 `Direction` where a `Square` belongs does not compile, which is why `operator+(Square,
 Direction)` exists as a named operation rather than as integer addition.
 
+**A third-tier type keeps its tier only where its operations close.** `CastlingRights` is the
+case that shows what the absence costs. It is a four-atom Boolean algebra whose bottom and top
+the enum itself names, and for a long time its only operator was `operator&(Color,
+CastlingRights)` -- so `~cr` promoted to `int`, `rights &= ~cr` could not store back without a
+cast, and rather than write the cast `StateInfo::castlingRights` and `castlingRightsMask` both
+took `int`. **The type was dropped at the one place the quantity is computed.** It carries `|`,
+`&` and a relative `-` now, and both carriers have the type; `./tests/negative_control.sh
+b21-castling` is the algebra closing, and the two operations it deliberately lacks staying
+absent.
+
 `Move` is a fourth shape, between the first and the second: a class over a `u16` with an
 `explicit` raw constructor and named accessors, so a raw 16-bit value does not become a move
 without a visible cast. It is weaker than `PowerOfTwo` because the raw constructor is public --
@@ -205,8 +215,8 @@ done
 legal form -- because a row that only checked the rejections would pass if the header stopped
 compiling at all. `b13-colour` is the same shape for `NonPawnKey<Color>`, and `b13-dirtythreat`
 for the `explicit` on `DirtyThreat(u32)`. `b20-conthist` carries `InCheck`/`Capture`,
-`b20-rootprobe` `Rule50`/`RankDTZ`, `b20-powtwo` `PowerOfTwo` and `b20-bank`
-`HistoryBankIndex`. Every one requires the illegal form to be refused **and** the legal ones to
+`b20-rootprobe` `Rule50`/`RankDTZ`, `b20-powtwo` `PowerOfTwo`, `b20-bank`
+`HistoryBankIndex` and `b21-castling` the closure of the castling algebra. Every one requires the illegal form to be refused **and** the legal ones to
 build.
 
 ```sh
@@ -348,6 +358,38 @@ not.
 **The rule is predictive, not exact.** Treat a type on a hot path as an experiment and measure
 it: `tests/perfbudget.sh` with `--comp gcc` and `--comp clang`, and again with `--pgo`, because
 one compiler cannot distinguish a change from its own codegen and PGO is what ships.
+
+### Two costs the rule above does not predict
+
+`CastlingRights` was measured through the whole grid when it took its operations, and two
+figures came back that no reading of the source produces. Both are about the type's *algebra*
+and its *width* rather than about how many instances are live.
+
+**The operations you give it are part of its cost.** `~cr` on a four-atom algebra has to mask
+back into four bits, because `~NO_CASTLING` is `ANY_CASTLING` and not 255. Every use in this
+engine is *relative* -- `position.cpp:471` and `:965` are both `rights \ cr` -- so that mask is
+dead at both sites, removed by the `&` that follows. It still cost **+0.014%** of bench
+instructions under gcc against an `operator-` that never forms it. *Give it the algebra the
+quantity actually has and no more* is the rule three sections above; this is its price.
+
+**A narrow underlying type is not the cheap one.** The instinct is that four atoms belong in a
+`u8`, and the grid says otherwise:
+
+| underlying type | `castlingRightsMask` | gcc PGO | clang PGO |
+|---|---|---|---|
+| `u8` | 64 B, one cache line | +0.0053% | +0.0192% |
+| `u32` | 256 B, four lines | **-0.0435%** | **-0.0145%** |
+
+Every load of a narrow right carries a `movzx` the wider type does not, and the array is read
+at two squares `do_move` has already touched. `tests/perfcounters.sh` puts cache misses at
+0.9907 with a spread straddling 1.000 -- the four extra lines are not merely affordable, they
+are not visible.
+
+**And `-O3` decides nothing on its own.** The same change reads +0.0711% under gcc `-O3` and
+-0.0149% under clang. A sign that flips is one compiler's layout: with LTO off, `nm --size-sort`
+over both binaries shows no function on the search or movegen path changing size at all. Under
+PGO -- what ships -- both compilers agree and both improve. **Measure the grid, not one cell of
+it.**
 
 ## Adding a type
 

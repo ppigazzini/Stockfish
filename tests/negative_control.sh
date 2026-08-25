@@ -1610,6 +1610,51 @@ if selected b20-bank; then
     rm -f /tmp/nc_b20_bank.cpp
 fi
 
+row b21-castling static
+if selected b21-castling; then
+    # The algebra has to CLOSE, or the carrier cannot keep the type. Before the
+    # operators existed `a | b` was an int, so `StateInfo::castlingRights` and
+    # castlingRightsMask were ints too and the four-atom Boolean algebra left the
+    # type system at the one place it is computed. This row holds both halves:
+    # the three operations return CastlingRights, and the two the quantity does
+    # NOT have stay absent.
+    echo "negative-control: b21 [castling] -- the rights algebra closes, and stops there"
+    ok=1
+    # The absolute complement is deliberately not here. Every use is relative --
+    # position.cpp:471 and :965 are both `rights \ cr` -- and an absolute ~ has to
+    # mask back into four bits afterwards, which measured +0.014% of bench
+    # instructions under gcc for a mask that both call sites make dead.
+    printf '#include "types.h"\nusing namespace Stockfish;\nCastlingRights f(CastlingRights a) { return ~a; }\n' \
+        > /tmp/nc_b21_castling.cpp
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b21_castling.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- an absolute complement was accepted"; ok=0
+    fi
+    printf '#include "types.h"\nusing namespace Stockfish;\nCastlingRights f(CastlingRights a, CastlingRights b) { return a ^ b; }\n' \
+        > /tmp/nc_b21_castling.cpp
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b21_castling.cpp ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a symmetric difference was accepted"; ok=0
+    fi
+    # A row that only checked the refusals would pass if the header stopped
+    # compiling at all, so the three operations the algebra DOES have must build,
+    # and each must return the type rather than an int.
+    cat > /tmp/nc_b21_castling.cpp <<'CPP'
+#include "types.h"
+using namespace Stockfish;
+CastlingRights f(CastlingRights a, CastlingRights b) {
+    CastlingRights r = a | b;
+    r &= ANY_CASTLING;
+    r -= b;
+    return r;
+}
+CPP
+    if ! ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only /tmp/nc_b21_castling.cpp ) >/dev/null 2>&1; then
+        echo "  RIG FAULT -- the algebra does not close"; ok=0
+    fi
+    if [ "$ok" = 1 ]; then echo "  ok, rejected by the compiler"; PASS=$((PASS+1));
+    else FAIL=$((FAIL+1)); fi
+    rm -f /tmp/nc_b21_castling.cpp
+fi
+
 row b5-swap
 if selected b5-swap; then
     # What the type does NOT buy, recorded as a test so no page can imply
