@@ -123,7 +123,7 @@ void Position::init() {
     for (File f = FILE_A; f <= FILE_H; ++f)
         Zobrist::enpassant[f] = rng.rand<Key>();
 
-    for (int cr = NO_CASTLING; cr <= ANY_CASTLING; ++cr)
+    for (u32 cr = NO_CASTLING; cr <= ANY_CASTLING; ++cr)
         Zobrist::castling[cr] = rng.rand<Key>();
 
     Zobrist::side    = rng.rand<Key>();
@@ -468,7 +468,7 @@ void Position::set_castling_right(Color c, Square rfrom) {
     // uses, and moving that rook then cleared the right the OTHER rook owns.
     // Only a malformed field reaches this, and pos_is_ok() cannot see it.
     if (st->castlingRights & cr)
-        castlingRightsMask[castlingRookSquare[cr]] &= ~cr;
+        castlingRightsMask[castlingRookSquare[cr]] -= cr;
 
     st->castlingRights |= cr;
     castlingRightsMask[kfrom] |= cr;
@@ -962,7 +962,7 @@ void Position::do_move(Move                      m,
 
     // Update castling rights.
     k ^= Zobrist::castling[st->castlingRights];
-    st->castlingRights &= ~(castlingRightsMask[from] | castlingRightsMask[to]);
+    st->castlingRights -= castlingRightsMask[from] | castlingRightsMask[to];
     k ^= Zobrist::castling[st->castlingRights];
 
     // If the moving piece is a pawn do some special extra work
