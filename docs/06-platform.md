@@ -289,21 +289,40 @@ everywhere else -- Linux, macOS and every other non-MSVC target take the wrapper
 ```cpp
 class NativeThread {
     pthread_t thread;
+    bool      running_ = false;
+
     static constexpr usize TH_STACK_SIZE = 8 * 1024 * 1024;
 ```
 
 macOS is the platform that forces it: threads other than the main thread are created there with
-a 512 KB stack, and a deep search needs more than 1 MB. The wrapper calls `pthread_create` with
-`TH_STACK_SIZE`, which is the Linux default rather than the minimum that works. MSVC-compatible
-toolchains do not ship pthreads, which is why that one arm is different rather than that one
-arm being the general case.
+a 512 KB stack, and a deep search needs more than 1 MB. `TH_STACK_SIZE` is the Linux default
+rather than the minimum that works. `std::thread` gives no way to ask for it, which is the
+entire reason this file exists. MSVC-compatible toolchains do not ship pthreads, which is why
+that one arm is different rather than that one arm being the general case.
 
-`std::thread` gives no way to set a stack size, which is the entire reason this file exists.
+**The large stack is asked for, not given.** `create_native_thread` takes a
+`NativeThreadOptions`, and only `setLargeStack(true)` reaches
+`pthread_attr_setstacksize`. One caller asks -- `Thread`, whose thread runs the search. The
+NUMA probe, `execute_on_numa_node` and the shared-memory server thread take the platform
+default, which on macOS is the 512 KB the paragraph above calls too small for a search; none of
+them searches.
 
-**A failed spawn exits the process rather than returning.** Nothing else can clear the caller's
-`searching` flag, so `Thread`'s own `wait_for_search_finished()` would block forever -- silently,
-on the thread that would have read the `quit`. `pthread_create` failing prints and calls
-`std::exit`, which is the same answer the MSVC arm reaches by letting `std::thread` throw.
+**A failed spawn returns a thread that is not joinable.** `create_native_thread` cannot report
+any other way: it is called from `noexcept` frames in a tree built `-fno-exceptions`, so a
+throw is `std::terminate`. `pthread_create` failing deletes the heap callable, leaves
+`running_` false, and returns; `join()` on such an object does nothing. **The check is the
+caller's**, and each answers differently because the right answer differs:
+
+| caller | what a failed spawn does |
+|---|---|
+| `Thread::Thread` | prints `Failed to create search thread` and exits -- nothing else can clear the caller's `searching` flag, so its own `wait_for_search_finished()` would block forever, silently, on the thread that would have read the `quit` |
+| `NumaConfig::execute_on_numa_node` | prints and exits, for the same reason: the work the thread was to do is the caller's next statement |
+| `SharedMemory::open` | returns false, which is what `SharedMemoryBackendFallback` exists for -- a host that will not hand out a thread degrades to local allocation rather than ending the process |
+| `get_process_affinity`, `_WIN64` only | does not check, and reads whatever the empty affinity set produces |
+
+**The MSVC arm is not fallible at all.** Its `create_native_thread` forwards to `std::thread`
+and carries a `TODO`; that constructor throws `std::system_error`, and under `-fno-exceptions`
+that is `std::terminate`. The two checks above are dead code there.
 
 ## `universal/` -- runtime ISA dispatch
 
