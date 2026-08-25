@@ -1655,6 +1655,30 @@ CPP
     rm -f /tmp/nc_b21_castling.cpp
 fi
 
+row b21-bound static
+if selected b21-bound; then
+    # covers() reads the atom a fail-high predicate selects as `1 << failHigh`,
+    # which is a fact about the enumerator ORDER and not about the names. Swap
+    # the two atoms and every call site inverts silently -- a worse search that
+    # still returns a legal move, which only the bench anchor can see. The
+    # static_assert beside covers() is what turns that into a build failure, and
+    # this row is that assert being watched to fire.
+    echo "negative-control: b21 [bound]  -- the bound atoms cannot be reordered"
+    mutate src/engine/types.h \
+        '    BOUND_NONE,
+    BOUND_UPPER,
+    BOUND_LOWER,' \
+        '    BOUND_NONE,
+    BOUND_LOWER,
+    BOUND_UPPER,'
+    if ( cd src && g++ -std=c++17 -I. -Iengine -fsyntax-only engine/types.h ) >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- the reordered atoms still compile"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+fi
+
 row b5-swap
 if selected b5-swap; then
     # What the type does NOT buy, recorded as a test so no page can imply

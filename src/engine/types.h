@@ -153,6 +153,28 @@ enum Bound : u8 {
     BOUND_EXACT = BOUND_UPPER | BOUND_LOWER
 };
 
+// Bound is the powerset of {Upper, Lower}: the enum names its own bottom and
+// spells its top as the join of the two atoms. Every question the search asks
+// of it is the same one -- does this bound cover the direction the window was
+// crossed in -- and that question is a BIT TEST, because the two atoms are the
+// two low bits and the atom a predicate selects is `1 << failHigh`.
+//
+// Writing it as the test rather than as a select between two enumerators is the
+// same law, and the same lowering, as the shift in movepick.cpp: a select gives
+// the compiler a VALUE to mask with, a shift gives it a bit POSITION, and only
+// the second reaches `bt`.
+//
+// The static_assert is what makes that a fact about the encoding rather than a
+// coincidence of the enumerator order. Reordering the two atoms would otherwise
+// leave every call site silently inverted -- a worse search that returns a legal
+// move, which only the bench anchor can see.
+static_assert(BOUND_UPPER == 1 << 0 && BOUND_LOWER == 1 << 1,
+              "covers() selects the atom as 1 << failHigh");
+
+constexpr bool covers(Bound b, bool failHigh) {
+    return b & (failHigh ? BOUND_LOWER : BOUND_UPPER);
+}
+
 // Value is used as an alias for int, this is done to differentiate between a search
 // value and any other integer value. The values used in search are always supposed
 // to be in the range (-VALUE_NONE, VALUE_NONE] and should not exceed this range.
