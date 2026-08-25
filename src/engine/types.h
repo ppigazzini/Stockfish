@@ -130,7 +130,7 @@ using NonPawnKey = TypedKey<KeySpace(u8(KeySpace::NonPawnWhite) + u8(C))>;
 static_assert(u8(KeySpace::NonPawnBlack) == u8(KeySpace::NonPawnWhite) + u8(BLACK),
               "NonPawnKey maps Color to KeySpace by addition and needs them adjacent");
 
-enum CastlingRights : u8 {
+enum CastlingRights : u32 {
     NO_CASTLING,
     WHITE_OO,
     WHITE_OOO = WHITE_OO << 1,
@@ -399,6 +399,39 @@ constexpr Piece operator~(Piece pc) { return Piece(pc ^ 8); }
 constexpr CastlingRights operator&(Color c, CastlingRights cr) {
     return CastlingRights((c == WHITE ? WHITE_CASTLING : BLACK_CASTLING) & cr);
 }
+
+// The four rights are a Boolean algebra of four atoms, and the enum already
+// names its own bottom and top: NO_CASTLING and ANY_CASTLING. These are its
+// operations, and they exist so the CARRIER can keep the type. Without them
+// `~cr` promotes to int and `rights &= ~cr` needs a cast back, so rather than
+// four casts both StateInfo::castlingRights and castlingRightsMask took `int`
+// and the algebra left the type system at the one place it is computed.
+//
+// THE COMPLEMENT IS RELATIVE, and that is a claim about this engine rather than
+// about Boolean algebras. Nothing here wants ~cr on its own -- both sites are
+// `rights \ cr`, at position.cpp:471 and :965 -- and an absolute complement has
+// to mask back into the four-bit algebra afterwards, because ~NO_CASTLING is
+// ANY_CASTLING and not 255. That mask is dead at both sites, since the `&` that
+// follows removes it, and it measured: giving this type the complement it does
+// not use cost 0.014% of bench instructions under gcc against the difference
+// below. Give it the algebra the quantity actually has and no more.
+//
+// The enum is u32 rather than u8, and that is measured too. u8 makes the mask
+// array one cache line instead of four and reads 0.05 to 0.07 percentage points
+// WORSE under PGO on both compilers, because every load of a right then carries
+// a movzx that the wider type does not.  See docs/09-type-design.md.
+constexpr CastlingRights operator|(CastlingRights a, CastlingRights b) {
+    return CastlingRights(u32(a) | u32(b));
+}
+constexpr CastlingRights operator&(CastlingRights a, CastlingRights b) {
+    return CastlingRights(u32(a) & u32(b));
+}
+constexpr CastlingRights operator-(CastlingRights a, CastlingRights b) {
+    return CastlingRights(u32(a) & ~u32(b));
+}
+constexpr CastlingRights& operator|=(CastlingRights& a, CastlingRights b) { return a = a | b; }
+constexpr CastlingRights& operator&=(CastlingRights& a, CastlingRights b) { return a = a & b; }
+constexpr CastlingRights& operator-=(CastlingRights& a, CastlingRights b) { return a = a - b; }
 
 constexpr Square make_square(File f, Rank r) { return Square((r << 3) + f); }
 
