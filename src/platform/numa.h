@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <cstring>  // IWYU pragma: keep
 #include <functional>
+#include <iostream>
 // Kept: std::numeric_limits is used only inside the _WIN64 blocks below, which a
 // Linux analyze lane never compiles, so IWYU sees no use and asks for a removal
 // that breaks the Windows build on a standard library whose transitive includes
