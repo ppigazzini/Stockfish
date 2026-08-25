@@ -1167,7 +1167,7 @@ Value Search::Worker::search(
 
         // ttValue can be used as a better position evaluation
         if (is_valid(ttData.value)
-            && (ttData.bound & (ttData.value > eval ? BOUND_LOWER : BOUND_UPPER)))
+            && covers(ttData.bound, ttData.value > eval))
             eval = ttData.value;
     }
     else
@@ -1201,7 +1201,7 @@ Value Search::Worker::search(
         && ttData.depth > depth - (ttData.value <= beta))
     {
         // Case A: TT entry can produce a cutoff
-        if ((ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER))
+        if (covers(ttData.bound, ttData.value >= beta)
             && (cutNode == (ttData.value >= beta) || depth > 4))
         {
             // If the ttMove is quiet, update move sorting heuristics on TT hit
@@ -1242,7 +1242,7 @@ Value Search::Worker::search(
         // Case B: No cutoff, but depth was sufficient, so the bound points the wrong way.
         else if (depth > 5)
         {
-            assert(!(ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER)));
+            assert(!covers(ttData.bound, ttData.value >= beta));
 
             // If such a mismatch is the only reason cutoff failed, the TT entry is now useless
             // (*Scaler) This is very close to secondary aging, a known antiscaler. The depth
@@ -2080,8 +2080,9 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     pvHit        = ttHit && ttData.is_pv;
 
     // At non-PV nodes we check for an early TT cutoff
-    if (!PvNode && ttData.depth >= DEPTH_QS && is_valid(ttData.value)
-        && (ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER)))
+    if (!PvNode && ttData.depth >= DEPTH_QS
+        && is_valid(ttData.value)  // Can happen when !ttHit or when access race in probe()
+        && covers(ttData.bound, ttData.value >= beta))
         return ttData.value;
 
     // Step 4. Static evaluation of the position
@@ -2105,7 +2106,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
 
             // ttValue can be used as a better position evaluation
             if (is_valid(ttData.value) && !is_decisive(ttData.value)
-                && (ttData.bound & (ttData.value > bestValue ? BOUND_LOWER : BOUND_UPPER)))
+                && covers(ttData.bound, ttData.value > bestValue))
                 bestValue = ttData.value;
         }
         else
