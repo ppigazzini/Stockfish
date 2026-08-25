@@ -3,10 +3,16 @@ name: MSVC
 on:
   workflow_call:
 
+# Least privilege at the workflow level so a job added later inherits it.
+# A job needing more declares it and that grant wins.
+permissions:
+  contents: read
+
 jobs:
   msvc:
     name: ${{ matrix.name }} (msvc)
     runs-on: windows-latest
+    timeout-minutes: 20
 
     strategy:
       fail-fast: false
@@ -23,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -32,25 +38,40 @@ jobs:
         if: matrix.bench
         run: make net
 
-      - name: Extract the bench number from the commit history
+      - name: Read the bench anchor
         if: matrix.bench
+        # The reader AGENTS.md and the anchor gate name: the whole history, and
+        # `^Bench: N$` anchored to the line. This branch stacks non-functional
+        # commits on upstream, so the newest footer sits arbitrarily deep and a
+        # bounded walk eventually finds nothing; the loose form matches an
+        # evidence row inside a body, which is how every architecture job once
+        # failed against a stale number quoted in prose. An absent footer fails
+        # the lane rather than benching against "".
         run: |
-          for hash in $(git rev-list -100 HEAD); do
-            benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
-          done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
+          history=$(git log --format=%b)
+          benchref=$(grep -m1 -oE '^Bench: *[1-9][0-9]{5,7}$' <<< "$history" | grep -oE '[0-9]+' || true)
+          [[ -n "$benchref" ]] || { echo "No Bench: footer anywhere in the history -- refusing to run the anchor lane against an empty reference"; exit 1; }
+          echo "benchref=$benchref" >> $GITHUB_ENV
+          echo "Reference bench: $benchref"
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
       - name: Build ${{ matrix.name }} binary
-        shell: cmd
-        run: >-
-          cl /nologo /std:c++17 /MT /EHsc /O2 /MP /W3 /WX /permissive-
-          /DUSE_POPCNT /DUSE_SSE2 /DUSE_SSSE3 /DUSE_SSE41 /DUSE_AVX2 ${{ matrix.flags }}
-          /Fe:stockfish.exe *.cpp nnue\*.cpp nnue\features\*.cpp syzygy\*.cpp
-          /link /STACK:8388608 shell32.lib
+        # The file list is the Makefile's SRCS, spelled as the zone layout this
+        # branch uses. engine/search_go.cpp is the one source in those
+        # directories that SRCS leaves out -- the in-process search entry no
+        # product file reaches -- so the glob subtracts it rather than shipping
+        # a binary made of something the Makefile says the product is not.
+        run: |
+          srcs=$(ls engine/*.cpp engine/nnue/*.cpp engine/nnue/features/*.cpp \
+                    platform/*.cpp platform/syzygy/*.cpp shell/*.cpp \
+                 | grep -v '^engine/search_go\.cpp$')
+          cl.exe /nologo /std:c++17 /MT /EHsc /O2 /MP /W3 /WX /permissive- \
+            /DUSE_POPCNT /DUSE_SSE2 /DUSE_SSSE3 /DUSE_SSE41 /DUSE_AVX2 ${{ matrix.flags }} \
+            /Fe:stockfish.exe $srcs \
+            /link /STACK:8388608 shell32.lib
 
       - name: Verify bench signature
         if: matrix.bench
-        run: EXE=./stockfish.exe ../tests/signature.sh $benchref
+        run: EXE=./stockfish.exe ../tests/signature.sh "$benchref"
