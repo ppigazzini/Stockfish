@@ -426,6 +426,7 @@ entry for the six that build or publish rather than check.
 | `matetrack.yml` | mate-finding over a position suite, then `instrumented.py --none` |
 | `games.yml` | a short self-play match on a debug build; fails on an assertion or a disconnect |
 | `avx2_compilers.yml` | a compiler sweep at one architecture |
+| `msvc.yml` | upstream's MSVC lane: `cl` at avx2 and avx512icl, `signature.sh` on the first -- a runner cannot execute AVX-512, so the second is build-only |
 | `arm_compilation.yml`, `universal_compilation.yml`, `wasm_compilation.yml` | the remaining targets, each benching `signature.sh` |
 | `iwyu.yml` | `iwyu.sh` in native mode, which is the only mode with an absolute verdict |
 | `clang-format.yml`, `codeql.yml` | formatting and static analysis; neither runs a gate under `tests/` |
