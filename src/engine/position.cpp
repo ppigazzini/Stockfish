@@ -94,8 +94,8 @@ constexpr Key side = 1ULL;
 // matching piecePlacement and Zobrist key guarantee a unique position.
 static_assert(
   [] {
-      for (int a = 0; a < CASTLING_RIGHT_NB; ++a)
-          for (int b = a; b < CASTLING_RIGHT_NB; ++b)
+      for (u32 a = 0; a < CASTLING_RIGHT_NB; ++a)
+          for (u32 b = a; b < CASTLING_RIGHT_NB; ++b)
               for (int f1 = 0; f1 <= FILE_NB; ++f1)  // 0 means no ep component
                   for (int f2 = f1; f2 <= FILE_NB; ++f2)
                   {
@@ -604,7 +604,7 @@ void Position::set_castling_right(Color c, Square rfrom) {
     // uses, and moving that rook then cleared the right the OTHER rook owns.
     // Only a malformed field reaches this, and pos_is_ok() cannot see it.
     if (st->castlingRights & cr)
-        castlingRightsMask[castlingRookSquare[cr]] &= ~cr;
+        castlingRightsMask[castlingRookSquare[cr]] -= cr;
 
     st->castlingRights |= cr;
     castlingRightsMask[kfrom] |= cr;
@@ -1053,7 +1053,7 @@ void Position::do_move(Move m, bool givesCheck, Dirties& dirties, const SharedHi
 
     // Update castling rights.
     k ^= Zobrist::castling[st->castlingRights];
-    st->castlingRights &= ~(castlingRightsMask[from] | castlingRightsMask[to]);
+    st->castlingRights -= castlingRightsMask[from] | castlingRightsMask[to];
     k ^= Zobrist::castling[st->castlingRights];
 
     // If the moving piece is a pawn do some special extra work
