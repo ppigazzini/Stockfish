@@ -65,9 +65,16 @@ class FullThreats {
     };
     // clang-format on
 
-    // Maximum number of simultaneously active features.
-    using IndexList = ValueList<u16, 256>;
+    // Maximum number of simultaneously active features. The list carries the
+    // weight row's ELEMENT OFFSET, not the feature number: the row is read once
+    // per accumulator tile, so the scale applied here once is a shift saved on
+    // every one of those passes. It no longer fits sixteen bits.
+    using IndexList = ValueList<IndexType, 256>;
     using DiffType  = DirtyThreats;
+
+    // The feature transformer's HalfDimensions; nnue_accumulator.cpp asserts it
+    // against the transformer, which cannot be included here without a cycle.
+    static constexpr int RowShift = 10;
 
     static IndexType
     make_index(Color perspective, Piece attkr, Square from, Square to, Piece attkd, Square ksq);
@@ -81,8 +88,7 @@ class FullThreats {
                                        const DiffType&         diff,
                                        IndexList&              removed,
                                        IndexList&              added,
-                                       const ThreatWeightType* prefetchBase   = nullptr,
-                                       IndexType               prefetchStride = 0);
+                                       const ThreatWeightType* prefetchBase = nullptr);
 
     static void append_changed_indices_both(Square                  white_ksq,
                                             Square                  black_ksq,
@@ -91,8 +97,7 @@ class FullThreats {
                                             IndexList&              white_added,
                                             IndexList&              black_removed,
                                             IndexList&              black_added,
-                                            const ThreatWeightType* prefetchBase   = nullptr,
-                                            IndexType               prefetchStride = 0);
+                                            const ThreatWeightType* prefetchBase = nullptr);
 };
 
 }  // namespace Stockfish::Eval::NNUE::Features
