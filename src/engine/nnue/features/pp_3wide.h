@@ -39,8 +39,12 @@ class PP_3Wide {
     // Pawn pair feature indices are concatenated to threats, so this must equal ThreatFeatureSet::Dimensions;
     // see nnue_feature_transformer.h
     static constexpr IndexType IndexBase = 59808;
-    using IndexList                      = ValueList<u16, 256>;
-    using DiffType                       = DirtyPawnPairs;
+    // Shares FullThreats' list, and with it the convention that an entry is the
+    // weight row's ELEMENT OFFSET rather than the feature number.
+    using IndexList = ValueList<IndexType, 256>;
+    using DiffType  = DirtyPawnPairs;
+
+    static constexpr int RowShift = 10;
 
     static IndexType make_index(
       Color perspective, Color color, Square from, Square to, Color pairedColor, Square ksq);
@@ -52,8 +56,7 @@ class PP_3Wide {
                                        const DiffType&         diff,
                                        IndexList&              removed,
                                        IndexList&              added,
-                                       const ThreatWeightType* prefetchBase   = nullptr,
-                                       IndexType               prefetchStride = 0);
+                                       const ThreatWeightType* prefetchBase = nullptr);
 
     static void append_changed_indices_both(Square                  white_ksq,
                                             Square                  black_ksq,
@@ -62,8 +65,7 @@ class PP_3Wide {
                                             IndexList&              white_added,
                                             IndexList&              black_removed,
                                             IndexList&              black_added,
-                                            const ThreatWeightType* prefetchBase   = nullptr,
-                                            IndexType               prefetchStride = 0);
+                                            const ThreatWeightType* prefetchBase = nullptr);
 };
 
 }  // namespace Stockfish::Eval::NNUE::Features

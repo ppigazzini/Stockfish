@@ -76,7 +76,7 @@ sf_always_inline IndexType PP_3Wide::make_index(
     const IndexType hi  = std::max(idA, idB);
     const IndexType lo  = std::min(idA, idB);
 
-    return hi * (hi - 1) / 2 + lo + IndexBase;
+    return (hi * (hi - 1) / 2 + lo + IndexBase) << RowShift;
 }
 
 void PP_3Wide::append_active_indices(Color perspective, const Position& pos, IndexList& active) {
@@ -110,8 +110,7 @@ void PP_3Wide::append_changed_indices(Color                                    p
                                       const DiffType&                          diff,
                                       IndexList&                               removed,
                                       IndexList&                               added,
-                                      [[maybe_unused]] const ThreatWeightType* prefetchBase,
-                                      [[maybe_unused]] IndexType               prefetchStride) {
+                                      [[maybe_unused]] const ThreatWeightType* prefetchBase) {
 
     const Bitboard whiteBefore = diff.before[WHITE];
     const Bitboard blackBefore = diff.before[BLACK];
@@ -149,8 +148,10 @@ void PP_3Wide::append_changed_indices(Color                                    p
               _mm512_castsi512_si128(_mm512_maskz_compress_epi8(partners, ids)));
             const __m256i feats = pp_idx_epi16(_mm256_set1_epi16(aId), pids);
 
-            u16* w = out.make_space(n);
-            _mm256_storeu_epi16(w, feats);
+            // The row offset does not fit sixteen bits, so the scale lands
+            // after the widening rather than in the epi16 lanes above.
+            IndexType* w = out.make_space(n);
+            _mm512_storeu_si512(w, _mm512_slli_epi32(_mm512_cvtepu16_epi32(feats), RowShift));
         }
     };
 #else
@@ -159,7 +160,7 @@ void PP_3Wide::append_changed_indices(Color                                    p
         auto push = [&](IndexType index) {
             if (prefetchBase)
                 prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(reinterpret_cast<const void*>(
-                  reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(index) * prefetchStride));
+                  reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(index)));
             out.push_back(index);
         };
         const Bitboard unchanged = (pawnsW | pawnsB) & ~(updatedW | updatedB);
@@ -188,14 +189,11 @@ void PP_3Wide::append_changed_indices_both(Square                  white_ksq,
                                            IndexList&              white_added,
                                            IndexList&              black_removed,
                                            IndexList&              black_added,
-                                           const ThreatWeightType* prefetchBase,
-                                           IndexType               prefetchStride) {
+                                           const ThreatWeightType* prefetchBase) {
 
 #ifdef USE_AVX512ICL
-    append_changed_indices(WHITE, white_ksq, diff, white_removed, white_added, prefetchBase,
-                           prefetchStride);
-    append_changed_indices(BLACK, black_ksq, diff, black_removed, black_added, prefetchBase,
-                           prefetchStride);
+    append_changed_indices(WHITE, white_ksq, diff, white_removed, white_added, prefetchBase);
+    append_changed_indices(BLACK, black_ksq, diff, black_removed, black_added, prefetchBase);
 #else
     const Bitboard whiteBefore = diff.before[WHITE];
     const Bitboard blackBefore = diff.before[BLACK];
@@ -215,12 +213,10 @@ void PP_3Wide::append_changed_indices_both(Square                  white_ksq,
 
             if (prefetchBase)
             {
-                prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(
-                  reinterpret_cast<const void*>(reinterpret_cast<uintptr_t>(prefetchBase)
-                                                + uintptr_t(white_index) * prefetchStride));
-                prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(
-                  reinterpret_cast<const void*>(reinterpret_cast<uintptr_t>(prefetchBase)
-                                                + uintptr_t(black_index) * prefetchStride));
+                prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(reinterpret_cast<const void*>(
+                  reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(white_index)));
+                prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(reinterpret_cast<const void*>(
+                  reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(black_index)));
             }
 
             white_out.push_back(white_index);
