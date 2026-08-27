@@ -362,11 +362,13 @@ A default must fail in one of three ways, and which one is a property of the ser
 - **Safe unregistered.** "No tablebases loaded" is exactly true of an engine with none.
 
 **The seam hands over microseconds, and the resolution is load-bearing.** `syzygy_extend_pv`
-(`src/engine/search.cpp`) budgets itself against `Move Overhead`, whose range starts at 0. In
-whole milliseconds `2 * 0 > 0` is false, so a `TimePoint` seam lets that abort run a further
-millisecond past its deadline; the sub-millisecond reading is what makes the comparison mean
-anything at the bottom of the option's range. `TimePoint now()` truncates `now_us()`, so time
-management keeps the type it is written in.
+(`src/engine/search.cpp`) budgets itself against `Move Overhead` over twice the PV count, and
+`Move Overhead` is a whole number of milliseconds. From its smallest working value upwards that
+budget is a fraction of a millisecond, and every PV past the first divides it again -- so a
+`TimePoint` seam could only abort at zero elapsed or a whole millisecond later, and nowhere in
+between. The sub-millisecond reading is what makes the comparison mean anything at the bottom of
+the option's range. `TimePoint now()` truncates `now_us()`, so time management keeps the type it
+is written in.
 
 Microseconds and not nanoseconds because an `i64` of nanoseconds from a steady clock's epoch
 runs out after 292 years and an `i64` of microseconds after 292,000. Nothing in the engine

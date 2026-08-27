@@ -292,12 +292,14 @@ gives optimal mates only for simple endgames. The loop's own
 `MAX_PLY + 1`. That guard is the only bound: `PVMoves::push_back` checks its own with an `assert`
 alone, so nothing in the shipped build would catch a relaxation of it.
 
-This is where the prober meets the clock. The whole function budgets itself against `Move Overhead`,
-whose range starts at 0, so it compares in microseconds through the `clock.h` seam: at
-whole-millisecond resolution `2 * 0 > 0` is false and the abort overruns its deadline by a
-millisecond. See [00-architecture.md](00-architecture.md). The budget is only armed when
-`limits.use_time_management()` holds, so under `go infinite`, `go depth` and `go movetime` it never
-fires and the only bounds are the tables running out and `MAX_PLY`.
+This is where the prober meets the clock. The whole function budgets itself against
+`Move Overhead` over twice the PV count, a fraction of a millisecond at the bottom of the
+option's range, so it compares in microseconds through the `clock.h` seam. See
+[00-architecture.md](00-architecture.md). The budget is armed only when
+`limits.use_time_management()` holds and `nodestime` is off, so under `go infinite`, `go depth`,
+`go movetime` and a nodes-denominated clock it never fires and the only bounds are the tables
+running out and `MAX_PLY`. It is also tested once before the first `do_move`, so a caller already
+past the budget extends nothing.
 
 ## Configuration
 
@@ -436,7 +438,8 @@ nothing making them agree. `syzygy_extend_pv`'s step 2
 appends one move per iteration, and its other three exits are all conditional on the position:
 `rule50 && is_draw` is constant-false with `Syzygy50MoveRule` off, `time_abort()` is
 constant-false whenever `use_time_management()` is -- `go infinite`, `go movetime`, `go depth`,
-which is how a GUI analyses -- and the tables run out only where the walk leaves them. The length
+which is how a GUI analyses -- and under `nodestime`, and the tables run out only where the walk
+leaves them. The length
 bound is the array's capacity, and nothing else supplies one.
 
 Dispatched by `sanitizers.yml`, whose corpus step is `continue-on-error`, so a mirror outage
