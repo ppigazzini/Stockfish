@@ -236,7 +236,8 @@ constexpr bool attack_rows_agree() {
 
 static_assert(attack_rows_agree());
 
-// Index of a feature for a given king position and another piece on some square
+// Offset of the weight row a feature selects, for a given king position and
+// another piece on some square -- the feature number scaled by the row stride.
 sf_always_inline IndexType FullThreats::make_index(
   Color perspective, Piece attacker, Square from, Square to, Piece attacked, Square ksq) {
     const i8 orientation   = OrientTBL[ksq] ^ (56 * perspective);
@@ -247,10 +248,15 @@ sf_always_inline IndexType FullThreats::make_index(
     unsigned attacker_oriented = attacker ^ swap;
     unsigned attacked_oriented = attacked ^ swap;
 
-    return index_lut1[attacker_oriented][attacked_oriented][from_oriented < to_oriented]
-         + index_lut2[AttackRowBase[attacker_oriented] + from_oriented * SQUARE_NB
-                      + to_oriented];
+    return (index_lut1[attacker_oriented][attacked_oriented][from_oriented < to_oriented]
+            + index_lut2[AttackRowBase[attacker_oriented] + from_oriented * SQUARE_NB
+                         + to_oriented])
+        << RowShift;
 }
+
+// The excluded features index_lut1 marks with Dimensions stay above this bound
+// under the scale, which is a multiplication by a positive constant.
+constexpr IndexType RowLimit = FullThreats::Dimensions << FullThreats::RowShift;
 
 // Get a list of indices for active features in ascending order
 
@@ -271,7 +277,7 @@ void FullThreats::append_active_indices(Color perspective, const Position& pos, 
             Piece     attacked = pos.piece_on(to);
             Piece     attacker = make_piece(c, PAWN);
             IndexType index    = make_index(perspective, attacker, from, to, attacked, ksq);
-            active.push_back_if_lt(index, Dimensions);
+            active.push_back_if_lt(index, RowLimit);
         }
     };
 
@@ -297,7 +303,7 @@ void FullThreats::append_active_indices(Color perspective, const Position& pos, 
                     Square    to       = pop_lsb(attacks);
                     Piece     attacked = pos.piece_on(to);
                     IndexType index    = make_index(perspective, attacker, from, to, attacked, ksq);
-                    active.push_back_if_lt(index, Dimensions);
+                    active.push_back_if_lt(index, RowLimit);
                 }
             }
         }
@@ -311,8 +317,7 @@ void FullThreats::append_changed_indices(Color                   perspective,
                                          const DiffType&         diff,
                                          IndexList&              removed,
                                          IndexList&              added,
-                                         const ThreatWeightType* prefetchBase,
-                                         IndexType               prefetchStride) {
+                                         const ThreatWeightType* prefetchBase) {
 
     for (const auto& dirty : diff.list)
     {
@@ -327,8 +332,8 @@ void FullThreats::append_changed_indices(Color                   perspective,
 
         if (prefetchBase)
             prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(reinterpret_cast<const void*>(
-              reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(index) * prefetchStride));
-        insert.push_back_if_lt(index, Dimensions);
+              reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(index)));
+        insert.push_back_if_lt(index, RowLimit);
     }
 }
 
@@ -339,8 +344,7 @@ void FullThreats::append_changed_indices_both(Square                  white_ksq,
                                               IndexList&              white_added,
                                               IndexList&              black_removed,
                                               IndexList&              black_added,
-                                              const ThreatWeightType* prefetchBase,
-                                              IndexType               prefetchStride) {
+                                              const ThreatWeightType* prefetchBase) {
 
     for (const auto& dirty : diff.list)
     {
@@ -359,13 +363,13 @@ void FullThreats::append_changed_indices_both(Square                  white_ksq,
         if (prefetchBase)
         {
             prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(reinterpret_cast<const void*>(
-              reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(white_index) * prefetchStride));
+              reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(white_index)));
             prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(reinterpret_cast<const void*>(
-              reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(black_index) * prefetchStride));
+              reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(black_index)));
         }
 
-        white_insert.push_back_if_lt(white_index, Dimensions);
-        black_insert.push_back_if_lt(black_index, Dimensions);
+        white_insert.push_back_if_lt(white_index, RowLimit);
+        black_insert.push_back_if_lt(black_index, RowLimit);
     }
 }
 
