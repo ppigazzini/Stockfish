@@ -227,6 +227,21 @@ inline void* mmap_huge_aligned(usize size, int flags, int fd = -1, off_t offset 
     return mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, fd, offset);
 }
 
+// mmap_huge_aligned() reports failure the way mmap() does, with MAP_FAILED.
+// Nothing on the allocation path tests for that. The arena's callers gate on
+// `if (!p)`, memory_allocator() calls arena_alloc_failed() on null, and
+// arena_alloc()'s live-block counter only counts a block it sees as non-null --
+// so MAP_FAILED, which is (void*) -1 and therefore true, walks past all three
+// and turns a reported allocation failure into a write to that address.
+// Converting once here is what keeps the seam's contract a null one.
+//
+// shm's map_shared() keeps the raw form on purpose: its caller compares against
+// MAP_FAILED, and would stop recognising a failure if this were used there.
+inline void* mmap_huge_aligned_or_null(usize size, int flags, int fd = -1, off_t offset = 0) {
+    void* mem = mmap_huge_aligned(size, flags, fd, offset);
+    return mem == MAP_FAILED ? nullptr : mem;
+}
+
 #endif
 
 #if defined(_WIN32)
