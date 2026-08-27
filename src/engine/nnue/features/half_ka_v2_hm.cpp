@@ -73,17 +73,30 @@ void HalfKAv2_hm::write_indices(const std::array<Piece, SQUARE_NB>& oldPieces,
     const __m512i added_indices =
       _mm512_xor_si512(added_squares, _mm512_permutexvar_epi16(added_pieces, psi_plus_offset));
 
-    _mm512_storeu_si512(write_removed, removed_indices);
-    _mm512_storeu_si512(write_added, added_indices);
+    // The row offset does not fit sixteen bits, so the scale lands after the
+    // widening rather than in the epi16 lanes above.
+    auto scale = [](__m512i v) { return _mm512_slli_epi32(v, RowShift); };
+
+    _mm512_storeu_si512(write_removed,
+                        scale(_mm512_cvtepu16_epi32(_mm512_castsi512_si256(removed_indices))));
+    _mm512_storeu_si512(
+      write_removed + 16,
+      scale(_mm512_cvtepu16_epi32(_mm512_extracti64x4_epi64(removed_indices, 1))));
+    _mm512_storeu_si512(write_added,
+                        scale(_mm512_cvtepu16_epi32(_mm512_castsi512_si256(added_indices))));
+    _mm512_storeu_si512(
+      write_added + 16, scale(_mm512_cvtepu16_epi32(_mm512_extracti64x4_epi64(added_indices, 1))));
 }
 #endif
 
-// Index of a feature for a given king position and another piece on some square
+// Offset of the weight row a feature selects, for a given king position and
+// another piece on some square -- the feature number scaled by the row stride.
 
 IndexType HalfKAv2_hm::make_index(Color perspective, Square s, Piece pc, Square ksq) {
     const IndexType flip = 56 * perspective;
-    return (IndexType(s) ^ OrientTBL[ksq] ^ flip) + PieceSquareIndex[perspective][pc]
-         + KingBuckets[int(ksq) ^ flip];
+    return ((IndexType(s) ^ OrientTBL[ksq] ^ flip) + PieceSquareIndex[perspective][pc]
+            + KingBuckets[int(ksq) ^ flip])
+        << RowShift;
 }
 
 // Get a list of indices for recently changed features

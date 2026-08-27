@@ -101,6 +101,15 @@ class HalfKAv2_hm {
     using IndexList                                = ValueList<IndexType, MaxActiveDimensions>;
     using DiffType                                 = DirtyPiece;
 
+    // The weight row a feature selects is read once per accumulator tile --
+    // eight times at avx2, twice at avx512 -- so the list carries the row's
+    // ELEMENT OFFSET rather than the row number, and each of those passes
+    // indexes with a scaled addressing mode instead of re-deriving the offset
+    // with a shift. RowShift is the feature transformer's HalfDimensions;
+    // nnue_accumulator.cpp asserts that against the transformer itself, which
+    // cannot be included here without a cycle.
+    static constexpr int RowShift = 10;
+
 #if defined(USE_AVX512ICL)
     // Compute all changed feature indices and write them to the given lists
     static void write_indices(const std::array<Piece, SQUARE_NB>& oldPieces,
