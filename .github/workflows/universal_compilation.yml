@@ -335,7 +335,7 @@ jobs:
           echo "/usr/lib/llvm-20/bin" >> "$GITHUB_PATH"
       - name: Cache qemu-user deb
         id: cache-qemu
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/qemu.deb
           key: qemu-user-9.2.1+ds-1ubuntu5_amd64
