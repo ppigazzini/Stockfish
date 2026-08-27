@@ -39,6 +39,41 @@
 
 namespace Stockfish::Eval::NNUE::Layers {
 
+
+// gcc breaks `tzcnt`'s false output dependency by zeroing the destination before
+// every one of them. The dependency is real -- Intel carries it through Skylake --
+// but the `xor` is one instruction of the eighteen this loop retires per non-zero
+// chunk, and on this loop it protects nothing: the register it zeroes was last
+// written by the previous iteration's shift, which retires long before the next
+// dot product can issue, and the loop is bound by its FP ports at about three
+// cycles an iteration on any part that has the erratum. clang emits no such idiom,
+// so it must not be given this; neither must a target without BMI, where `tzcnt`
+// does not exist and `bsf` has a true dependency the compiler is right about.
+#if defined(__x86_64__) && defined(__BMI__) && defined(__GNUC__) && !defined(__clang__)
+    #define SF_TZCNT_WITHOUT_DEPBREAK
+#endif
+
+namespace Detail {
+
+inline usize lsb_index(u64 b) {
+#if defined(SF_TZCNT_WITHOUT_DEPBREAK)
+    u64 i;
+    asm("tzcnt %1, %0" : "=r"(i) : "r"(b) : "cc");
+    return usize(i);
+#else
+    return usize(lsb(Bitboard(b)));
+#endif
+}
+
+// pop_lsb's shape, with the index taken through the helper above.
+inline usize pop_lsb_index(u64& b) {
+    const usize i = lsb_index(b);
+    b &= b - 1;
+    return i;
+}
+
+}  // namespace Detail
+
 // Sparse input implementation
 template<IndexType InDims, IndexType OutDims>
 class AffineTransformSparseInput {
@@ -288,7 +323,7 @@ class AffineTransformSparseInput {
         #if defined(USE_AVXVNNI)
             while (bits)
             {
-                const isize   i0   = pop_lsb(bits);
+                const isize   i0   = isize(Detail::pop_lsb_index(bits));
                 const invec_t in0  = vec_load_32(base_addr + i0 * sizeof(i32));
                 const auto    col0 = reinterpret_cast<const invec_t*>(
                   &weights_base[i0 * OutputDimensions * ChunkSize]);
@@ -300,7 +335,7 @@ class AffineTransformSparseInput {
                     break;
                 }
 
-                const isize   i1   = pop_lsb(bits);
+                const isize   i1   = isize(Detail::pop_lsb_index(bits));
                 const invec_t in1  = vec_load_32(base_addr + i1 * sizeof(i32));
                 const auto    col1 = reinterpret_cast<const invec_t*>(
                   &weights_base[i1 * OutputDimensions * ChunkSize]);
@@ -314,7 +349,7 @@ class AffineTransformSparseInput {
         #elif defined(USE_NEON_DOTPROD)
             while (bits)
             {
-                const isize i0 = pop_lsb(bits);
+                const isize i0 = isize(Detail::pop_lsb_index(bits));
                 if (!bits)
                 {
                     const invec_t in0  = vec_load_32(base_addr + i0 * sizeof(i32));
@@ -325,7 +360,7 @@ class AffineTransformSparseInput {
                     break;
                 }
 
-                const isize i1 = pop_lsb(bits);
+                const isize i1 = isize(Detail::pop_lsb_index(bits));
                 if (!bits)
                 {
                     const invec_t in0  = vec_load_32(base_addr + i0 * sizeof(i32));
@@ -342,7 +377,7 @@ class AffineTransformSparseInput {
                     break;
                 }
 
-                const isize   i2   = pop_lsb(bits);
+                const isize   i2   = isize(Detail::pop_lsb_index(bits));
                 const invec_t in0  = vec_load_32(base_addr + i0 * sizeof(i32));
                 const invec_t in1  = vec_load_32(base_addr + i1 * sizeof(i32));
                 const invec_t in2  = vec_load_32(base_addr + i2 * sizeof(i32));
@@ -362,7 +397,7 @@ class AffineTransformSparseInput {
         #else
             while (bits)
             {
-                isize       i          = pop_lsb(bits);
+                isize       i          = isize(Detail::pop_lsb_index(bits));
                 const auto* input_addr = base_addr + i * sizeof(i32);
                 invec_t     in         = vec_load_32(input_addr);
 
