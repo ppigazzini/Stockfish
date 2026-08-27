@@ -2516,11 +2516,12 @@ void syzygy_extend_pv(const Host&               host,
     // Under 'nodestime' the pos.do_move() calls come for free.
     //
     // Through the seam, in microseconds. This reader is why the seam reads
-    // microseconds at all: the budget is half of `Move Overhead`, a whole
-    // number of milliseconds whose range starts at 0 and whose smallest
-    // working value is 1, so half of it is not a quantity a whole-millisecond
-    // reading can express. Both sides are scaled to microseconds rather than
-    // the elapsed time being scaled down, which keeps the arithmetic integral.
+    // microseconds at all: the budget is `Move Overhead` over twice the PV
+    // count, and `Move Overhead` is a whole number of milliseconds, so from its
+    // smallest working value upwards the budget is a fraction of a millisecond
+    // that a whole-millisecond reading cannot express. Both sides are scaled up
+    // to microseconds rather than the elapsed time being scaled down, which
+    // keeps the arithmetic integral.
     auto time_abort = [&t_start, &moveOverhead, &limits, &multiPV]() -> bool {
         return !limits.npmsec && limits.use_time_management()
             && 2 * i64(multiPV) * (now_us() - t_start) >= i64(moveOverhead) * 1000;
@@ -2690,8 +2691,8 @@ void SearchManager::output_pv(Search::Worker&           worker,
         // Previous PVs have already been extended. Inexact flags indicate an unreliable PV.
         if (is_decisive(v) && !is_mate_or_mated(v) && !usePreviousScore
             && (!rootMoves[i].is_inexact() || isTBScore))
-            syzygy_extend_pv(worker.host, worker.options, worker.limits, pos, rootMoves[i],
-                             v, multiPV);
+            syzygy_extend_pv(worker.host, worker.options, worker.limits, pos, rootMoves[i], v,
+                             multiPV);
 
         std::string pv;
         for (Move m : usePreviousScore ? rootMoves[i].previousPV : rootMoves[i].pv)
