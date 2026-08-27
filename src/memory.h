@@ -305,6 +305,13 @@ inline void* mmap_huge_aligned(usize size, int flags, int fd = -1, off_t offset 
     return mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, fd, offset);
 }
 
+// Same as mmap_huge_aligned(), but reports failure as nullptr instead of
+// MAP_FAILED, matching the malloc-style contract the allocation helpers expect.
+inline void* mmap_huge_aligned_or_null(usize size, int flags, int fd = -1, off_t offset = 0) {
+    void* mem = mmap_huge_aligned(size, flags, fd, offset);
+    return mem == MAP_FAILED ? nullptr : mem;
+}
+
 #endif
 
 #if defined(_WIN32)
