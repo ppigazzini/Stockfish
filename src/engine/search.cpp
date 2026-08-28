@@ -2383,8 +2383,8 @@ void update_continuation_histories(Stack* ss, Piece pc, Square to, int bonus) {
       {{1, 520}, {2, 390}, {3, 145}, {4, 251}, {5, 66}, {6, 209}}};
 
     // Multipliers for positive history consistency
-    constexpr int CMHCMultipliers[] = {94, 103, 110, 106, 119, 126, 121};
-    int           positiveCount     = 0;
+    static constexpr int CMHCMultipliers[] = {94, 103, 110, 106, 119, 126, 121};
+    int                  positiveCount     = 0;
 
     for (const auto [i, weight] : conthist_bonuses)
     {
