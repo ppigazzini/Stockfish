@@ -450,11 +450,14 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
 
             // bonus for checks. A statement rather than a multiply by the
             // predicate: the short circuit is already a branch, and the product
-            // makes its not-taken arm materialise a zero and add it. That arm
-            // is 98.93% of the moves scored -- a callgrind count at depth 12
-            // puts the see_ge() below at 24,917 calls over 2,324,412 quiets --
-            // so the two instructions are paid on essentially every move.
-            if ((checkSquare[pt] & to) && pos.see_ge(m, -75))
+            // makes its not-taken arm materialise a zero and add it. Counted at
+            // this line by a bench instrumented to increment on each side, the
+            // arm the test skips is 96.9% of scored quiets at depth 8, 97.1% at
+            // 11, 95.9% at 12 and 96.0% at 13, so the two instructions would be
+            // paid on all but a few in a hundred. see_ge() itself is reached
+            // 243,288 times over 5,954,783 quiets at depth 12 and returns true
+            // on 120,381 of those, so the bonus lands on 2.0% of the list.
+            if ((checkSquare[pt] >> to & 1) && pos.see_ge(m, -75))
                 value += 16384;
 
             // penalty for moving to a square threatened by a lesser piece
