@@ -470,8 +470,14 @@ class Worker {
    private:
     bool iterative_deepening();
 
+    // A REFERENCE, and it always could have been. do_move guarded every use of
+    // the stack with `if (ss != nullptr)` and no caller has ever passed one: the
+    // three call sites in search.cpp all hand over the node's own frame. The
+    // guard cost two tests and two branches on a function that runs once per
+    // node, and it cost a reader the question of which half of do_move a null
+    // stack was supposed to skip.
     void do_move(
-      Position& pos, const Move move, const bool givesCheck, const bool capture, Stack* const ss);
+      Position& pos, const Move move, const bool givesCheck, const bool capture, Stack& ss);
     void do_null_move(Position& pos, Stack* const ss);
     void undo_move(Position& pos, const Move move);
     void undo_null_move(Position& pos);
