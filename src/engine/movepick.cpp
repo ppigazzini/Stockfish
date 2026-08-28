@@ -538,7 +538,7 @@ top:
     case CAPTURE_INIT :
     case PROBCUT_INIT :
     case QCAPTURE_INIT : {
-        MoveList<CAPTURES> ml(pos);
+        MoveList<CAPTURES> ml(pos, sliderCache, FillSliders{});
 
         cur = endBadCaptures = moves;
         endCur = endCaptures = score<CAPTURES>(ml);
@@ -563,7 +563,11 @@ top:
     case QUIET_INIT :
         if (!skipQuiets)
         {
-            MoveList<QUIETS> ml(pos);
+            // The sliders this list needs were computed by the capture list
+            // above: CAPTURE_INIT always runs before QUIET_INIT in one picker,
+            // and the position a do_move/undo_move pair leaves behind is the
+            // one the capture list saw.
+            MoveList<QUIETS> ml(pos, sliderCache, UseSliders{});
 
             endCur = endGenerated = score<QUIETS>(ml);
 

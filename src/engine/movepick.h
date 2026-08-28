@@ -72,6 +72,8 @@ class MovePicker {
     Depth                        depth;
     int                          ply;
     bool                         skipQuiets = false;
+    // Filled by the capture list, read by the quiet list of the same node.
+    SliderCache                  sliderCache;
     ExtMove                      moves[MAX_MOVES];
 };
 
