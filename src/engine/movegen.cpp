@@ -196,32 +196,55 @@ Move* generate_pawn_moves(const Position& pos, Move* moveList, Bitboard target) 
 }
 
 
-template<Color Us, PieceType Pt>
-Move* generate_moves(const Position& pos, Move* moveList, Bitboard target) {
+// `CM` reaches only the three sliders: a knight's attack set is a table read,
+// which is already cheaper than the cache slot that would hold it.
+template<Color Us, PieceType Pt, SliderCacheMode CM = NoSliderCache>
+Move* generate_moves(const Position&              pos,
+                     Move*                        moveList,
+                     Bitboard                     target,
+                     [[maybe_unused]] SliderCache* sc = nullptr,
+                     [[maybe_unused]] int*        next = nullptr) {
 
     static_assert(Pt != KING && Pt != PAWN, "Unsupported piece type in generate_moves()");
+
+    constexpr bool Cached = CM != NoSliderCache && Pt != KNIGHT;
 
     Bitboard bb = pos.pieces(Us, Pt);
 
     while (bb)
     {
         Square   from = pop_lsb(bb);
-        Bitboard b    = Attacks::attacks_bb<Pt>(from, pos.pieces()) & target;
+        Bitboard a;
 
-        moveList = splat_moves(moveList, from, b);
+        if constexpr (Cached && CM == UseSliderCache)
+            a = sc->att[(*next)++];
+        else
+        {
+            a = Attacks::attacks_bb<Pt>(from, pos.pieces());
+            if constexpr (Cached)
+            {
+                assert(*next < 16);
+                sc->att[(*next)++] = a;
+            }
+        }
+
+        moveList = splat_moves(moveList, from, a & target);
     }
 
     return moveList;
 }
 
 
-template<Color Us, GenType Type>
-Move* generate_all(const Position& pos, Move* moveList) {
+template<Color Us, GenType Type, SliderCacheMode CM = NoSliderCache>
+Move* generate_all(const Position& pos, Move* moveList, SliderCache* sc = nullptr) {
 
     static_assert(Type != LEGAL, "Unsupported type in generate_all()");
+    static_assert(CM == NoSliderCache || Type == CAPTURES || Type == QUIETS,
+                  "only the capture list and the quiet list of one node share sliders");
 
     const Square ksq = pos.square<KING>(Us);
     Bitboard     target;
+    int          next = 0;
 
     // Skip generating non-king moves when in double check
     if (Type != EVASIONS || !more_than_one(pos.checkers()))
@@ -233,9 +256,9 @@ Move* generate_all(const Position& pos, Move* moveList) {
 
         moveList = generate_pawn_moves<Us, Type>(pos, moveList, target);
         moveList = generate_moves<Us, KNIGHT>(pos, moveList, target);
-        moveList = generate_moves<Us, BISHOP>(pos, moveList, target);
-        moveList = generate_moves<Us, ROOK>(pos, moveList, target);
-        moveList = generate_moves<Us, QUEEN>(pos, moveList, target);
+        moveList = generate_moves<Us, BISHOP, CM>(pos, moveList, target, sc, &next);
+        moveList = generate_moves<Us, ROOK, CM>(pos, moveList, target, sc, &next);
+        moveList = generate_moves<Us, QUEEN, CM>(pos, moveList, target, sc, &next);
     }
 
     Bitboard b = Attacks::attacks_bb<KING>(ksq) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
@@ -271,7 +294,26 @@ Move* generate(const Position& pos, Move* moveList) {
                        : generate_all<BLACK, Type>(pos, moveList);
 }
 
+// The same generator, with the slider sets written on the capture list and read
+// back on the quiet list. It is a separate name rather than a defaulted
+// argument on generate() so that the uncached call sites keep the signature and
+// the codegen they had.
+template<GenType Type, SliderCacheMode CM>
+Move* generate_cached(const Position& pos, Move* moveList, SliderCache& sc) {
+
+    static_assert(Type == CAPTURES || Type == QUIETS, "Unsupported type in generate_cached()");
+    assert((Type == EVASIONS) == bool(pos.checkers()));
+
+    Color us = pos.side_to_move();
+
+    return us == WHITE ? generate_all<WHITE, Type, CM>(pos, moveList, &sc)
+                       : generate_all<BLACK, Type, CM>(pos, moveList, &sc);
+}
+
 // Explicit template instantiations
+template Move* generate_cached<CAPTURES, FillSliderCache>(const Position&, Move*, SliderCache&);
+template Move* generate_cached<QUIETS, UseSliderCache>(const Position&, Move*, SliderCache&);
+
 template Move* generate<CAPTURES>(const Position&, Move*);
 template Move* generate<QUIETS>(const Position&, Move*);
 template Move* generate<EVASIONS>(const Position&, Move*);

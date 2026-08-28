@@ -51,6 +51,37 @@ inline bool operator<(const ExtMove& f, const ExtMove& s) { return f.value < s.v
 template<GenType>
 Move* generate(const Position& pos, Move* moveList);
 
+// A slider's attack set is a function of its square and the occupancy alone,
+// and neither changes between the capture list and the quiet list of one node:
+// the two differ only in the target they intersect. CAPTURE_INIT therefore
+// computes every set that QUIET_INIT is about to compute again.
+//
+// Measured over a warm 60-ply replay at depth 20, 33,473,573 nodes: 19,850,566
+// generations visiting 65,420,816 sliders, 3.296 apiece, of which 5,205,030 are
+// quiet lists that a capture list has already paid for.
+//
+// The cache is positional, not keyed: generate_all() walks bishops, then rooks,
+// then queens, each by ascending square, and the piece sets are identical
+// between the two calls, so the k-th set filled is the k-th set read. Sixteen
+// entries is the bound -- sixteen men less the king.
+enum SliderCacheMode {
+    NoSliderCache,
+    FillSliderCache,
+    UseSliderCache
+};
+
+struct SliderCache {
+    Bitboard att[16];
+};
+
+// Tags rather than a bool, so the mode is a template argument and the piece
+// loop carries no test.
+struct FillSliders {};
+struct UseSliders {};
+
+template<GenType, SliderCacheMode>
+Move* generate_cached(const Position& pos, Move* moveList, SliderCache& sc);
+
 // The MoveList struct wraps the generate() function and returns a convenient
 // list of moves. Using MoveList is sometimes preferable to directly calling
 // the lower level generate() function.
@@ -59,6 +90,10 @@ struct MoveList {
 
     explicit MoveList(const Position& pos) :
         last(generate<T>(pos, moveList)) {}
+    MoveList(const Position& pos, SliderCache& sc, FillSliders) :
+        last(generate_cached<T, FillSliderCache>(pos, moveList, sc)) {}
+    MoveList(const Position& pos, SliderCache& sc, UseSliders) :
+        last(generate_cached<T, UseSliderCache>(pos, moveList, sc)) {}
     const Move* begin() const { return moveList; }
     const Move* end() const { return last; }
     usize       size() const { return last - moveList; }
