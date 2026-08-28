@@ -410,6 +410,79 @@ sf_always_inline void apply_psqt(const PSQTWeightType* tileWeights,
 
 #endif
 
+// gcc gets the four index lists as ONE object. Eight reference arguments do not fit the six
+// the ABI passes in registers, so the two threat lists travelled on the stack and the callee
+// needed a frame pointer to reach them; the four list bases then held four registers across
+// the tile loop, and with none left gcc spilled the loop's end pointer and reloaded it on
+// every one of the eight tiles. One base register and a displacement per list gives all of
+// that back: `mov -0x8(%rsp),%r15` leaves the tile tail.
+//
+// clang must not be given it, and is not. apply_combined is inlined into both updaters there,
+// so no argument travels anywhere and there is nothing to win -- and grouping the lists puts
+// an aggregate containing arrays where four separate objects were, which stops clang
+// promoting their four `size_` fields. The zone -- AccumulatorStack::evaluate, evaluate_side
+// and update_accumulator_incremental -- reads 158,052,593 Ir at `bench 16 1 6`, clang -O3
+// avx2, and 158,955,135 with the lists grouped, +0.571%; whole-search it is +0.1901% at -O3
+// and +0.6758% under PGO. Grouping only added with removed, two objects instead of one,
+// costs 158,922,544 -- the same, so it is the aggregate and not its size.
+//
+// The #else branch expands to the tokens clang compiled before, so its translation unit is
+// unchanged across this commit:
+//
+//   clang++ -DNDEBUG -DIS_64BIT -DUSE_AVX2 -DUSE_SSE41 -DUSE_SSSE3 -DUSE_SSE2
+//           -DUSE_POPCNT -DARCH=x86-64-avx2 -std=c++17 -E -P
+//           engine/nnue/nnue_accumulator.cpp | tr -s '[:space:]' ' ' | md5sum
+//
+// The macros carry their own semicolons where they stand for a declaration, because a
+// trailing one at the use site would be a token the #else branch did not have.
+#if defined(__GNUC__) && !defined(__clang__)
+
+struct ChangedFeatures {
+    PSQFeatureSet::IndexList    psqAdded, psqRemoved;
+    ThreatFeatureSet::IndexList thrAdded, thrRemoved;
+};
+
+    #define SF_CHANGED_PARAMS const ChangedFeatures& changed
+    #define SF_CHANGED_UNPACK \
+        const auto& psqAdded   = changed.psqAdded; \
+        const auto& psqRemoved = changed.psqRemoved; \
+        const auto& thrAdded   = changed.thrAdded; \
+        const auto& thrRemoved = changed.thrRemoved;
+    #define SF_CHANGED_DECL \
+        ChangedFeatures changed; \
+        auto& psqRemoved = changed.psqRemoved; \
+        auto& psqAdded   = changed.psqAdded; \
+        auto& thrRemoved = changed.thrRemoved; \
+        auto& thrAdded   = changed.thrAdded;
+    #define SF_CHANGED_ARGS changed
+
+    #define SF_CHANGED_DECL_BOTH ChangedFeatures changed[COLOR_NB];
+    #define SF_PSQ_REMOVED(c) changed[c].psqRemoved
+    #define SF_PSQ_ADDED(c) changed[c].psqAdded
+    #define SF_THR_REMOVED(c) changed[c].thrRemoved
+    #define SF_THR_ADDED(c) changed[c].thrAdded
+    #define SF_CHANGED_ARGS_BOTH(c) changed[c]
+#else
+    #define SF_CHANGED_PARAMS \
+        const PSQFeatureSet::IndexList& psqAdded, const PSQFeatureSet::IndexList& psqRemoved, \
+        const ThreatFeatureSet::IndexList& thrAdded, const ThreatFeatureSet::IndexList& thrRemoved
+    #define SF_CHANGED_UNPACK
+    #define SF_CHANGED_DECL \
+        PSQFeatureSet::IndexList psqRemoved, psqAdded; \
+        ThreatFeatureSet::IndexList thrRemoved, thrAdded;
+    #define SF_CHANGED_ARGS psqAdded, psqRemoved, thrAdded, thrRemoved
+
+    #define SF_CHANGED_DECL_BOTH \
+        PSQFeatureSet::IndexList psq_removed[COLOR_NB], psq_added[COLOR_NB]; \
+        ThreatFeatureSet::IndexList thr_removed[COLOR_NB], thr_added[COLOR_NB];
+    #define SF_PSQ_REMOVED(c) psq_removed[c]
+    #define SF_PSQ_ADDED(c) psq_added[c]
+    #define SF_THR_REMOVED(c) thr_removed[c]
+    #define SF_THR_ADDED(c) thr_added[c]
+    #define SF_CHANGED_ARGS_BOTH(c) \
+        SF_PSQ_ADDED(c), SF_PSQ_REMOVED(c), SF_THR_ADDED(c), SF_THR_REMOVED(c)
+#endif
+
 // A list's size sits beside its values, so gcc must assume the accumulator store that ends
 // each tile could be a store into one of the four index lists, and reloads every bound, end
 // pointer and unroll parity test on all eight tiles from values that cannot have changed.
@@ -427,17 +500,16 @@ sf_always_inline void apply_psqt(const PSQTWeightType* tileWeights,
     #define SF_ACCUMULATOR_TARGET_RESTRICT
 #endif
 
-void apply_combined(Color                                   perspective,
-                    const FeatureTransformer&               featureTransformer,
-                    const AccumulatorState&                 from,
+void apply_combined(Color                     perspective,
+                    const FeatureTransformer& featureTransformer,
+                    const AccumulatorState&   from,
                     AccumulatorState& SF_ACCUMULATOR_TARGET_RESTRICT to,
-                    const PSQFeatureSet::IndexList&         psqAdded,
-                    const PSQFeatureSet::IndexList&         psqRemoved,
-                    const ThreatFeatureSet::IndexList&      thrAdded,
-                    const ThreatFeatureSet::IndexList&      thrRemoved) {
+                    SF_CHANGED_PARAMS) {
 // One declaration needs it and nothing below does, so it does not outlive the
 // signature it qualifies.
 #undef SF_ACCUMULATOR_TARGET_RESTRICT
+
+    SF_CHANGED_UNPACK
 
     const auto& fromAcc = from.accumulation[perspective];
     auto&       toAcc   = to.accumulation[perspective];
@@ -612,8 +684,7 @@ void update_accumulator_incremental(Color                     perspective,
     // That might depend on the feature set and generally relies on the
     // feature set's update cost calculation to be correct and never allow
     // updates with more added/removed features than MaxActiveDimensions.
-    PSQFeatureSet::IndexList    psqRemoved, psqAdded;
-    ThreatFeatureSet::IndexList thrRemoved, thrAdded;
+    SF_CHANGED_DECL
 
     const auto& dirtyPiece     = Forward ? target_state.dirtyPiece : computed.dirtyPiece;
     const auto& dirtyThreats   = Forward ? target_state.dirtyThreats : computed.dirtyThreats;
@@ -644,8 +715,7 @@ void update_accumulator_incremental(Color                     perspective,
                                                thrRemoved, threatPpBase);
     }
 
-    apply_combined(perspective, featureTransformer, computed, target_state, psqAdded, psqRemoved,
-                   thrAdded, thrRemoved);
+    apply_combined(perspective, featureTransformer, computed, target_state, SF_CHANGED_ARGS);
 
     target_state.computed[perspective] = true;
 }
@@ -661,30 +731,42 @@ void update_accumulator_incremental_both(const FeatureTransformer& featureTransf
     assert(!target_state.computed[WHITE]);
     assert(!target_state.computed[BLACK]);
 
-    PSQFeatureSet::IndexList    psq_removed[COLOR_NB], psq_added[COLOR_NB];
-    ThreatFeatureSet::IndexList thr_removed[COLOR_NB], thr_added[COLOR_NB];
+    SF_CHANGED_DECL_BOTH
 
     const auto* threat_pp_base = &featureTransformer.threatAndPpWeights[0];
 
     PSQFeatureSet::append_changed_indices(WHITE, white_ksq, target_state.dirtyPiece,
-                                          psq_removed[WHITE], psq_added[WHITE]);
+                                          SF_PSQ_REMOVED(WHITE), SF_PSQ_ADDED(WHITE));
     PSQFeatureSet::append_changed_indices(BLACK, black_ksq, target_state.dirtyPiece,
-                                          psq_removed[BLACK], psq_added[BLACK]);
+                                          SF_PSQ_REMOVED(BLACK), SF_PSQ_ADDED(BLACK));
     ThreatFeatureSet::append_changed_indices_both(
-      white_ksq, black_ksq, target_state.dirtyThreats, thr_removed[WHITE], thr_added[WHITE],
-      thr_removed[BLACK], thr_added[BLACK], threat_pp_base);
+      white_ksq, black_ksq, target_state.dirtyThreats, SF_THR_REMOVED(WHITE),
+      SF_THR_ADDED(WHITE), SF_THR_REMOVED(BLACK), SF_THR_ADDED(BLACK), threat_pp_base);
     PairFeatureSet::append_changed_indices_both(
-      white_ksq, black_ksq, target_state.dirtyPawnPairs, thr_removed[WHITE], thr_added[WHITE],
-      thr_removed[BLACK], thr_added[BLACK], threat_pp_base);
+      white_ksq, black_ksq, target_state.dirtyPawnPairs, SF_THR_REMOVED(WHITE),
+      SF_THR_ADDED(WHITE), SF_THR_REMOVED(BLACK), SF_THR_ADDED(BLACK), threat_pp_base);
 
-    apply_combined(WHITE, featureTransformer, computed, target_state, psq_added[WHITE],
-                   psq_removed[WHITE], thr_added[WHITE], thr_removed[WHITE]);
-    apply_combined(BLACK, featureTransformer, computed, target_state, psq_added[BLACK],
-                   psq_removed[BLACK], thr_added[BLACK], thr_removed[BLACK]);
+    apply_combined(WHITE, featureTransformer, computed, target_state,
+                   SF_CHANGED_ARGS_BOTH(WHITE));
+    apply_combined(BLACK, featureTransformer, computed, target_state,
+                   SF_CHANGED_ARGS_BOTH(BLACK));
 
     target_state.computed[WHITE] = true;
     target_state.computed[BLACK] = true;
 }
+
+// Two definitions need them and nothing below does, so they do not outlive the two updaters
+// they spell.
+#undef SF_CHANGED_PARAMS
+#undef SF_CHANGED_UNPACK
+#undef SF_CHANGED_DECL
+#undef SF_CHANGED_ARGS
+#undef SF_CHANGED_DECL_BOTH
+#undef SF_PSQ_REMOVED
+#undef SF_PSQ_ADDED
+#undef SF_THR_REMOVED
+#undef SF_THR_ADDED
+#undef SF_CHANGED_ARGS_BOTH
 
 Bitboard get_changed_pieces(const std::array<Piece, SQUARE_NB>& oldPieces,
                             const std::array<Piece, SQUARE_NB>& newPieces) {
