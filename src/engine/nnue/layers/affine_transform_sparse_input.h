@@ -279,6 +279,18 @@ class AffineTransformSparseInput {
     #else
         static_assert(InputDimensions % 256 == 0);
 
+        // Straight-line the blocks. The trip count is four for L1 = 1024 and known at compile
+        // time, but gcc rolls the loop anyway and pays a bitset load, two pointer copies for
+        // the barrier below, three pointer increments, a compare and a back edge on each
+        // pass. Unrolling is only safe once the walk runs on the block-local copy below:
+        // against the array it costs four register copies per NON-ZERO CHUNK, which is the
+        // coalescing failure that shape provokes, so the guard excludes the two inner loops
+        // that still accumulate into `acc` directly. clang straight-lines this already and
+        // never sees the pragma.
+    #if defined(__GNUC__) && !defined(__clang__) && !defined(USE_AVXVNNI) \
+      && !defined(USE_NEON_DOTPROD)
+        #pragma GCC unroll 4
+    #endif
         for (IndexType k = 0; k < InputDimensions / 256; ++k)
         {
             u64   bits = load_as<u64>(nnzInfo.bitset + k * 8);
@@ -395,6 +407,18 @@ class AffineTransformSparseInput {
                 }
             }
         #else
+            // Walk the block on a block-local copy of the accumulator set. `acc` is live
+            // across all four blocks, and gcc answers that by keeping a memory image of the
+            // array beside the registers it already uses: it writes the four biases out
+            // before the block loop, writes the sums out again after it under a flag
+            // recording whether any chunk was seen at all, and reads them back for the
+            // activation. Copying into values whose live range ends with the block gets the
+            // array scalarised instead, and the second store batch, the reload and the flag
+            // all go. clang keeps the sums in registers either way and is unchanged.
+            outvec_t blockAcc[NumAccums];
+            for (IndexType l = 0; l < NumAccums; ++l)
+                blockAcc[l] = acc[l];
+
             while (bits)
             {
                 isize       i          = isize(Detail::pop_lsb_index(bits));
@@ -414,8 +438,11 @@ class AffineTransformSparseInput {
             #endif
 
                 for (IndexType l = 0; l < NumAccums; ++l)
-                    vec_add_dpbusd_32(acc[l], in, col[l]);
+                    vec_add_dpbusd_32(blockAcc[l], in, col[l]);
             }
+
+            for (IndexType l = 0; l < NumAccums; ++l)
+                acc[l] = blockAcc[l];
         #endif
         }
 
