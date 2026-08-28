@@ -715,7 +715,7 @@ bool Position::legal(Move m) const {
         // gate costs one test on castling moves alone and changes nothing in
         // standard geometry, where a corner rook lies on no line between its own
         // king and any slider and so can never be one of its blockers.
-        return !(blockers_for_king(us) & m.to_sq());
+        return !(blockers_for_king(us) >> m.to_sq() & 1);
     }
 
     // If the moving piece is a king, check whether the destination square is
@@ -725,7 +725,7 @@ bool Position::legal(Move m) const {
 
     // A non-king move is legal if and only if it is not pinned or it
     // is moving along the ray towards or away from the king.
-    return !(blockers_for_king(us) & from) || line_bb(from, to) & pieces(us, KING);
+    return !(blockers_for_king(us) >> from & 1) || line_bb(from, to) & pieces(us, KING);
 }
 
 
@@ -802,11 +802,11 @@ bool Position::gives_check(Move m) const {
     Square to   = m.to_sq();
 
     // Is there a direct check?
-    if (check_squares(type_of(piece_on(from))) & to)
+    if (check_squares(type_of(piece_on(from))) >> to & 1)
         return true;
 
     // Is there a discovered check?
-    if (blockers_for_king(~sideToMove) & from)
+    if (blockers_for_king(~sideToMove) >> from & 1)
         return !(line_bb(from, to) & pieces(~sideToMove, KING)) || m.type_of() == CASTLING;
 
     switch (m.type_of())
@@ -833,7 +833,7 @@ bool Position::gives_check(Move m) const {
         // Castling is encoded as 'king captures the rook'
         Square rto = relative_square(sideToMove, to > from ? SQ_F1 : SQ_D1);
 
-        return check_squares(ROOK) & rto;
+        return check_squares(ROOK) >> rto & 1;
     }
     }
 }
