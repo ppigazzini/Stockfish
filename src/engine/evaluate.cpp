@@ -28,6 +28,7 @@
 #include <sstream>
 
 #include "nnue/network.h"
+#include "nnue/nnue_architecture.h"
 #include "nnue/nnue_misc.h"
 #include "position.h"
 #include "types.h"
@@ -39,11 +40,11 @@ namespace Stockfish {
 
 // Evaluate is the evaluator for the outer world. It returns a static evaluation
 // of the position from the point of view of the side to move.
-Value Eval::evaluate(const Eval::NNUE::Network&     network,
-                     const Position&                pos,
-                     Eval::NNUE::AccumulatorStack&  accumulators,
-                     Eval::NNUE::AccumulatorCaches& caches,
-                     int                            optimism) {
+SF_NO_STACK_PROTECTOR Value Eval::evaluate(const Eval::NNUE::Network&     network,
+                                           const Position&                pos,
+                                           Eval::NNUE::AccumulatorStack&  accumulators,
+                                           Eval::NNUE::AccumulatorCaches& caches,
+                                           int                            optimism) {
 
     assert(!pos.checkers());
 
