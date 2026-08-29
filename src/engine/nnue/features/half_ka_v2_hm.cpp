@@ -20,8 +20,6 @@
 
 #include "half_ka_v2_hm.h"
 
-#include <array>
-
 #include "../../types.h"
 #include "../nnue_common.h"
 
@@ -90,42 +88,6 @@ void HalfKAv2_hm::write_indices(const std::array<Piece, SQUARE_NB>& oldPieces,
       write_added + 16, scale(_mm512_cvtepu16_epi32(_mm512_extracti64x4_epi64(added_indices, 1))));
 }
 #endif
-
-// Offset of the weight row a feature selects, for a given king position and
-// another piece on some square -- the feature number scaled by the row stride.
-
-IndexType HalfKAv2_hm::make_index(Color perspective, Square s, Piece pc, Square ksq) {
-    alignas(64) static constexpr auto offsets = [] {
-        std::array<std::array<u16, PIECE_NB>, COLOR_NB * SQUARE_NB> table{};
-        for (int c = 0; c < COLOR_NB; ++c)
-            for (int sq = 0; sq < SQUARE_NB; ++sq)
-            {
-                const u16 flip   = 56 * c;
-                const u16 orient = u16(OrientTBL[sq]) ^ flip;
-                for (int pieceIndex = 0; pieceIndex < PIECE_NB; ++pieceIndex)
-                    table[c * SQUARE_NB + sq][pieceIndex] =
-                      PieceSquareIndex[c][pieceIndex] + KingBuckets[sq ^ flip] + orient;
-            }
-        return table;
-    }();
-
-    return (IndexType(s) ^ offsets[perspective * SQUARE_NB + ksq][pc]) << RowShift;
-}
-
-// Get a list of indices for recently changed features
-
-void HalfKAv2_hm::append_changed_indices(
-  Color perspective, Square ksq, const DiffType& diff, IndexList& removed, IndexList& added) {
-    removed.push_back(make_index(perspective, diff.from, diff.pc, ksq));
-    if (diff.to != SQ_NONE)
-        added.push_back(make_index(perspective, diff.to, diff.pc, ksq));
-
-    if (diff.remove_sq != SQ_NONE)
-        removed.push_back(make_index(perspective, diff.remove_sq, diff.remove_pc, ksq));
-
-    if (diff.add_sq != SQ_NONE)
-        added.push_back(make_index(perspective, diff.add_sq, diff.add_pc, ksq));
-}
 
 bool HalfKAv2_hm::requires_refresh(const DiffType& diff, Color perspective) {
     return diff.pc == make_piece(perspective, KING);
