@@ -56,6 +56,25 @@ constexpr IndexType LayerStacks = 8;
 static_assert(PSQTBuckets % 8 == 0,
               "Per feature PSQT values cannot be processed at granularity lower than 8 at a time.");
 
+// Ubuntu's gcc turns on -fstack-protector-strong by default and `src/Makefile`
+// asks for no such thing, so the guard is the toolchain's rather than this
+// project's -- upstream on a stock gcc emits none of it. A single local array is
+// enough to trigger it, and the two functions this evaluation is made of hold
+// several between them: a TLS load and a store on entry, a reload, a subtract
+// and a never-taken branch on exit. Five instructions each, ten an evaluation,
+// 3.8 a node. What it guards are fixed-size buffers written only through indices
+// the compiler has already resolved -- every store into them is a SIMD store at
+// a constant offset -- so there is no bound left for it to be checking, and the
+// exemption is named per function rather than taken for the whole program.
+#if defined(__has_attribute)
+    #if __has_attribute(no_stack_protector)
+        #define SF_NO_STACK_PROTECTOR __attribute__((no_stack_protector))
+    #endif
+#endif
+#if !defined(SF_NO_STACK_PROTECTOR)
+    #define SF_NO_STACK_PROTECTOR
+#endif
+
 struct NetworkArchitecture {
     static constexpr IndexType TransformedFeatureDimensions = L1;
     static constexpr int       FC_0_OUTPUTS                 = L2;
@@ -100,8 +119,8 @@ struct NetworkArchitecture {
             && fc_2.write_parameters(stream);
     }
 
-    i32 propagate(const TransformedFeatureType* transformedFeatures,
-                  const NNZInfo<L1>&            nnzInfo) const {
+    SF_NO_STACK_PROTECTOR i32 propagate(const TransformedFeatureType* transformedFeatures,
+                                        const NNZInfo<L1>&            nnzInfo) const {
         struct alignas(CacheLineSize) Buffer {
             alignas(CacheLineSize) typename decltype(ac_sqr_0)::OutputType
               concat_buffer[ceil_to_multiple<IndexType>(FC_0_OUTPUTS * 2 + FC_1_OUTPUTS * 2, 32)];

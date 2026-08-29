@@ -62,9 +62,9 @@ class Network {
 
     usize get_content_hash() const;
 
-    Value evaluate(const Position&    pos,
-                   AccumulatorStack&  accumulatorStack,
-                   AccumulatorCaches& cache) const;
+    SF_NO_STACK_PROTECTOR Value evaluate(const Position&    pos,
+                                         AccumulatorStack&  accumulatorStack,
+                                         AccumulatorCaches& cache) const;
 
 
     void verify(const std::function<void(std::string_view)>& f,
