@@ -218,10 +218,22 @@ class AffineTransformSparseInput {
           NumAccums;
     #endif
 
+    // The bitset walk below carries the sums in a block-local copy, so on that arm `acc`
+    // is written only at the end of a block and the biases can seed block zero's copy
+    // directly. Seeding `acc` here instead leaves four vector stores of the biases into an
+    // array nothing ever reads: gcc gives a set that is live across the four blocks a
+    // memory image beside the registers, and DSE does not take the image away.
+    #if !defined(USE_AVX512) && !defined(USE_AVXVNNI) && !defined(USE_NEON_DOTPROD) \
+      && defined(__GNUC__) && !defined(__clang__)
+        #define SF_FC0_SEED_BLOCK_ZERO
+    #endif
+
         const outvec_t* biasvec = reinterpret_cast<const outvec_t*>(biases);
         outvec_t        acc[NumRegs];
+    #if !defined(SF_FC0_SEED_BLOCK_ZERO)
         for (IndexType k = 0; k < NumAccums; ++k)
             acc[k] = biasvec[k];
+    #endif
 
     #if defined(USE_AVXVNNI)
         for (IndexType k = NumAccums; k < NumRegs; ++k)
@@ -278,6 +290,10 @@ class AffineTransformSparseInput {
         }
     #else
         static_assert(InputDimensions % 256 == 0);
+    #ifdef SF_FC0_SEED_BLOCK_ZERO
+        // Block zero seeds the running sums from the biases, so the walk below has to run.
+        static_assert(InputDimensions >= 256);
+    #endif
 
         // Straight-line the blocks. The trip count is four for L1 = 1024 and known at compile
         // time, but gcc rolls the loop anyway and pays a bitset load, two pointer copies for
@@ -416,8 +432,13 @@ class AffineTransformSparseInput {
             // array scalarised instead, and the second store batch, the reload and the flag
             // all go. clang keeps the sums in registers either way and is unchanged.
             outvec_t blockAcc[NumAccums];
+        #ifdef SF_FC0_SEED_BLOCK_ZERO
+            for (IndexType l = 0; l < NumAccums; ++l)
+                blockAcc[l] = k == 0 ? biasvec[l] : acc[l];
+        #else
             for (IndexType l = 0; l < NumAccums; ++l)
                 blockAcc[l] = acc[l];
+        #endif
 
             while (bits)
             {
@@ -453,6 +474,9 @@ class AffineTransformSparseInput {
         for (IndexType l = 0; l < NumAccums; ++l)
             acc[l] = vaddq_s32(vaddq_s32(acc[l], acc[l + NumAccums]), acc[l + 2 * NumAccums]);
         #endif
+    #endif
+    #ifdef SF_FC0_SEED_BLOCK_ZERO
+        #undef SF_FC0_SEED_BLOCK_ZERO
     #endif
         outvec_t* outptr = reinterpret_cast<outvec_t*>(output);
         for (IndexType k = 0; k < NumAccums; ++k)
