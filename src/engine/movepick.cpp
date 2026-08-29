@@ -366,6 +366,16 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     [[maybe_unused]] ContEntry *contHist0, *contHist1, *contHist2, *contHist3, *contHist5;
     [[maybe_unused]] PawnEntry* pawnHist;
 
+    // The main history's ROW, for the same reason and by the same rule: `us`
+    // does not change across a move list, so the colour belongs in the address
+    // and not in the loop. Left as [us][raw] gcc reloads `this->mainHistory`
+    // once a move, adds the move to it, and then adds a separately spilled
+    // `us << 17` -- four instructions where a row named once leaves
+    // `row + raw * 2`, which the addressing mode carries.
+    using MainEntry = std::remove_pointer_t<decltype((*mainHistory)[WHITE].data())>;
+    static_assert(sizeof((*mainHistory)[WHITE]) == UINT_16_HISTORY_SIZE * sizeof(MainEntry));
+    [[maybe_unused]] MainEntry* mainRow;
+
     if constexpr (Type == QUIETS)
     {
         threatByLesser[PAWN]   = 0;
@@ -381,6 +391,10 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
         contHist3 = continuationHistory[3]->data()->data();
         contHist5 = continuationHistory[5]->data()->data();
         pawnHist  = sharedHistory->pawn_entry(pos).data()->data();
+        mainRow   = (*mainHistory)[us].data();
+#if defined(__GNUC__) && !defined(__clang__)
+        asm("" : "+r"(mainRow));
+#endif
 
         // Copied beside threatByLesser so the per-move read is one instruction.
         // pos.check_squares(pt) is st->checkSquares[pt], and `st` is one more
@@ -440,7 +454,7 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
             // where it was, and the mispredicts fall with the instruction count.
             const int hi = int(pc) * SQUARE_NB + int(to);
 
-            int value = 2 * (*mainHistory)[us][m.raw()];
+            int value = 2 * mainRow[m.raw()];
             value += 2 * pawnHist[hi];
             value += contHist0[hi];
             value += contHist1[hi];
