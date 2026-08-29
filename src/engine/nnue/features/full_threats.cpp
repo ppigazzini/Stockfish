@@ -219,6 +219,15 @@ void FullThreats::append_changed_indices_both(Square                  white_ksq,
     const unsigned b_orient  = u8(OrientTBL[black_ksq]) ^ 56;
     const auto*    lut1_flat = &threat_luts.lut1[0][0];
 
+    // The add flag is a coin flip -- 3.070 of 6.839 trips, 44.9%, dead centre
+    // of the predictor's worst band -- and this is the one site that pays for
+    // it twice. gcc answers the two conditional references with a branch and
+    // four stack reloads; an indexed pair costs the flag as a value, two loads,
+    // and nothing to predict. The single-perspective spelling above already
+    // lowers to cmov and is left alone.
+    IndexList* const white_lists[2] = {&white_removed, &white_added};
+    IndexList* const black_lists[2] = {&black_removed, &black_added};
+
     for (const auto& dirty : diff.list)
     {
         const u32      raw   = dirty.raw();
@@ -243,16 +252,9 @@ void FullThreats::append_changed_indices_both(Square                  white_ksq,
               reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(black_index) * prefetchStride));
         }
 
-        if (raw >> 31)
-        {
-            white_added.push_back_if_lt(white_index, Dimensions);
-            black_added.push_back_if_lt(black_index, Dimensions);
-        }
-        else
-        {
-            white_removed.push_back_if_lt(white_index, Dimensions);
-            black_removed.push_back_if_lt(black_index, Dimensions);
-        }
+        const unsigned add = raw >> 31;
+        white_lists[add]->push_back_if_lt(white_index, Dimensions);
+        black_lists[add]->push_back_if_lt(black_index, Dimensions);
     }
 }
 
