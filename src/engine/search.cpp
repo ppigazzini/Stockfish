@@ -2379,14 +2379,45 @@ void update_all_stats(const Position& pos,
 // Updates the continuation histories for the move pairs formed by
 // the current move and the moves played in previous plies.
 void update_continuation_histories(Stack* ss, Piece pc, Square to, int bonus) {
-    static constexpr std::array<ConthistBonus, 6> conthist_bonuses = {
-      {{1, 520}, {2, 390}, {3, 145}, {4, 251}, {5, 66}, {6, 209}}};
+    // The step's WEIGHT and the consistency MULTIPLIER are one table, folded at
+    // compile time. The weight is a constant of the step and the multiplier is
+    // a run-time index, so their product never depends on the bonus and the
+    // loop was buying it with an `imul` on every step it took.
+    //
+    // Regrouping `(bonus * weight) * multiplier` as `bonus * (weight *
+    // multiplier)` is bit-identical, and the reason has to be stated because
+    // this product overflows: the fail-low arm in search() passes
+    // `scaledBonus * 263 / 16384`, which reaches 36,914, and 36,914 * 520 *
+    // 126 does not fit an int in either grouping. Integer multiplication is
+    // associative modulo 2^32, so both groupings wrap to the same bits.
+    //
+    // ConthistBonus stays the source of truth, so a tuner still edits the six
+    // weights and the seven multipliers rather than a derived table.
+    struct ConthistStep {
+        int                index;
+        std::array<int, 7> scale;
+    };
 
-    // Multipliers for positive history consistency
-    static constexpr int CMHCMultipliers[] = {94, 103, 110, 106, 119, 126, 121};
-    int                  positiveCount     = 0;
+    static constexpr auto conthist_steps = [] {
+        constexpr ConthistBonus bonuses[] = {{1, 520}, {2, 390}, {3, 145},
+                                             {4, 251}, {5, 66},  {6, 209}};
 
-    for (const auto [i, weight] : conthist_bonuses)
+        // Multipliers for positive history consistency
+        constexpr int CMHCMultipliers[] = {94, 103, 110, 106, 119, 126, 121};
+
+        std::array<ConthistStep, 6> steps{};
+        for (usize k = 0; k < steps.size(); ++k)
+        {
+            steps[k].index = bonuses[k].index;
+            for (usize m = 0; m < steps[k].scale.size(); ++m)
+                steps[k].scale[m] = bonuses[k].weight * CMHCMultipliers[m];
+        }
+        return steps;
+    }();
+
+    int positiveCount = 0;
+
+    for (const auto& [i, scale] : conthist_steps)
     {
         // Only update the first 2 continuation histories if we are in check
         if (ss->inCheck && i > 2)
@@ -2395,11 +2426,15 @@ void update_continuation_histories(Stack* ss, Piece pc, Square to, int bonus) {
         if (((ss - i)->currentMove).is_ok())
         {
             auto& historyEntry = (*(ss - i)->continuationHistory)[pc][to];
-            if (historyEntry > 0)
-                positiveCount++;
 
-            int multiplier = CMHCMultipliers[positiveCount];
-            historyEntry << bonus * weight * multiplier / 65536 + 73 * (i < 2);
+            // Read the shared counter ONCE. Both the consistency test and the
+            // update want it, and the entry is a relaxed atomic: gcc loaded it
+            // with a `movzwl` for the test and again with a `movswl` for the
+            // arithmetic, and set the predicate twice.
+            const int value = historyEntry;
+            positiveCount += value > 0;
+
+            historyEntry.update(value, bonus * scale[positiveCount] / 65536 + 73 * (i < 2));
         }
     }
 }
