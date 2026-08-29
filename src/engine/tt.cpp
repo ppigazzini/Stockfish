@@ -58,9 +58,53 @@ namespace Stockfish {
 static constexpr u8 GENERATION_BITS = 5;
 static constexpr u8 GENERATION_MASK = (1 << GENERATION_BITS) - 1;
 static constexpr u8 BOUND_SHIFT     = GENERATION_BITS;
-static constexpr u8 BOUND_MASK      = 0b11 << BOUND_SHIFT;
-static constexpr u8 PV_SHIFT        = BOUND_SHIFT + 2;
-static constexpr u8 PV_MASK         = 1 << PV_SHIFT;
+// The bound field is two bits wide because Bound is the powerset of two atoms
+// and BOUND_EXACT is their join, so the lattice's TOP is the field's mask.
+// Spelling it 0b11 wrote that same number a second time with nothing making
+// the two agree; a reordered or extended Bound would move one and not the other.
+static constexpr u8 BOUND_MASK = u8(BOUND_EXACT) << BOUND_SHIFT;
+static constexpr u8 PV_SHIFT   = BOUND_SHIFT + 2;
+static constexpr u8 PV_MASK    = 1 << PV_SHIFT;
+
+// The byte is packed in one place and unpacked in three -- read(), save()'s
+// secondary-aging test and relative_age() -- and nothing related the four. One
+// operation each way, and the law relating them decided over the WHOLE domain
+// rather than asserted at a site: 32 generations x 4 bounds x 2 pv flags is 256
+// cases, which is small enough for the compiler to enumerate. A metamorphic
+// relation between two implementations needs no oracle for either, and this one
+// needs no lane either.
+static constexpr u8 pack_gen_bound(u8 gen, Bound b, bool pv) {
+    return u8(gen | u8(b) << BOUND_SHIFT | u8(pv) << PV_SHIFT);
+}
+static constexpr Bound bound_of(u8 gb) { return Bound((gb & BOUND_MASK) >> BOUND_SHIFT); }
+static constexpr bool  pv_of(u8 gb) { return bool(gb & PV_MASK); }
+
+static_assert((GENERATION_MASK | BOUND_MASK | PV_MASK) == 0xFF
+                && (GENERATION_MASK & BOUND_MASK) == 0 && (GENERATION_MASK & PV_MASK) == 0
+                && (BOUND_MASK & PV_MASK) == 0,
+              "the three fields partition genBound8 exactly");
+
+static_assert(
+  [] {
+      for (int g = 0; g <= GENERATION_MASK; ++g)
+          for (int b = BOUND_NONE; b <= BOUND_EXACT; ++b)
+              for (int pv = 0; pv <= 1; ++pv)
+              {
+                  const u8 gb = pack_gen_bound(u8(g), Bound(b), bool(pv));
+
+                  // read() recovers the bound and the pv flag ...
+                  if (bound_of(gb) != Bound(b) || pv_of(gb) != bool(pv))
+                      return false;
+
+                  // ... and relative_age() reads zero for the generation that
+                  // wrote it, which is the only property it asks of the byte:
+                  // the bound and pv bits must borrow away under the mask.
+                  if (u8((u8(g) - gb) & GENERATION_MASK) != 0)
+                      return false;
+              }
+      return true;
+  }(),
+  "the unpackers invert pack_gen_bound over every value it can produce");
 
 // wide() is named on the two i16 fields and on NOTHING else here, and the line
 // between them was measured, not guessed. clang keeps genBound8's
@@ -85,8 +129,8 @@ struct TTEntry {
                       Value(value16.wide()),
                       Value(eval16.wide()),
                       Depth(DEPTH_NONE + d8),
-                      Bound((gb & BOUND_MASK) >> BOUND_SHIFT),
-                      bool(gb & PV_MASK)};
+                      bound_of(gb),
+                      pv_of(gb)};
     }
 
     // Check if the TT entry is occupied
@@ -136,7 +180,7 @@ void TTEntry::save(
 
         key16     = u16(k);
         depth8    = u8(d - DEPTH_NONE);
-        genBound8 = u8(curr_generation | b << BOUND_SHIFT | u8(pv) << PV_SHIFT);
+        genBound8 = pack_gen_bound(curr_generation, b, pv);
         value16   = i16(v);
         eval16    = i16(ev);
     }
@@ -144,8 +188,7 @@ void TTEntry::save(
     // Secondary aging. Important for elementary mate finding.
     // (*Scaler) Secondary aging on entries relevant to singular extensions
     // generally scales poorly and requires VVLTC verification.
-    else if (depth8 + DEPTH_NONE >= 5
-             && Bound((genBound8 & BOUND_MASK) >> BOUND_SHIFT) != BOUND_EXACT)
+    else if (depth8 + DEPTH_NONE >= 5 && bound_of(genBound8) != BOUND_EXACT)
     {
         // Named `int`, never `auto`, for two separate reasons. `auto` over the
         // member itself deduces RelaxedAtomic<i16>: the copy is an object
