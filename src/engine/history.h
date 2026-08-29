@@ -62,12 +62,53 @@ struct WorkerShare {
 // in [0, share.total) asks exactly once with the same total; a missing index
 // leaves its slice untouched. A slice is empty when the total exceeds count,
 // which partitions the range just as correctly.
-inline std::pair<usize, usize> shared_slice(usize count, WorkerShare share) {
+constexpr std::pair<usize, usize> shared_slice(usize count, WorkerShare share) {
     assert(share.index < share.total);
     return {u64(share.index) * count / share.total,
             share.index + 1 == share.total ? count
                                            : u64(share.index + 1) * count / share.total};
 }
+
+// The partition law the comment above states in prose, decided instead of
+// asserted. Nothing else in this tree checks it and nothing else CAN: the only
+// caller that passes a total above one is the multi-worker clear in
+// Worker::clear(), and `bench` runs one thread, so signature.sh, perft.sh and
+// reprosearch.sh all stay green while a slice is dropped and a shared history
+// keeps the previous game's statistics into the next one. The relation is
+// arithmetic over two small parameters, so a grid of them settles it at compile
+// time and -DNDEBUG has nothing to switch off.
+//
+// What is checked is exactly what the callers rely on: the first slice starts
+// at 0, no slice is inverted, each one starts where the last ended -- which is
+// disjointness and contiguity together -- and the last ends at count.
+//
+// A NAMED function and not a static_assert lambda, because this is a header. A
+// lambda at namespace scope in a header is a closure type whose mangled name
+// carries an ordinal within that scope, and adding one here renumbered an
+// unrelated lambda in platform/thread.cpp -- the two objects were the same size
+// and differed only in `{lambda()#1}` becoming `{lambda()#2}`. Harmless there
+// and not harmless in general: the ordinal is per translation unit, so a
+// closure type named in an inline function would stop agreeing across TUs.
+constexpr bool shared_slice_partitions() {
+    for (usize total = 1; total <= 9; ++total)
+        for (usize count = 0; count <= 33; ++count)
+        {
+            usize covered = 0;
+            for (usize index = 0; index < total; ++index)
+            {
+                const auto [start, end] = shared_slice(count, {index, total});
+                if (start != covered || end < start)
+                    return false;
+                covered = end;
+            }
+            if (covered != count)
+                return false;
+        }
+    return true;
+}
+
+static_assert(shared_slice_partitions(),
+              "shared_slice cuts [0, count) into `total` contiguous slices covering it exactly");
 
 // StatsEntry is the container of various numerical statistics. We use a class
 // instead of a naked value to directly call history update operator<<() on
