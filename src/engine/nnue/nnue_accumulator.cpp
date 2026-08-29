@@ -52,12 +52,18 @@ using namespace SIMD;
 
 namespace {
 
+// Pinned inline for the reason half_ka_v2_hm.h gives for the feature builder it
+// now calls inline: folding that builder in makes THIS function bigger, and
+// clang's profile-guided inliner answers the extra size by declining to fold it
+// into AccumulatorStack::evaluate_side -- a function neither change mentions.
+// The two decisions are one decision, so both are taken here rather than left
+// to a cost model that reads them apart.
 template<bool Forward>
-void update_accumulator_incremental(Color                     perspective,
-                                    const FeatureTransformer& featureTransformer,
-                                    const Square              ksq,
-                                    AccumulatorState&         target_state,
-                                    const AccumulatorState&   computed);
+sf_always_inline void update_accumulator_incremental(Color                     perspective,
+                                                     const FeatureTransformer& featureTransformer,
+                                                     const Square              ksq,
+                                                     AccumulatorState&         target_state,
+                                                     const AccumulatorState&   computed);
 
 void update_accumulator_incremental_both(const FeatureTransformer& featureTransformer,
                                          Square                    white_ksq,
@@ -671,11 +677,11 @@ void apply_combined(Color                     perspective,
 }
 
 template<bool Forward>
-void update_accumulator_incremental(Color                     perspective,
-                                    const FeatureTransformer& featureTransformer,
-                                    const Square              ksq,
-                                    AccumulatorState&         target_state,
-                                    const AccumulatorState&   computed) {
+sf_always_inline void update_accumulator_incremental(Color                     perspective,
+                                                     const FeatureTransformer& featureTransformer,
+                                                     const Square              ksq,
+                                                     AccumulatorState&         target_state,
+                                                     const AccumulatorState&   computed) {
 
     assert(computed.computed[perspective]);
     assert(!target_state.computed[perspective]);
