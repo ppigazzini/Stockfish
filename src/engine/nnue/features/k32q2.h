@@ -21,13 +21,14 @@
 #ifndef NNUE_FEATURES_K32Q2_H_INCLUDED
 #define NNUE_FEATURES_K32Q2_H_INCLUDED
 
-#if defined(USE_AVX512ICL)
-    #include <array>
-#endif
+#include <array>
+#include <initializer_list>
 
 #include "../../types.h"
 #include "../nnue_common.h"
 #include "../../basetypes.h"
+#include "../../compiler.h"
+
 
 namespace Stockfish::Eval::NNUE::Features {
 
@@ -114,17 +115,61 @@ class K32Q2 {
                               IndexList&                          added);
 #endif
 
-    // Index of a feature for a given king position and another piece on some square
-    static IndexType
-    make_index(Color perspective, Square s, Piece pc, Square ksq, bool opponentHasQueen);
+    // Index of a feature for a given king position and another piece on some
+    // square.
+    //
+    // Both of these live here rather than in the .cpp, and both are pinned
+    // inline, because gcc's WHOLE-PROGRAM inliner was deciding one of them at
+    // link time and the decision is BISTABLE: with append_changed_indices out
+    // of line at update_accumulator_incremental<true>'s call site, that pair of
+    // symbols retires 9,409,407 more instructions over a depth-12 bench than
+    // with it folded in -- 0.100% of the search -- and an edit anywhere in the
+    // tree could flip it. A ratio measured across such a flip is the inliner's
+    // and not the change's, and no A/A control can see it, because the flip is
+    // perfectly reproducible for a given tree. Pinning the cheaper state costs
+    // the attribute and gives every measurement on this tree one lane back.
+    static sf_always_inline IndexType
+    make_index(Color perspective, Square s, Piece pc, Square ksq, bool opponentHasQueen) {
+        alignas(64) static constexpr auto offsets = [] {
+            std::array<std::array<u16, PIECE_NB>, 2 * COLOR_NB * SQUARE_NB> table{};
+            for (bool q : {false, true})
+                for (int c = 0; c < COLOR_NB; ++c)
+                    for (int sq = 0; sq < SQUARE_NB; ++sq)
+                    {
+                        const u16 flip        = 56 * c;
+                        const u16 orient      = u16(OrientTBL[sq]) ^ flip;
+                        const u16 queenOffset = q ? PS_NB : 0;
+                        for (int pieceIndex = 0; pieceIndex < PIECE_NB; ++pieceIndex)
+                            table[(int(q) * COLOR_NB + c) * SQUARE_NB + sq][pieceIndex] =
+                              PieceSquareIndex[c][pieceIndex] + KingBuckets[sq ^ flip]
+                              + queenOffset + orient;
+                    }
+            return table;
+        }();
+
+        return IndexType(s)
+             ^ offsets[(int(opponentHasQueen) * COLOR_NB + perspective) * SQUARE_NB + ksq][pc];
+    }
 
     // Get a list of indices for recently changed features
-    static void append_changed_indices(Color           perspective,
-                                       Square          ksq,
-                                       const DiffType& diff,
-                                       bool            opponentHasQueen,
-                                       IndexList&      removed,
-                                       IndexList&      added);
+    static sf_always_inline void append_changed_indices(Color           perspective,
+                                                        Square          ksq,
+                                                        const DiffType& diff,
+                                                        bool            opponentHasQueen,
+                                                        IndexList&      removed,
+                                                        IndexList&      added) {
+        removed.push_back(make_index(perspective, diff.from, diff.pc, ksq, opponentHasQueen));
+        if (diff.to != SQ_NONE)
+            added.push_back(make_index(perspective, diff.to, diff.pc, ksq, opponentHasQueen));
+
+        if (diff.remove_sq != SQ_NONE)
+            removed.push_back(
+              make_index(perspective, diff.remove_sq, diff.remove_pc, ksq, opponentHasQueen));
+
+        if (diff.add_sq != SQ_NONE)
+            added.push_back(
+              make_index(perspective, diff.add_sq, diff.add_pc, ksq, opponentHasQueen));
+    }
 
     // Returns whether the change stored in this DirtyPiece means
     // that a full accumulator refresh is required.
