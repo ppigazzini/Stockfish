@@ -28,6 +28,8 @@
 #include "../../types.h"
 #include "../nnue_common.h"
 #include "../../basetypes.h"
+#include "../../compiler.h"
+
 
 namespace Stockfish::Eval::NNUE::Features {
 
@@ -122,13 +124,43 @@ class HalfKAv2_hm {
                               IndexList&                          added);
 #endif
 
-    // Index of a feature for a given king position and another piece on some square
-
-    static IndexType make_index(Color perspective, Square s, Piece pc, Square ksq);
+    // Offset of the weight row a feature selects, for a given king position and
+    // another piece on some square -- the feature number scaled by the row
+    // stride.
+    //
+    // Both of these live here rather than in the .cpp, and both are pinned
+    // inline, because gcc's WHOLE-PROGRAM inliner was deciding one of them at
+    // link time and the decision is BISTABLE: with append_changed_indices out
+    // of line at update_accumulator_incremental<true>'s call site, that pair of
+    // symbols retires 9,409,407 more instructions over a depth-12 bench than
+    // with it folded in -- 0.100% of the search -- and an edit anywhere in the
+    // tree could flip it. A ratio measured across such a flip is the inliner's
+    // and not the change's, and no A/A control can see it, because the flip is
+    // perfectly reproducible for a given tree. Pinning the cheaper state costs
+    // the attribute and gives every measurement on this tree one lane back.
+    static sf_always_inline IndexType make_index(Color  perspective,
+                                                 Square s,
+                                                 Piece  pc,
+                                                 Square ksq) {
+        const IndexType flip = 56 * perspective;
+        return ((IndexType(s) ^ OrientTBL[ksq] ^ flip) + PieceSquareIndex[perspective][pc]
+                + KingBuckets[int(ksq) ^ flip])
+            << RowShift;
+    }
 
     // Get a list of indices for recently changed features
-    static void append_changed_indices(
-      Color perspective, Square ksq, const DiffType& diff, IndexList& removed, IndexList& added);
+    static sf_always_inline void append_changed_indices(
+      Color perspective, Square ksq, const DiffType& diff, IndexList& removed, IndexList& added) {
+        removed.push_back(make_index(perspective, diff.from, diff.pc, ksq));
+        if (diff.to != SQ_NONE)
+            added.push_back(make_index(perspective, diff.to, diff.pc, ksq));
+
+        if (diff.remove_sq != SQ_NONE)
+            removed.push_back(make_index(perspective, diff.remove_sq, diff.remove_pc, ksq));
+
+        if (diff.add_sq != SQ_NONE)
+            added.push_back(make_index(perspective, diff.add_sq, diff.add_pc, ksq));
+    }
 
     // Returns whether the change stored in this DirtyPiece means
     // that a full accumulator refresh is required.
