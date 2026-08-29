@@ -1123,6 +1123,20 @@ void Position::do_move(Move                      m,
     // Calculate checkers bitboard (if move gives check)
     newSt.checkersBB = givesCheck ? attackers_to(square<KING>(them)) & pieces(us) : 0;
 
+    // One relation, two implementations. `givesCheck` is gives_check(m), decided
+    // BEFORE the move from the mover's own attack set and the blockers-for-king
+    // mask, with a hand-written arm per move type; `checkersBB` is the six-term
+    // attack fold run AFTER it. Nothing but this line relates them, and only the
+    // first decides whether the second runs -- so a false negative is not a
+    // wrong bitboard, it is an EMPTY one, and the node below generates
+    // non-evasions while its king is attacked. perft cannot see it: it counts
+    // the leaves of a movegen that would then be wrong on both sides of the
+    // comparison.
+    //
+    // Free in the shipping build, and the recompute is the one the taken arm
+    // already performs.
+    assert(givesCheck == bool(attackers_to(square<KING>(them)) & pieces(us)));
+
     sideToMove = ~sideToMove;
 
     // Update king attacks used for fast check detection
