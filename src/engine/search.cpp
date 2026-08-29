@@ -1700,7 +1700,7 @@ moves_loop:  // When in check, search starts here
             r -= 2179;
 
         if (capture)
-            ss->statScore = 873 * int(PieceValue[pos.captured_piece()]) / 128
+            ss->statScore = (873 * int(PieceValue[pos.captured_piece()]) >> 7)
                           + captureHistory[movedPiece][move.to_sq()][type_of(pos.captured_piece())];
         else
             ss->statScore =
@@ -1959,12 +1959,15 @@ moves_loop:  // When in check, search starts here
         const int scaledBonus = std::min(150 * depth - 85, 1337) * bonusScale;
 
         update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq,
-                                      scaledBonus * 263 / 16384);
+                                      (scaledBonus * 263) >> 14);
 
-        mainHistory[~us][((ss - 1)->currentMove).raw()] << scaledBonus * 215 / 32768;
+        mainHistory[~us][((ss - 1)->currentMove).raw()] << ((scaledBonus * 215) >> 15);
 
         if (type_of(pos.piece_on(prevSq)) != PAWN && ((ss - 1)->currentMove).type_of() != PROMOTION)
-            sharedHistory.pawn_entry(pos)[pos.piece_on(prevSq)][prevSq] << scaledBonus * 324 / 8192;
+        {
+            const int pawnBonus = (scaledBonus * 324) >> 13;
+            sharedHistory.pawn_entry(pos)[pos.piece_on(prevSq)][prevSq] << pawnBonus;
+        }
     }
 
     // Bonus for prior capture countermove that caused the fail low
@@ -2340,7 +2343,16 @@ void update_all_stats(const Position& pos,
 
     int bonus =
       std::min(133 * depth - 81, 1487) + 364 * (bestMove == ttMove) + (ss - 1)->statScore / 28;
-    int malus = std::min(968 * depth - 235, 2244);
+    // depth is at least 1 for the whole of search() -- it dispatches to qsearch()
+    // at search.cpp:1045 before anything else, and the two decrements inside the
+    // body are guarded by `depth >= 2` and `depth >= 6`. So this is at least 733
+    // and the shifts below ARE the divisions they replace: a non-negative
+    // dividend makes `/ 1024` and `>> 10` the same value, and the sign fix gcc
+    // emits without knowing it -- `lea 0x3ff(%r); test; cmovns; sar` -- three
+    // instructions it does not need. The negated forms are spelled as the
+    // negation of a shift because -(x) / 1024 == -(x / 1024) exactly when x is
+    // non-negative, which is what makes moving the sign outside legal.
+    const int malus = std::min(968 * depth - 235, 2244);
 
     if (!PvNode)
         // Important: don't remove the cast to a 64-bit number else the multiplication
@@ -2352,10 +2364,10 @@ void update_all_stats(const Position& pos,
         update_quiet_histories(pos, ss, workerThread, bestMove, bonus * 899 / 1024);
 
         // Decrease stats for all non-best quiet moves
-        int actualMalus = malus * 1159 / 1024;
+        int actualMalus = (malus * 1159) >> 10;
         for (Move move : quietsSearched)
         {
-            actualMalus = actualMalus * 921 / 1024;
+            actualMalus = (actualMalus * 921) >> 10;
             update_quiet_histories(pos, ss, workerThread, move, -actualMalus);
         }
     }
@@ -2369,14 +2381,14 @@ void update_all_stats(const Position& pos,
     // Extra penalty for a quiet early move that was not a TT move in
     // previous ply when it gets refuted.
     if (prevSq != SQ_NONE && ((ss - 1)->moveCount == 1 + (ss - 1)->ttHit) && !pos.captured_piece())
-        update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq, -malus * 713 / 1024);
+        update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq, -(malus * 713 >> 10));
 
     // Decrease stats for all non-best capture moves
     for (Move move : capturesSearched)
     {
         movedPiece    = pos.moved_piece(move);
         capturedPiece = type_of(pos.piece_on(move.to_sq()));
-        captureHistory[movedPiece][move.to_sq()][capturedPiece] << -malus * 1489 / 1024;
+        captureHistory[movedPiece][move.to_sq()][capturedPiece] << -((malus * 1489) >> 10);
     }
 }
 
