@@ -129,6 +129,26 @@ void Position::init() {
     Zobrist::side    = rng.rand<Key>();
     Zobrist::noPawns = rng.rand<Key>();
 
+    // between_bb(s1, s2) contains s2 for EVERY ordered pair, aligned or not.
+    // attacks.cpp puts `BetweenBB[s1][s2] |= s2` outside its own
+    // `PseudoAttacks[pt][s1] & s2` guard, and that placement is what makes the
+    // `^ s2` in upcoming_repetition() below a set REMOVAL rather than an
+    // insertion -- the one spelling means both, and which one it means is
+    // decided in another file 1500 lines away. Move the initialiser inside the
+    // guard, which reads like a tidy-up because the endpoint is meaningless for
+    // a non-aligned pair, and that test starts adding an occupied square to the
+    // mask it intersects with pieces(), so no repetition along an unobstructed
+    // line is ever found again. perft.sh cannot see it, repetition not being a
+    // movegen property, and signature.sh sees it only if it happens to move a
+    // bench node count.
+    //
+    // Asserted here rather than in Attacks::init() because the consumer is in
+    // this file: this is the end that depends on it. Startup only, 4096 pairs,
+    // and -DNDEBUG deletes it.
+    for (Square s1 = SQ_A1; s1 <= SQ_H8; ++s1)
+        for (Square s2 = SQ_A1; s2 <= SQ_H8; ++s2)
+            assert((between_bb(s1, s2) & s2) && "between_bb(s1, s2) must contain s2");
+
     // Prepare the cuckoo tables
     cuckoo.fill(0);
     cuckooMove.fill(Move::none());
@@ -1627,6 +1647,10 @@ bool Position::upcoming_repetition(int ply) const {
             Square s1   = move.from_sq();
             Square s2   = move.to_sq();
 
+            // `^ s2` REMOVES s2, which holds only because between_bb(s1, s2)
+            // contains it for every ordered pair -- an invariant established in
+            // attacks.cpp and asserted in Position::init(). Off it the same
+            // spelling inserts, and s2 is occupied here by construction.
             if (!((between_bb(s1, s2) ^ s2) & pieces()))
             {
                 if (ply > i)
