@@ -672,10 +672,21 @@ Bitboard Position::attackers_to(Square s, Bitboard occupied) const {
 
 bool Position::attackers_to_exist(Square s, Bitboard occupied, Color c) const {
 
-    return (attacks_bb<ROOK>(s, occupied) & pieces(c, ROOK, QUEEN))
-        || (attacks_bb<BISHOP>(s, occupied) & pieces(c, BISHOP, QUEEN))
-        || (attacks_bb<PAWN>(s, ~c) & pieces(c, PAWN))
-        || (attacks_bb<KNIGHT>(s) & pieces(c, KNIGHT)) || (attacks_bb<KING>(s) & pieces(c, KING));
+    const bool exists = (attacks_bb<ROOK>(s, occupied) & pieces(c, ROOK, QUEEN))
+                     || (attacks_bb<BISHOP>(s, occupied) & pieces(c, BISHOP, QUEEN))
+                     || (attacks_bb<PAWN>(s, ~c) & pieces(c, PAWN))
+                     || (attacks_bb<KNIGHT>(s) & pieces(c, KNIGHT))
+                     || (attacks_bb<KING>(s) & pieces(c, KING));
+
+    // The law relating the two folds over the attack relation. This one stops
+    // once the accumulator can no longer change; attackers_to() above unions
+    // all six terms over both colours and leaves the colour to its caller.
+    // Nothing else crosses them, and their bodies have already drifted: one
+    // takes both slider lanes at once and the other asks for them separately,
+    // and the pawn term names the colours in opposite orders.
+    assert(exists == bool(attackers_to(s, occupied) & pieces(c)));
+
+    return exists;
 }
 
 // Tests whether a pseudo-legal move is legal
