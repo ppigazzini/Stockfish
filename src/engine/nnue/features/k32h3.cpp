@@ -20,10 +20,10 @@
 
 #include "k32h3.h"
 
-#include <array>
 
 #if defined(USE_AVX512ICL)
     #include <immintrin.h>
+    #include <array>
     #include "../../basetypes.h"
     #include "../../bitboard.h"
 #endif
@@ -80,43 +80,6 @@ void K32H3::write_indices(const std::array<Piece, SQUARE_NB>& oldPieces,
     _mm512_storeu_si512(write_added, added_indices);
 }
 #endif
-
-// Index of a feature within its block for a given king position and another piece on
-// some square
-
-IndexType K32H3::make_index(Color perspective, Square s, Piece pc, Square ksq) {
-    alignas(64) static constexpr auto offsets = [] {
-        std::array<std::array<u16, PIECE_NB>, COLOR_NB * SQUARE_NB> table{};
-        for (int c = 0; c < COLOR_NB; ++c)
-            for (int sq = 0; sq < SQUARE_NB; ++sq)
-            {
-                const u16 flip       = 56 * c;
-                const u16 orient     = u16(OrientTBL[sq]) ^ flip;
-                const u16 kingBucket = u16(KingBuckets[sq ^ flip]);
-                for (int pieceIndex = 0; pieceIndex < PIECE_NB; ++pieceIndex)
-                    table[c * SQUARE_NB + sq][pieceIndex] =
-                      PieceSquareIndex[c][pieceIndex] + kingBucket + orient;
-            }
-        return table;
-    }();
-
-    return IndexType(s) ^ offsets[perspective * SQUARE_NB + ksq][pc];
-}
-
-// Get a list of indices for recently changed features
-
-void K32H3::append_changed_indices(
-  Color perspective, Square ksq, const DiffType& diff, IndexList& removed, IndexList& added) {
-    removed.push_back(make_index(perspective, diff.from, diff.pc, ksq));
-    if (diff.to != SQ_NONE)
-        added.push_back(make_index(perspective, diff.to, diff.pc, ksq));
-
-    if (diff.remove_sq != SQ_NONE)
-        removed.push_back(make_index(perspective, diff.remove_sq, diff.remove_pc, ksq));
-
-    if (diff.add_sq != SQ_NONE)
-        added.push_back(make_index(perspective, diff.add_sq, diff.add_pc, ksq));
-}
 
 int K32H3::block(const Position& pos, Color perspective) {
     return pos.count<QUEEN>(~perspective) ? 2 : bool(pos.pieces(ROOK, QUEEN));
