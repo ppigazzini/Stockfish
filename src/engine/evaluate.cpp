@@ -28,6 +28,7 @@
 #include <sstream>
 
 #include "nnue/network.h"
+#include "nnue/nnue_architecture.h"
 #include "nnue/nnue_misc.h"
 #include "position.h"
 #include "types.h"
@@ -45,11 +46,11 @@ static int simple_eval(const Position& pos) {
 
 Value scale_evaluation(Value nnue, int optimism, const Position& pos);
 
-Value Eval::evaluate(const Eval::NNUE::Network&     network,
-                     const Position&                pos,
-                     Eval::NNUE::AccumulatorStack&  accumulators,
-                     Eval::NNUE::AccumulatorCaches& caches,
-                     int                            optimism) {
+SF_NO_STACK_PROTECTOR Value Eval::evaluate(const Eval::NNUE::Network&     network,
+                                           const Position&                pos,
+                                           Eval::NNUE::AccumulatorStack&  accumulators,
+                                           Eval::NNUE::AccumulatorCaches& caches,
+                                           int                            optimism) {
 
     assert(!pos.checkers());
     Value nnue = network.evaluate(pos, accumulators, caches);
