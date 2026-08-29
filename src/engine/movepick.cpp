@@ -522,6 +522,16 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
 template<typename Pred>
 Move MovePicker::select(Pred filter) {
 
+    // Rolled, deliberately. This walk RETURNS on the first move that passes,
+    // and so does every caller's: the trip count is a handful, not a list. But
+    // `cur < endCur` is a counted exit, so -funroll-loops -- which src/Makefile
+    // passes at -O3 and under PGO alike -- has a trip count to compute, and gcc
+    // spends it on an eight-way unroll behind a remainder prologue and a linear
+    // chain of six compares. That dispatch is about thirteen instructions
+    // before the first move is even looked at.
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC unroll 1
+#endif
     for (; cur < endCur; ++cur)
         if (*cur != ttMove && filter())
             return *cur++;
@@ -652,6 +662,10 @@ good_quiet:
         {
             if (-3560 * depth <= goodQuietThreshold)
             {
+                // Rolled for the reason select() is; see there.
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC unroll 1
+#endif
                 for (; cur < endCur; ++cur)
                 {
                     if (cur->value <= goodQuietThreshold)
