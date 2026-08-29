@@ -250,8 +250,26 @@ class AffineTransformSparseInput {
         const auto* start = nnzInfo.nnz;
         const auto* end   = nnzInfo.nnz + nnzInfo.count;
 
+        // The VNNI walk below carries three dependency chains, and gcc gives the two seeded
+        // from vec_zero() a register copy in and a register copy out on EVERY iteration --
+        // eight per three chunks, 26 instructions where clang retires 18. It is not the
+        // array: naming the six accumulators as six variables reproduces it exactly. It is
+        // that all four zero-seeded chains enter their phi with the SAME value, which gcc
+        // materialises once and then cannot coalesce four ways, so the allocator splits
+        // every one of them and copies around the split. An empty asm makes each seed an
+        // opaque value of its own, costs no instruction, and the eight copies go. clang
+        // coalesces this already and takes six copies if it is given the barrier, so the
+        // #else branch spells the tokens it compiled before.
+    #if defined(__x86_64__) && defined(__GNUC__) && !defined(__clang__)
+        for (IndexType k = NumAccums; k < NumRegs; ++k)
+        {
+            acc[k] = vec_zero();
+            asm("" : "+v"(acc[k]));  // opt barrier
+        }
+    #else
         for (IndexType k = NumAccums; k < NumRegs; ++k)
             acc[k] = vec_zero();
+    #endif
         #if defined(USE_VNNI)
         while (start < end - 2)
         {
