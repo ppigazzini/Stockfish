@@ -815,22 +815,29 @@ void Position::do_move(
     // Copy some fields of the old state to our new StateInfo object except the
     // ones which are going to be recalculated from scratch anyway and then switch
     // our state pointer to point to the new (ready to be updated) state.
-    std::memcpy(&newSt, st, offsetof(StateInfo, key));
-    newSt.previous = st;
+    StateInfo* const previous = st;
+    std::memcpy(&newSt, previous, offsetof(StateInfo, key));
+    newSt.previous = previous;
     st             = &newSt;
 
     // Increment ply counters. In particular, rule50 will be reset to zero later on
     // in case of a capture or a pawn move.
     ++gamePly;
-    ++st->rule50;
-    ++st->pliesFromNull;
+    ++newSt.rule50;
+    ++newSt.pliesFromNull;
 
     auto& dpps = dirties.dirtyPawnPairs;
     auto& dts  = dirties.dirtyThreats;
     auto& dp   = dirties.dirtyPiece;
 
-    dpps.before[WHITE] = pieces(WHITE, PAWN);
-    dpps.before[BLACK] = pieces(BLACK, PAWN);
+    // Both sides are read before either is stored. `dirties` is a reference the
+    // compiler cannot prove disjoint from this position, so a store between the
+    // two reads makes it fetch the pawn plane twice.
+    const Bitboard whitePawnsBefore = pieces(WHITE, PAWN);
+    const Bitboard blackPawnsBefore = pieces(BLACK, PAWN);
+
+    dpps.before[WHITE] = whitePawnsBefore;
+    dpps.before[BLACK] = blackPawnsBefore;
 
     Color  us       = sideToMove;
     Color  them     = ~us;
@@ -857,7 +864,7 @@ void Position::do_move(
         do_castling<true>(us, from, to, rfrom, rto, &dts, &dp);
 
         k ^= Zobrist::psq[captured][rfrom] ^ Zobrist::psq[captured][rto];
-        st->nonPawnKey[us] ^= Zobrist::psq[captured][rfrom] ^ Zobrist::psq[captured][rto];
+        newSt.nonPawnKey[us] ^= Zobrist::psq[captured][rfrom] ^ Zobrist::psq[captured][rto];
         captured = NO_PIECE;
     }
     else if (captured)
@@ -873,7 +880,7 @@ void Position::do_move(
                 capsq -= pawn_push(us);
 
                 assert(pc == make_piece(us, PAWN));
-                assert(to == st->epSquare);
+                assert(to == newSt.epSquare);
                 assert(relative_rank(us, to) == RANK_6);
                 assert(piece_on(to) == NO_PIECE);
                 assert(piece_on(capsq) == make_piece(them, PAWN));
@@ -882,26 +889,26 @@ void Position::do_move(
                 remove_piece(capsq, &dts);
             }
 
-            st->pawnKey ^= Zobrist::psq[captured][capsq];
+            newSt.pawnKey ^= Zobrist::psq[captured][capsq];
         }
         else
         {
-            st->nonPawnMaterial[them] -= PieceValue[captured];
-            st->nonPawnKey[them] ^= Zobrist::psq[captured][capsq];
+            newSt.nonPawnMaterial[them] -= PieceValue[captured];
+            newSt.nonPawnKey[them] ^= Zobrist::psq[captured][capsq];
 
             if (type_of(captured) <= BISHOP)
-                st->minorPieceKey ^= Zobrist::psq[captured][capsq];
+                newSt.minorPieceKey ^= Zobrist::psq[captured][capsq];
         }
 
         dp.remove_pc = captured;
         dp.remove_sq = capsq;
 
         k ^= Zobrist::psq[captured][capsq];
-        st->materialKey ^=
+        newSt.materialKey ^=
           Zobrist::psq[captured][8 + pieceCount[captured] - (m.type_of() != EN_PASSANT)];
 
         // Reset rule 50 counter
-        st->rule50 = 0;
+        newSt.rule50 = 0;
     }
     else
         dp.remove_sq = SQ_NONE;
@@ -910,16 +917,16 @@ void Position::do_move(
     k ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
 
     // Reset en passant square
-    if (st->epSquare != SQ_NONE)
+    if (newSt.epSquare != SQ_NONE)
     {
-        k ^= Zobrist::enpassant[file_of(st->epSquare)];
-        st->epSquare = SQ_NONE;
+        k ^= Zobrist::enpassant[file_of(newSt.epSquare)];
+        newSt.epSquare = SQ_NONE;
     }
 
     // Update castling rights.
-    k ^= Zobrist::castling[st->castlingRights];
-    st->castlingRights -= castlingRightsMask[from] | castlingRightsMask[to];
-    k ^= Zobrist::castling[st->castlingRights];
+    k ^= Zobrist::castling[newSt.castlingRights];
+    newSt.castlingRights -= castlingRightsMask[from] | castlingRightsMask[to];
+    k ^= Zobrist::castling[newSt.castlingRights];
 
     // If the moving piece is a pawn do some special extra work
     if (type_of(pc) == PAWN)
@@ -935,7 +942,7 @@ void Position::do_move(
             if (pawns)
             {
                 Square   ksq         = square<KING>(them);
-                Bitboard notBlockers = ~st->previous->blockersForKing[them];
+                Bitboard notBlockers = ~newSt.previous->blockersForKing[them];
                 bool     noDiscovery = (from & notBlockers) || file_of(from) == file_of(ksq);
 
                 // If the pawn gives discovered check, ep is never legal. Else, if at least one
@@ -943,7 +950,7 @@ void Position::do_move(
                 // enemy king and en passant square, a legal capture exists.
                 if (noDiscovery && (pawns & (notBlockers | line_bb(epSquare, ksq))))
                 {
-                    st->epSquare = epSquare;
+                    newSt.epSquare = epSquare;
                     k ^= Zobrist::enpassant[file_of(epSquare)];
                 }
             }
@@ -964,34 +971,34 @@ void Position::do_move(
             // Update hash keys
             // Zobrist::psq[pc][to] is zero, so we don't need to clear it
             k ^= Zobrist::psq[promotion][to];
-            st->materialKey ^= Zobrist::psq[promotion][8 + pieceCount[promotion]]
+            newSt.materialKey ^= Zobrist::psq[promotion][8 + pieceCount[promotion]]
                              ^ Zobrist::psq[pc][8 + pieceCount[pc] - 1];
-            st->nonPawnKey[us] ^= Zobrist::psq[promotion][to];
+            newSt.nonPawnKey[us] ^= Zobrist::psq[promotion][to];
 
             if (pt <= BISHOP)
-                st->minorPieceKey ^= Zobrist::psq[promotion][to];
+                newSt.minorPieceKey ^= Zobrist::psq[promotion][to];
 
             // Update material
-            st->nonPawnMaterial[us] += PieceValue[promotion];
+            newSt.nonPawnMaterial[us] += PieceValue[promotion];
         }
 
         // Update pawn hash key
-        st->pawnKey ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
+        newSt.pawnKey ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
 
         // Reset rule 50 draw counter
-        st->rule50 = 0;
+        newSt.rule50 = 0;
     }
 
     else
     {
-        st->nonPawnKey[us] ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
+        newSt.nonPawnKey[us] ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
 
         if (type_of(pc) <= BISHOP)
-            st->minorPieceKey ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
+            newSt.minorPieceKey ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
     }
 
     // Update the key with the final value
-    st->key = k;
+    newSt.key = k;
 
     if (history)
     {
@@ -1034,10 +1041,10 @@ void Position::do_move(
     }
 
     // Set capture piece
-    st->capturedPiece = captured;
+    newSt.capturedPiece = captured;
 
     // Calculate checkers bitboard (if move gives check)
-    st->checkersBB = givesCheck ? attackers_to(square<KING>(them)) & pieces(us) : 0;
+    newSt.checkersBB = givesCheck ? attackers_to(square<KING>(them)) & pieces(us) : 0;
 
     sideToMove = ~sideToMove;
 
@@ -1047,17 +1054,17 @@ void Position::do_move(
     // Calculate the repetition info. It is the ply distance from the previous
     // occurrence of the same position, negative in the 3-fold case, or zero
     // if the position was not repeated.
-    st->repetition = 0;
-    int end        = std::min(st->rule50, st->pliesFromNull);
+    newSt.repetition = 0;
+    int end        = std::min(newSt.rule50, newSt.pliesFromNull);
     if (end >= 4)
     {
-        StateInfo* stp = st->previous->previous;
+        StateInfo* stp = newSt.previous->previous;
         for (int i = 4; i <= end; i += 2)
         {
             stp = stp->previous->previous;
-            if (stp->key == st->key)
+            if (stp->key == newSt.key)
             {
-                st->repetition = stp->repetition ? -i : i;
+                newSt.repetition = stp->repetition ? -i : i;
                 break;
             }
         }
@@ -1065,8 +1072,11 @@ void Position::do_move(
 
     assert(pos_is_ok());
 
-    dpps.after[WHITE] = pieces(WHITE, PAWN);
-    dpps.after[BLACK] = pieces(BLACK, PAWN);
+    const Bitboard whitePawnsAfter = pieces(WHITE, PAWN);
+    const Bitboard blackPawnsAfter = pieces(BLACK, PAWN);
+
+    dpps.after[WHITE] = whitePawnsAfter;
+    dpps.after[BLACK] = blackPawnsAfter;
 
     assert(dp.pc != NO_PIECE);
     assert(!(bool(captured) || m.type_of() == CASTLING) ^ (dp.remove_sq != SQ_NONE));
