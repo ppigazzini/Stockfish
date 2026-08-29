@@ -60,6 +60,33 @@ namespace Stockfish {
     #define SF_SEARCH_NO_SLP
 #endif
 
+// Ubuntu's gcc turns on -fstack-protector-strong by default and `src/Makefile`
+// asks for no such thing, so the guard is the toolchain's rather than this
+// project's; clang here emits none of it. A single local array is enough to
+// trigger it, and both functions below hold several: search() the two
+// SearchedList move lists, a PVMoves, the contHist pointer array and a
+// StateInfo, qsearch() all but the move lists. Each pays a TLS load and a store
+// on entry and a reload, a subtract and a never-taken branch on every return
+// path that leaves the frame.
+//
+// Every index into those locals is the engine's own. The move lists are written
+// only under `moveCount <= SEARCHEDLIST_CAPACITY`, and moveCount is a strictly
+// increasing count of this node's own legal moves, so the two lists take at
+// most SEARCHEDLIST_CAPACITY pushes between them; the PV is bounded by a ply the
+// node has already refused at MAX_PLY; contHist is indexed by constants; and
+// StateInfo is written by Position::do_move, not from here. None of those bounds
+// is a length read from the board, the UCI stream or the net file, so there is
+// nothing left for the guard to be checking. The exemption is named per function
+// rather than taken for the whole program.
+#if defined(__has_attribute)
+    #if __has_attribute(no_stack_protector)
+        #define SF_NO_STACK_PROTECTOR __attribute__((no_stack_protector))
+    #endif
+#endif
+#if !defined(SF_NO_STACK_PROTECTOR)
+    #define SF_NO_STACK_PROTECTOR
+#endif
+
 // Different node types, used as a template parameter
 enum NodeType {
     NonPV,
@@ -553,12 +580,13 @@ class Worker {
 
     // This is the main search function, for both PV and non-PV nodes
     template<NodeType nodeType>
-    SF_SEARCH_NO_SLP Value
+    SF_SEARCH_NO_SLP SF_NO_STACK_PROTECTOR Value
     search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, const bool cutNode);
 
     // Quiescence search function, which is called by the main search
     template<NodeType nodeType>
-    SF_SEARCH_NO_SLP Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
+    SF_SEARCH_NO_SLP SF_NO_STACK_PROTECTOR Value
+    qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
 
     // deltaScaled is (beta - alpha) * 577 / rootDelta, already scaled. The
     // divisor is a search-wide constant and the dividend moves only when alpha
