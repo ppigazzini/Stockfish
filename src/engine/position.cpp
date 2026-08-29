@@ -1716,6 +1716,11 @@ bool Position::upcoming_repetition(int ply) const {
                 Square s2   = move.to_sq();
 
                 // The path must be clear of pieces for a move to be legal.
+                //
+                // `^ s2` REMOVES s2, which holds only because between_bb(s1, s2)
+                // contains it for every ordered pair -- an invariant established
+                // and asserted in Attacks::init(). Off it the same spelling
+                // inserts, and s2 is occupied here by construction.
                 if (!((between_bb(s1, s2) ^ s2) & pieces()))
                 {
                     auto b = st->piecePlacement;
