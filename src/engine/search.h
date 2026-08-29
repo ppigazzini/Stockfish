@@ -43,6 +43,23 @@
 
 namespace Stockfish {
 
+// Both search() and qsearch() build a MovePicker on the stack -- 2296 bytes,
+// naturally 8-byte aligned. gcc's SLP vectoriser answers a group of adjacent
+// pointer stores inside the inlined constructor with a 32-byte vector and RAISES
+// the object's alignment to 32 to make that store legal; an automatic decl's
+// alignment is raised whatever the source says, because
+// vect_can_force_dr_alignment_p never consults DECL_USER_ALIGN for a stack
+// variable, so no alignas can refuse it. A 32-byte stack object on a
+// 16-byte-aligned incoming stack then costs a DYNAMIC realignment in every hot
+// instantiation -- `and $-32,%rsp`, the lea/push/push dance around it, and %rbp
+// spent on a frame pointer for the rest of the function. The vector store does
+// not even survive to the final assembly; the alignment does.
+#if defined(__GNUC__) && !defined(__clang__)
+    #define SF_SEARCH_NO_SLP __attribute__((optimize("no-tree-slp-vectorize")))
+#else
+    #define SF_SEARCH_NO_SLP
+#endif
+
 // Different node types, used as a template parameter
 enum NodeType {
     NonPV,
@@ -536,12 +553,12 @@ class Worker {
 
     // This is the main search function, for both PV and non-PV nodes
     template<NodeType nodeType>
-    Value
+    SF_SEARCH_NO_SLP Value
     search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, const bool cutNode);
 
     // Quiescence search function, which is called by the main search
     template<NodeType nodeType>
-    Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
+    SF_SEARCH_NO_SLP Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
 
     // deltaScaled is (beta - alpha) * 577 / rootDelta, already scaled. The
     // divisor is a search-wide constant and the dividend moves only when alpha
