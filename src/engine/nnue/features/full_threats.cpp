@@ -346,6 +346,15 @@ void FullThreats::append_changed_indices_both(Square                  white_ksq,
                                               IndexList&              black_added,
                                               const ThreatWeightType* prefetchBase) {
 
+    // The add flag is a coin flip -- 3.070 of 6.839 trips, 44.9%, dead centre
+    // of the predictor's worst band -- and this is the one site that pays for
+    // it twice. gcc answers the two conditional references with a branch and
+    // four stack reloads; an indexed pair costs the flag as a value, two loads,
+    // and nothing to predict. The single-perspective spelling above already
+    // lowers to cmov and is left alone.
+    IndexList* const white_lists[2] = {&white_removed, &white_added};
+    IndexList* const black_lists[2] = {&black_removed, &black_added};
+
     for (const auto& dirty : diff.list)
     {
         const Piece  attacker = dirty.pc();
@@ -354,8 +363,8 @@ void FullThreats::append_changed_indices_both(Square                  white_ksq,
         const Square to       = dirty.threatened_sq();
         const bool   add      = dirty.add();
 
-        auto& white_insert = add ? white_added : white_removed;
-        auto& black_insert = add ? black_added : black_removed;
+        auto& white_insert = *white_lists[add];
+        auto& black_insert = *black_lists[add];
 
         const IndexType white_index = make_index(WHITE, attacker, from, to, attacked, white_ksq);
         const IndexType black_index = make_index(BLACK, attacker, from, to, attacked, black_ksq);
