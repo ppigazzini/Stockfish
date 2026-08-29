@@ -112,10 +112,22 @@ struct StatsEntry {
             return entry;
     }
 
-    void operator<<(int bonus) {
+    void operator<<(int bonus) { update(*this, bonus); }
+
+    // Apply a bonus to a value the caller has ALREADY read out of this entry.
+    //
+    // A caller that tests the counter and then updates it has it in a register
+    // for the test, and on a shared entry the read is a relaxed atomic load
+    // that a compiler may not fold with a second one -- so `if (e > 0) ...;
+    // e << b;` loads the same address twice and materialises the predicate
+    // twice. Handing the value back in is what makes it one read.
+    //
+    // The two spellings are the same arithmetic. operator<< is this with the
+    // entry as its own argument, which is what a caller that has not read it
+    // wants and what every other site here does.
+    void update(int val, int bonus) {
         // Make sure that bonus is in range [-D, D]
         int clampedBonus = std::clamp(bonus, -D, D);
-        int val          = *this;
         *this            = val + clampedBonus - val * std::abs(clampedBonus) / D;
 
         assert(std::abs(T(*this)) <= D);
