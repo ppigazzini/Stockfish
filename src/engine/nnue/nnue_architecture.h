@@ -103,22 +103,22 @@ struct NetworkArchitecture {
     i32 propagate(const TransformedFeatureType* transformedFeatures,
                   const NNZInfo<L1>&            nnzInfo) const {
         struct alignas(CacheLineSize) Buffer {
-            alignas(CacheLineSize) typename decltype(fc_0)::OutputBuffer fc_0_out;
             alignas(CacheLineSize) typename decltype(ac_sqr_0)::OutputType
               concat_buffer[ceil_to_multiple<IndexType>(FC_0_OUTPUTS * 2 + FC_1_OUTPUTS * 2, 32)];
             alignas(CacheLineSize) typename decltype(fc_1)::OutputBuffer fc_1_out;
             alignas(CacheLineSize) typename decltype(fc_2)::OutputBuffer fc_2_out;
         };
 
+        alignas(CacheLineSize) typename decltype(fc_0)::OutputBuffer fc_0_out;
         Buffer buffer;
 
-        fc_0.propagate(transformedFeatures, buffer.fc_0_out, nnzInfo);
+        fc_0.propagate(transformedFeatures, fc_0_out, nnzInfo);
 #if defined(USE_PAIR_ACTIVATIONS)
-        ac_sqr_0.propagate_pair(buffer.fc_0_out, buffer.concat_buffer,
+        ac_sqr_0.propagate_pair(fc_0_out, buffer.concat_buffer,
                                 buffer.concat_buffer + FC_0_OUTPUTS);
 #else
-        ac_sqr_0.propagate(buffer.fc_0_out, buffer.concat_buffer);
-        ac_0.propagate(buffer.fc_0_out, buffer.concat_buffer + FC_0_OUTPUTS);
+        ac_sqr_0.propagate(fc_0_out, buffer.concat_buffer);
+        ac_0.propagate(fc_0_out, buffer.concat_buffer + FC_0_OUTPUTS);
 #endif
 
         fc_1.propagate(buffer.concat_buffer, buffer.fc_1_out);
@@ -134,7 +134,7 @@ struct NetworkArchitecture {
 
         static_assert(FC_0_OUTPUTS >= 2);
         i32 fwdOut = buffer.fc_2_out[0];
-        i32 skip_0 = buffer.fc_0_out[FC_0_OUTPUTS - 2] - buffer.fc_0_out[FC_0_OUTPUTS - 1];
+        i32 skip_0 = fc_0_out[FC_0_OUTPUTS - 2] - fc_0_out[FC_0_OUTPUTS - 1];
         fwdOut += skip_0;
 
         // fwdOut is such that 1.0 is equal to HiddenOneVal*(1<<WeightScaleBits)*2 in
