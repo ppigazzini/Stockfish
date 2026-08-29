@@ -388,7 +388,16 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     static_assert(sizeof(PieceToHistory) == PIECE_NB * SQUARE_NB * sizeof(ContEntry));
     static_assert(sizeof(PawnHistoryEntry) == PIECE_NB * SQUARE_NB * sizeof(PawnEntry));
 
-    const auto* mainHist = Type != CAPTURES ? &(*mainHistory)[us] : nullptr;
+    // The main history's ROW, for the same reason and by the same rule: `us`
+    // does not change across a move list, so the colour belongs in the address
+    // and not in the loop. Left as [us][raw] gcc reloads `this->mainHistory`
+    // once a move, adds the move to it, and then adds a separately spilled
+    // `us << 17` -- four instructions where a row named once leaves
+    // `row + raw * 2`, which the addressing mode carries.
+    using MainEntry = std::remove_pointer_t<decltype((*mainHistory)[WHITE].data())>;
+    static_assert(sizeof((*mainHistory)[WHITE]) == UINT_16_HISTORY_SIZE * sizeof(MainEntry));
+
+    const auto* mainHist = Type != CAPTURES ? (*mainHistory)[us].data() : nullptr;
     const auto* pawnHist =
       Type == QUIETS ? sharedHistory->pawn_entry(pos).data()->data() : nullptr;
     const auto* ch0 = Type != CAPTURES ? continuationHistory[0]->data()->data() : nullptr;
@@ -398,6 +407,10 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     const auto* ch5 = Type == QUIETS ? continuationHistory[5]->data()->data() : nullptr;
     const auto* lph =
       Type == QUIETS && ply < LOW_PLY_HISTORY_SIZE ? &(*lowPlyHistory)[ply] : nullptr;
+#if defined(__GNUC__) && !defined(__clang__)
+    if constexpr (Type == QUIETS)
+        asm("" : "+r"(mainHist));
+#endif
 
     // Walked by INDEX rather than by two pointers. A range-for over the source
     // and a `*it++` on the destination give the loop three induction variables
@@ -445,7 +458,7 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
             // where it was, and the mispredicts fall with the instruction count.
             const int hi = int(pc) * SQUARE_NB + int(to);
 
-            int value = 2 * (*mainHist)[m.raw()];
+            int value = 2 * mainHist[m.raw()];
             value += 2 * pawnHist[hi];
             value += ch0[hi];
             value += ch1[hi];
@@ -484,7 +497,7 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
             if (pos.capture_stage(m))
                 m.value = PieceValue[capturedPiece] + (1 << 28);
             else
-                m.value = (*mainHist)[m.raw()] + ch0[int(pc) * SQUARE_NB + int(to)];
+                m.value = mainHist[m.raw()] + ch0[int(pc) * SQUARE_NB + int(to)];
         }
     }
 
