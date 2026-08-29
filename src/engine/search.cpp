@@ -1465,6 +1465,12 @@ moves_loop:  // When in check, search starts here
 
     int moveCount = 0;
 
+    // The move-count threshold Step 15 tests every move against. `improving` is
+    // a loop constant and `depth` moves at exactly two places in the loop, so
+    // the multiply and the variable shift belong at those two places rather
+    // than at each move.
+    int quietMoveCountLimit = (3 + depth * depth) >> !improving;
+
     // Step 14. Loop through all legal moves until no moves remain
     // or a beta cutoff occurs.
     while ((move = mp.next_move()) != Move::none())
@@ -1526,7 +1532,7 @@ moves_loop:  // When in check, search starts here
             // 2 - improving, and callgrind --dump-instr counts 3,018,198 of
             // them in a warm 60-ply depth-13 replay -- 1.68 per node, on a
             // divider that is not pipelined. clang already emitted `shr`.
-            if (moveCount >= (3 + depth * depth) >> !improving)
+            if (moveCount >= quietMoveCountLimit)
                 mp.skip_quiet_moves();
 
             // Reduced depth of the next LMR search
@@ -1625,6 +1631,7 @@ moves_loop:  // When in check, search starts here
                   1 + (value < singularBeta - doubleMargin) + (value < singularBeta - tripleMargin);
 
                 depth++;
+                quietMoveCountLimit = (3 + depth * depth) >> !improving;
             }
 
             // Multi-cut pruning
@@ -1896,7 +1903,10 @@ moves_loop:  // When in check, search starts here
 
                 // Reduce other moves if we have found at least one score improvement
                 if (depth > 3 && depth < 12 && !is_decisive(value))
+                {
                     depth -= 3;
+                    quietMoveCountLimit = (3 + depth * depth) >> !improving;
+                }
 
                 assert(depth > 0);
                 alpha = value;  // Update alpha! Always alpha < beta
