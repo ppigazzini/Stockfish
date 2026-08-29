@@ -19,6 +19,7 @@
 #ifndef NNZ_HELPER_H_INCLUDED
 #define NNZ_HELPER_H_INCLUDED
 
+#include <cstring>
 #include <utility>
 
 #include "nnue_common.h"
@@ -30,6 +31,8 @@ template<usize Dimensions>
 struct NNZInfo {
 
 #if defined(USE_AVX512)
+    static constexpr int CursorStep = 2;
+
     unsigned count = 0;
     // indices of non-zero chunks
     u16 nnz[Dimensions / 4];
@@ -100,16 +103,30 @@ struct NNZInfo {
     #endif
         }
 
+        void record(SIMD::vec_t (&packed)[CursorStep]) { record2(packed[0], packed[1]); }
+
         ~NNZCursor() { info.count = count; }
     };
 
     NNZCursor make_cursor(bool perspective) { return {*this, perspective, count}; }
 #elif defined(USE_RVV)
+    static constexpr int CursorStep = 2;
+
     usize count = 0;
     u16   nnz[Dimensions];  // indices of non-zero chunks
 #else
     // Each 8-bit chunk
     alignas(8) u8 bitset[(Dimensions + 31) / 32];
+
+    // How many packed vectors the producer hands the cursor at a time. Four
+    // where the four masks fold into one 32-bit `vpmovmskb`, two everywhere
+    // else -- and where it is two the loop below and the one in
+    // nnue_feature_transformer.h are the ones every other tier compiled before.
+    #if defined(USE_AVX2)
+    static constexpr int CursorStep = 4;
+    #else
+    static constexpr int CursorStep = 2;
+    #endif
 
     struct NNZCursor {
         u8* out;
@@ -117,6 +134,44 @@ struct NNZInfo {
         NNZCursor(NNZInfo& info, bool perspective) {
             out = info.bitset + perspective * Dimensions / 64;
         }
+
+    #if defined(USE_AVX2)
+        // Four vectors of eight 4-byte chunks reach the bitset as ONE 32-bit
+        // mask. Each chunk holds four transformed-feature bytes, every one of
+        // them in [0, 126] because `mulhi` of a value clipped to 254 by a
+        // factor clipped to 254 cannot reach 127 -- so a chunk is a
+        // NON-NEGATIVE int32, and both saturating narrowings below carry
+        // "non-zero" without carrying a sign: a non-zero chunk at most
+        // saturates, and saturation is non-zero. That is what lets the values
+        // be narrowed instead of four comparison masks, which is four
+        // `vpcmpgtd` saved.
+        //
+        // `vpackssdw` and `vpacksswb` interleave the two 128-bit lanes, so the
+        // 32 bytes leave the second narrowing in groups of four chunks ordered
+        // 0 2 4 6 1 3 5 7. One `vpermd` undoes exactly that, and the byte
+        // order is then the bit order the bitset wants.
+        //
+        // Ten instructions per 32 chunks against twelve: 2 + 1 narrowings, the
+        // permute, one `vpcmpgtb` to turn a non-zero byte into a sign bit, one
+        // `vpmovmskb`, one 4-byte store -- seven, where two `vec_nnz` pairs and
+        // two byte stores cost twelve for the same 32 chunks.
+        void record4(SIMD::vec_t neurons0,
+                     SIMD::vec_t neurons1,
+                     SIMD::vec_t neurons2,
+                     SIMD::vec_t neurons3) {
+            const __m256i narrowed16lo = _mm256_packs_epi32(neurons0, neurons1);
+            const __m256i narrowed16hi = _mm256_packs_epi32(neurons2, neurons3);
+            const __m256i narrowed8    = _mm256_packs_epi16(narrowed16lo, narrowed16hi);
+            const __m256i inOrder      = _mm256_permutevar8x32_epi32(
+              narrowed8, _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7));
+
+            const u32 mask = u32(_mm256_movemask_epi8(
+              _mm256_cmpgt_epi8(inOrder, _mm256_setzero_si256())));
+
+            std::memcpy(out, &mask, sizeof(mask));
+            out += sizeof(mask);
+        }
+    #endif
 
     #if (defined(USE_SSSE3) || defined(USE_LSX) || defined(USE_LASX) || (USE_NEON >= 8))
         void record2(SIMD::vec_t neurons1, SIMD::vec_t neurons2) {
@@ -158,8 +213,17 @@ struct NNZInfo {
             }
         #endif
         }
+        void record(SIMD::vec_t (&packed)[CursorStep]) {
+        #if defined(USE_AVX2)
+            record4(packed[0], packed[1], packed[2], packed[3]);
+        #else
+            record2(packed[0], packed[1]);
+        #endif
+        }
     #elif defined(VECTOR)
         void record2(SIMD::vec_t, SIMD::vec_t) {}
+
+        void record(SIMD::vec_t (&packed)[CursorStep]) { record2(packed[0], packed[1]); }
     #endif
     };
 

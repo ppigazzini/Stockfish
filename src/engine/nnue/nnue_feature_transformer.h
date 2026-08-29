@@ -301,10 +301,16 @@ class FeatureTransformer {
         // value left by 7, and perform mulhi, which shifts the product
         // right by 16 bits, then we will net a right shift of 9 bits.
 
-        for (IndexType j = 0; j < NumOutputChunks; j += 2)
+        // How many chunks the non-zero cursor takes at a time. Two everywhere
+        // but avx2, where four fold into one 32-bit mask; where it is two this
+        // loop is the one every other tier compiled before.
+        constexpr IndexType CursorStep = NNZInfo<OutputDimensions>::CursorStep;
+        static_assert(NumOutputChunks % CursorStep == 0);
+
+        for (IndexType j = 0; j < NumOutputChunks; j += CursorStep)
         {
-            vec_t packed[2];
-            for (IndexType k = 0; k < 2; ++k)
+            vec_t packed[CursorStep];
+            for (IndexType k = 0; k < CursorStep; ++k)
             {
                 const IndexType i = (j + k) * 2;
 
@@ -356,7 +362,7 @@ class FeatureTransformer {
                 packed[k] = out[j + k] = result;
             }
 
-            cursor.record2(packed[0], packed[1]);
+            cursor.record(packed);
         }
 
 #elif defined(USE_RVV)
