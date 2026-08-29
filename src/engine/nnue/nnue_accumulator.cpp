@@ -83,6 +83,13 @@ void update_accumulator_hybrid(Color                     perspective,
                                AccumulatorState&         target,
                                const AccumulatorState&   computed,
                                AccumulatorCaches&        cache);
+
+#ifndef NDEBUG
+bool accumulator_law_holds(const Position&           pos,
+                           const FeatureTransformer& featureTransformer,
+                           const AccumulatorState&   state,
+                           const AccumulatorCaches&  cache);
+#endif
 }
 
 const AccumulatorState& AccumulatorStack::latest() const noexcept { return accumulators[size - 1]; }
@@ -126,6 +133,15 @@ void AccumulatorStack::evaluate(const Position&           pos,
         evaluate_side(WHITE, pos, featureTransformer, cache, last_white);
         evaluate_side(BLACK, pos, featureTransformer, cache, last_black);
     }
+
+    // The `#ifndef` is not redundant beside the `assert`. Without it the shipping
+    // translation unit gains one null statement where the assert used to be, and
+    // the neutrality of this file has to be argued; with it, `-E -P` under
+    // `-DNDEBUG` is BYTE-IDENTICAL to the file before the law, which is a proof
+    // and needs no grid. docs/11-performance.md step 5 is the rule this follows.
+#ifndef NDEBUG
+    assert(accumulator_law_holds(pos, featureTransformer, latest(), cache));
+#endif
 }
 
 void AccumulatorStack::evaluate_side(Color                     perspective,
@@ -268,6 +284,157 @@ constexpr int psqt_shift() {
 }
 
 constexpr int PsqtShift = psqt_shift();
+
+#ifndef NDEBUG
+
+// Check the relation that makes all three accumulator folds legal: the
+// accumulator is the bias vector plus one weight row per active feature, summed
+// in the free abelian group whose inverse is the `sign` template parameter of
+// apply_psq_features and apply_threat_features. The incremental fold, the Finny
+// refresh and the hybrid king move each produce that value by a different
+// route, and every other assert in this file compares a `computed` flag or the
+// shape of a DirtyPiece -- none compares a value.
+//
+// Nothing else in the tree relates the three. `signature.sh` is a golden node
+// count: it says a number moved, not which fold moved it, and a fold that
+// diverges only off its fixed position list leaves it green. `perft.sh` counts
+// leaves and never evaluates. This assert is live in the `games.yml` lane,
+// which plays a `debug=yes` build and greps for an assertion.
+//
+// Check ONE coordinate. A coordinate projection is itself a group homomorphism,
+// so the law survives it at 1/Dimensions of the price, and a wrong, missing or
+// extra ROW is wrong in essentially every one of its Dimensions entries -- so
+// one coordinate catches it on the first checked call that sees it. The
+// coordinate advances per checked call, so a search still sweeps the whole
+// vector. The psqt half is PSQTBuckets wide and is checked entire.
+//
+// Sum in unsigned words. Every vec_add_16 in simd.h is a WRAPPING add and none
+// saturates, and addition modulo 2^16 is associative and commutative -- which
+// is what lets this sum run in an order the engine's fold never uses.
+
+// Check one call in LawStride, which is COPRIME to Dimensions so the checked
+// calls still sweep every coordinate instead of settling on Dimensions/17 of
+// them. Unstrided the law costs +21.3% of the search's instructions in the
+// `debug=yes` lane, measured under callgrind at depth 6 against depth 4 to
+// subtract startup; strided it costs +1.14%. Missing a violation for up to
+// seventeen nodes costs nothing: an accumulator error persists in the stack and
+// every later update carries it, so the check that catches it need not be the
+// call that made it.
+constexpr u32 LawStride = 17;
+static_assert(Dimensions % LawStride != 0, "the stride must not divide Dimensions");
+
+// Keep the counter thread-local. The sanitizer lane builds `debug=yes`, so
+// ThreadSanitizer watches this counter while the asserts are live, and a shared
+// one is a data race whether or not the value it carries matters.
+thread_local u32 lawCounter = 0;
+
+// Sum the bias and the psq row of every occupied square at coordinate j, and
+// the whole psqt projection beside it. `pieces` is indexed by the squares of
+// `occupied`, so the caller chooses whether that is the position or the
+// snapshot a cache entry holds.
+void law_psq_sum(const FeatureTransformer&           featureTransformer,
+                 const std::array<Piece, SQUARE_NB>& pieces,
+                 Bitboard                            occupied,
+                 Color                               perspective,
+                 Square                              ksq,
+                 IndexType                           j,
+                 u16&                                acc,
+                 std::array<u32, PSQTBuckets>&       psqt) {
+
+    acc = u16(featureTransformer.biases[j]);
+    psqt.fill(0);
+
+    while (occupied)
+    {
+        const Square    sq  = pop_lsb(occupied);
+        const IndexType row = PSQFeatureSet::make_index(perspective, sq, pieces[sq], ksq);
+
+        const auto* psqtRow = &featureTransformer.psqtWeights[row >> PsqtShift];
+
+        acc = u16(acc + u16(featureTransformer.weights[row + j]));
+        for (usize k = 0; k < PSQTBuckets; ++k)
+            psqt[k] = u32(psqt[k] + u32(psqtRow[k]));
+    }
+}
+
+// Check two laws per perspective:
+//   1  accumulation[p][j] == bias[j] + the active psq, threat and pp rows at j
+//   2  the Finny entry for the king square is that same sum over its own
+//      `pieces` snapshot with no threat rows, and `pieceBB` is that snapshot's
+//      occupancy. Two writers maintain that invariant by hand, and a stale
+//      `pieces` or `pieceBB` corrupts every later refresh through the entry.
+bool accumulator_law_holds(const Position&           pos,
+                           const FeatureTransformer& featureTransformer,
+                           const AccumulatorState&   state,
+                           const AccumulatorCaches&  cache) {
+
+    const u32 n = lawCounter++;
+    if (n % LawStride != 0)
+        return true;
+
+    const IndexType j = IndexType(n % Dimensions);
+
+    for (Color perspective : {WHITE, BLACK})
+    {
+        if (!state.computed[perspective])
+            return false;
+
+        const Square ksq = pos.square<KING>(perspective);
+
+        u16                          acc{};
+        std::array<u32, PSQTBuckets> psqt{};
+
+        law_psq_sum(featureTransformer, pos.piece_array(), pos.pieces(), perspective, ksq, j, acc,
+                    psqt);
+
+        ThreatFeatureSet::IndexList active;
+        ThreatFeatureSet::append_active_indices(perspective, pos, active);
+        PairFeatureSet::append_active_indices(perspective, pos, active);
+
+        for (const IndexType row : active)
+        {
+            const auto* psqtRow = &featureTransformer.threatAndPpPsqtWeights[row >> PsqtShift];
+
+            acc = u16(acc + u16(featureTransformer.threatAndPpWeights[row + j]));
+            for (usize k = 0; k < PSQTBuckets; ++k)
+                psqt[k] = u32(psqt[k] + u32(psqtRow[k]));
+        }
+
+        if (u16(state.accumulation[perspective][j]) != acc)
+            return false;
+
+        for (usize k = 0; k < PSQTBuckets; ++k)
+            if (u32(state.psqtAccumulation[perspective][k]) != psqt[k])
+                return false;
+
+        const auto& entry = cache.entries[ksq][perspective];
+
+        Bitboard entryOccupied = 0;
+        for (Square sq = SQ_A1; sq <= SQ_H8; ++sq)
+            if (entry.pieces[sq] != NO_PIECE)
+                entryOccupied |= square_bb(sq);
+
+        if (entryOccupied != entry.pieceBB)
+            return false;
+
+        u16                          entryAcc{};
+        std::array<u32, PSQTBuckets> entryPsqt{};
+
+        law_psq_sum(featureTransformer, entry.pieces, entry.pieceBB, perspective, ksq, j, entryAcc,
+                    entryPsqt);
+
+        if (u16(entry.accumulation[j]) != entryAcc)
+            return false;
+
+        for (usize k = 0; k < PSQTBuckets; ++k)
+            if (u32(entry.psqtAccumulation[k]) != entryPsqt[k])
+                return false;
+    }
+
+    return true;
+}
+
+#endif
 
 #ifdef VECTOR
 
