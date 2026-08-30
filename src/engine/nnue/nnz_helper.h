@@ -119,11 +119,22 @@ struct NNZInfo {
     alignas(8) u8 bitset[(Dimensions + 31) / 32];
 
     // How many packed vectors the producer hands the cursor at a time. Four
-    // where the four masks fold into one 32-bit `vpmovmskb`, two everywhere
-    // else -- and where it is two the loop below and the one in
-    // nnue_feature_transformer.h are the ones every other tier compiled before.
+    // fold into one 32-bit `vpmovmskb`, which is what makes four the unit; two
+    // everywhere the fold does not exist, and there the loop below and the one
+    // in nnue_feature_transformer.h are the ones that tier compiled before.
+    //
+    // gcc takes eight, two masks a trip. It keeps all eight packed results and
+    // the transform loop's four pointer bumps in registers and halves the trip
+    // count a second time: -0.1049% at -O3 and -0.1451% under PGO, over the
+    // same file at four. clang must be given four. Eight live ymm across its
+    // own scheduling of the chunk body makes it spill, and the identical source
+    // reads +1.1271% at -O3 -- ten times the gcc win, in the other direction.
     #if defined(USE_AVX2)
+        #if defined(__GNUC__) && !defined(__clang__)
+    static constexpr int CursorStep = 8;
+        #else
     static constexpr int CursorStep = 4;
+        #endif
     #else
     static constexpr int CursorStep = 2;
     #endif
@@ -215,7 +226,8 @@ struct NNZInfo {
         }
         void record(SIMD::vec_t (&packed)[CursorStep]) {
         #if defined(USE_AVX2)
-            record4(packed[0], packed[1], packed[2], packed[3]);
+            for (int i = 0; i < CursorStep; i += 4)
+                record4(packed[i], packed[i + 1], packed[i + 2], packed[i + 3]);
         #else
             record2(packed[0], packed[1]);
         #endif
