@@ -48,8 +48,16 @@ struct ExtMove: public Move {
 
 inline bool operator<(const ExtMove& f, const ExtMove& s) { return f.value < s.value; }
 
+// The generators are written once against the destination element type. A Move
+// is the first two bytes of an ExtMove and every store they make is a whole
+// move, so the only thing the element type changes is the stride the write
+// cursor advances by -- an immediate on the same add. Handing them the picker's
+// own ExtMove slots is what lets the scorer skip a copy, and it costs the
+// generator nothing.
 template<GenType>
 Move* generate(const Position& pos, Move* moveList);
+template<GenType>
+ExtMove* generate(const Position& pos, ExtMove* moveList);
 
 // A slider's attack set is a function of its square and the occupancy alone,
 // and neither changes between the capture list and the quiet list of one node:
@@ -81,6 +89,8 @@ struct UseSliders {};
 
 template<GenType, SliderCacheMode>
 Move* generate_cached(const Position& pos, Move* moveList, SliderCache& sc);
+template<GenType, SliderCacheMode>
+ExtMove* generate_cached(const Position& pos, ExtMove* moveList, SliderCache& sc);
 
 // The MoveList struct wraps the generate() function and returns a convenient
 // list of moves. Using MoveList is sometimes preferable to directly calling
