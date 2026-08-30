@@ -262,10 +262,25 @@ class AffineTransform {
             constexpr IndexType NumRegs = NumAccums;
     #endif
 
+    // gcc gives `acc` a memory home coalesced with `*output` and initialises it there with
+    // the biases -- four `vmovdqa` into `fc_1_out` that nothing ever reads, since the sums
+    // live in registers from then on and the activation takes them from there. The stores
+    // survive because they are the initialisation of a set live across the whole chunk
+    // loop, and DSE never connects them to the copy at the end. A barrier on `biasvec`
+    // changes nothing; folding the first chunk's dot product into the seed leaves no
+    // array-to-array copy for the coalescing to attach to, and the four stores go. clang
+    // has no store to remove and keeps the tokens it compiled before.
+    #if !defined(USE_VNNI) && !defined(USE_NEON_DOTPROD) && defined(__GNUC__) \
+      && !defined(__clang__)
+        #define SF_FC_SEED_FIRST_CHUNK
+    #endif
+
             const vec_t* biasvec = reinterpret_cast<const vec_t*>(biases);
             vec_t        acc[NumRegs];
+    #if !defined(SF_FC_SEED_FIRST_CHUNK)
             for (IndexType k = 0; k < NumAccums; ++k)
                 acc[k] = biasvec[k];
+    #endif
             for (IndexType k = NumAccums; k < NumRegs; ++k)
                 acc[k] = vec_set_32(0);
 
@@ -285,6 +300,21 @@ class AffineTransform {
     #endif
 
             IndexType i = 0;
+    #if defined(SF_FC_SEED_FIRST_CHUNK)
+            static_assert(NumChunks >= 1);
+            {
+                const vec_t in0  = vec_load_32(inbuf);
+                const auto  col0 = reinterpret_cast<const vec_t*>(&weights[0]);
+                for (IndexType k = 0; k < NumAccums; ++k)
+                {
+                    vec_t seeded = biasvec[k];
+                    vec_add_dpbusd_32(seeded, in0, col0[k]);
+                    acc[k] = seeded;
+                }
+                i = 1;
+            }
+        #undef SF_FC_SEED_FIRST_CHUNK
+    #endif
     #if defined(USE_VNNI) || defined(USE_NEON_DOTPROD)
             for (; i < NumChunks; i += 2)
             {
