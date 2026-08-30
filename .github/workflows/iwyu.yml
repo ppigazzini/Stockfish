@@ -10,7 +10,9 @@ jobs:
   Analyzers:
     name: Check includes
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    # Cold cache pays a ~1 GB toolchain download and an IWYU build from source
+    # before the three tiers start. Warm, the toolchain steps are a restore.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: Stockfish/src
@@ -22,30 +24,74 @@ jobs:
           path: Stockfish
           persist-credentials: false
 
-      - name: Checkout include-what-you-use
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # ninja and cmake build IWYU; everything else comes from the release
+      # tarball below. From the stock Ubuntu repository, which is the point --
+      # see the next comment.
+      - name: Install the build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
+
+      # THE TOOLCHAIN COMES FROM THE LLVM RELEASE TARBALL, NOT FROM apt.llvm.org.
+      #
+      # This lane used to add the llvm-toolchain-jammy-17 repository, `apt-key
+      # add` its signing key, and install libclang-17-dev, clang-17 and
+      # libc++-17-dev. It died on `GPG error: ... the following signatures
+      # couldn't be verified` -- a third-party repository and a deprecated key
+      # command failing for reasons that have nothing to do with this tree's
+      # includes, and failing in a way no commit here can fix.
+      #
+      # The official 17.0.6 release tarball carries clang, libclang and libc++
+      # together, over plain HTTPS from the llvm-project releases. jammy has no
+      # libc++-17 of its own, which is the only reason the third-party
+      # repository was ever here.
+      #
+      # INSTALLED INTO THE LLVM PREFIX, and that is load-bearing rather than
+      # tidy. IWYU finds libc++ relative to its own binary, so an IWYU sitting
+      # beside the tarball's clang reads the tarball's libc++ off the default
+      # search path -- which is what tests/iwyu.sh probes for, and what makes it
+      # resolve mode=native, the mode that returns an ABSOLUTE verdict.
+      # Installed anywhere else the same headers are on disk but on no path the
+      # tool searches, the script falls back to reaching them with `-nostdinc++
+      # -isystem` and a hand-passed -resource-dir, and that mode reports
+      # findings the lane does not -- so it is a differential only and SKIPS
+      # when asked for a verdict. One -DCMAKE_INSTALL_PREFIX is the whole
+      # difference between a lane that answers and a lane that skips.
+      #
+      # resources/ is this tree's scratch directory, which .gitignore covers and
+      # which tests/iwyu.sh looks in before PATH. The fetch is inlined here
+      # rather than kept in a script for the same reason docs.yml inlines its
+      # shellcheck fetch: resources/ holds no tracked source, so a workflow step
+      # cannot call a helper that lives only in it.
+      - name: Cache the IWYU toolchain
+        id: iwyu-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          repository: include-what-you-use/include-what-you-use
-          ref: f25caa280dc3277c4086ec345ad279a2463fea0f
-          path: include-what-you-use
-          persist-credentials: false
+          path: Stockfish/resources/iwyu
+          key: iwyu-ubuntu-22.04-llvm-17.0.6-f25caa280dc3277c4086ec345ad279a2463fea0f
 
-      - name: Download required linux packages
+      - name: Build include-what-you-use
+        if: steps.iwyu-cache.outputs.cache-hit != 'true'
+        working-directory: Stockfish/resources
         run: |
-          sudo add-apt-repository 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main'
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo apt update
-          sudo apt install -y libclang-17-dev clang-17 libc++-17-dev
-
-      - name: Set up include-what-you-use
-        run: |
-          mkdir build && cd build
-          cmake -G "Unix Makefiles" -DCMAKE_PREFIX_PATH="/usr/lib/llvm-17" ..
-          sudo make install
-        working-directory: include-what-you-use
+          set -eu
+          llvm_ver=17.0.6
+          iwyu_pin=f25caa280dc3277c4086ec345ad279a2463fea0f
+          tar=clang+llvm-$llvm_ver-x86_64-linux-gnu-ubuntu-22.04.tar.xz
+          mkdir -p iwyu/llvm && cd iwyu
+          curl -fsSL --retry 3 -o "$tar" \
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvm_ver/$tar"
+          tar -xJf "$tar" -C llvm --strip-components=1
+          rm -f "$tar"
+          git clone --quiet https://github.com/include-what-you-use/include-what-you-use.git src
+          git -C src checkout --quiet "$iwyu_pin"
+          cmake -S src -B build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/llvm" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/llvm" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j"$(nproc)"
+          cmake --install build
 
       - name: Check include-what-you-use
-        run: include-what-you-use --version
+        run: ../resources/iwyu/llvm/bin/include-what-you-use --version
 
       # EXTRACXXFLAGS, NOT CXXFLAGS, and a NAMED ARCH.
       #
