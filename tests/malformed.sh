@@ -539,7 +539,12 @@ else
 fi
 
 echo
-check_resource "alloc-failure  " "allocator_may_return_null=1:max_allocation_size_mb=128" 60 \
+# 128 MB stopped provoking anything: upstream's move of large aligned
+# allocations to mmap put the arena and the transposition table outside
+# ASAN's max_allocation_size_mb, which bounds malloc only, and the largest
+# remaining malloc is the network at 109.7 MB -- just under the old cap. 64 MB
+# puts the cap below it with margin, so the case reaches a real failure again.
+check_resource "alloc-failure  " "allocator_may_return_null=1:max_allocation_size_mb=64" 60 \
     "setoption name Threads value 16" "isready" "quit"
 
 echo
