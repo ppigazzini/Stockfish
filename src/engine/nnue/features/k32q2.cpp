@@ -21,7 +21,6 @@
 #include "k32q2.h"
 
 #include "../../types.h"
-#include "../nnue_common.h"
 
 #if defined(USE_AVX512ICL)
     #include <immintrin.h>
