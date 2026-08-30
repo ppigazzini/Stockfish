@@ -67,14 +67,6 @@
 // from the board, the UCI stream or the net file left for the guard to check.
 // Named on this one function rather than taken for the whole program, exactly as
 // search.h and nnue_architecture.h name theirs.
-#if defined(__has_attribute)
-    #if __has_attribute(no_stack_protector)
-        #define SF_NO_STACK_PROTECTOR __attribute__((no_stack_protector))
-    #endif
-#endif
-#if !defined(SF_NO_STACK_PROTECTOR)
-    #define SF_NO_STACK_PROTECTOR
-#endif
 
 namespace Stockfish {
 
