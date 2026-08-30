@@ -21,7 +21,6 @@
 #include "half_ka_v2_hm.h"
 
 #include "../../types.h"
-#include "../nnue_common.h"
 
 #if defined(USE_AVX512ICL)
     #include <immintrin.h>
