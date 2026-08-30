@@ -19,16 +19,19 @@
 #include "engine.h"
 
 #include "../engine/arena.h"
+#include "../engine/fatal.h"
 #include "../engine/output_sink.h"
 #include "../engine/parallel.h"
 #include "../engine/worker_set.h"
 
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <filesystem>
 #include <deque>
 #include <iosfwd>
 #include <memory>
+#include <new>
 #include <ostream>
 #include <iomanip>
 #include <sstream>
@@ -478,7 +481,23 @@ void Engine::verify_network() const {
 
 std::unique_ptr<Eval::NNUE::Network> Engine::get_default_network() {
 
-    auto network_ = std::make_unique<NN::Network>();
+    // Nothrow, and checked: the two other large allocations in this tree --
+    // arena.cpp's and the transposition table's -- report through engine_abort
+    // and this one did not. `make_unique` uses throwing `new`, which under
+    // -fno-exceptions cannot return, so a network that does not fit ended the
+    // process with no word about which allocation failed. The report is
+    // formatted without allocating, as the other two sites are and for the same
+    // reason: a std::string that cannot get its buffer loses the message to a
+    // second failure inside the first.
+    auto network_ = std::unique_ptr<NN::Network>(new (std::nothrow) NN::Network());
+
+    if (!network_)
+    {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "Failed to allocate %llu bytes for the network.",
+                      static_cast<unsigned long long>(sizeof(NN::Network)));
+        engine_abort(buf);
+    }
 
     network_->load(binaryDirectory, std::filesystem::path{}, networkFile);
 
