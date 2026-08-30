@@ -21,6 +21,7 @@
 
 #include "history.h"
 #include "movegen.h"
+#include "basetypes.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -54,8 +55,10 @@ class MovePicker {
    private:
     template<typename Pred>
     Move select(Pred);
-    template<GenType T>
-    ExtMove* score(const MoveList<T>&);
+    template<GenType T, SliderCacheMode CM>
+    ExtMove* gen_and_score();
+    template<GenType T, bool Copy>
+    ExtMove* score(const Move* src, isize n);
     Move     generate_stage();
     Move     walk_lists();
 

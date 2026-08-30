@@ -31,6 +31,7 @@
 // the vpcmpd hit mask. Below that tier nothing here needs it and IWYU says so at
 // two of the three tiers the lane runs -- deleting it breaks the third.
 #include "bitboard.h"  // IWYU pragma: keep
+#include "compiler.h"
 #include "position.h"
 #include "basetypes.h"
 
@@ -325,11 +326,25 @@ MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceTo
     stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm));
 }
 
+// Below avx512icl the generator writes its moves straight into this picker's own
+// ExtMove slots, so `Copy` is false and the scorer finds each move already in
+// the slot it is about to fill in: a Move is the first two bytes of an ExtMove
+// and the only thing the destination type changes is the stride the generator's
+// write cursor advances by, which is an immediate on an add it already pays. At
+// avx512icl splat_moves() stores 32 moves as adjacent 16-bit lanes and an
+// eight-byte stride would want a masked permute per eight of them, so that tier
+// keeps the packed MoveList and `Copy` is true.
+#if defined(USE_AVX512ICL)
+    #define SF_GENERATE_INTO_SLOTS 0
+#else
+    #define SF_GENERATE_INTO_SLOTS 1
+#endif
+
 // Assigns a numerical value to each move in a list, used for sorting.
 // Captures are ordered by Most Valuable Victim (MVV), preferring captures
 // with a good history. Quiet moves are ordered using the history tables.
-template<GenType Type>
-ExtMove* MovePicker::score(const MoveList<Type>& ml) {
+template<GenType Type, bool Copy>
+ExtMove* MovePicker::score([[maybe_unused]] const Move* const src, const isize n) {
 
     static_assert(Type == CAPTURES || Type == QUIETS || Type == EVASIONS, "Wrong type");
 
@@ -414,9 +429,7 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     // both sides address off leaves the trip count in a register and the exit
     // test a compare against it, and it is also what tells the caller where the
     // list ended without a second variable tracking that.
-    ExtMove* const    it  = cur;
-    const Move* const src = ml.begin();
-    const isize       n   = isize(ml.size());
+    ExtMove* const it = cur;
 
     // clang vectorises the capture arm at AVX-512 and pays a masked
     // `vpgatherdd` for PieceValue[piece_on(to)]. A gather is 16 scattered
@@ -428,7 +441,8 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     for (isize i = 0; i < n; ++i)
     {
         ExtMove& m = it[i];
-        m          = src[i];
+        if constexpr (Copy)
+            m = src[i];
 
         const Square    from          = m.from_sq();
         const Square    to            = m.to_sq();
@@ -517,6 +531,48 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     return it + n;
 }
 
+// Generate the list this stage wants at `cur`, and score it there.
+//
+// The two arms differ only in where the generator writes. Below avx512icl it
+// writes the ExtMove slots the scorer is about to fill, so there is no second
+// buffer in the frame and no move to copy; at avx512icl the packed splat needs
+// a Move list, and MoveList<> supplies one that is then copied in.
+//
+// Forced inline because naming the arms is not meant to move them. Left to the
+// inliner gcc keeps all three out of line at avx512icl -- 8,110 bytes taken out
+// of the generate_stage() that had held them, and a call added to every
+// generating stage on the one tier this commit is otherwise inert on.
+template<GenType Type, SliderCacheMode CM>
+sf_always_inline ExtMove* MovePicker::gen_and_score() {
+
+#if SF_GENERATE_INTO_SLOTS
+    ExtMove* last;
+
+    if constexpr (CM == NoSliderCache)
+        last = generate<Type>(pos, cur);
+    else
+        last = generate_cached<Type, CM>(pos, cur, sliderCache);
+
+    return score<Type, false>(nullptr, last - cur);
+#else
+    if constexpr (CM == FillSliderCache)
+    {
+        MoveList<Type> ml(pos, sliderCache, FillSliders{});
+        return score<Type, true>(ml.begin(), isize(ml.size()));
+    }
+    else if constexpr (CM == UseSliderCache)
+    {
+        MoveList<Type> ml(pos, sliderCache, UseSliders{});
+        return score<Type, true>(ml.begin(), isize(ml.size()));
+    }
+    else
+    {
+        MoveList<Type> ml(pos);
+        return score<Type, true>(ml.begin(), isize(ml.size()));
+    }
+#endif
+}
+
 // Returns the next move satisfying a predicate function.
 // This never returns the TT move, as it was emitted before.
 template<typename Pred>
@@ -565,10 +621,8 @@ top:
     case CAPTURE_INIT :
     case PROBCUT_INIT :
     case QCAPTURE_INIT : {
-        MoveList<CAPTURES> ml(pos, sliderCache, FillSliders{});
-
         cur = endBadCaptures = moves;
-        endCur = endCaptures = score<CAPTURES>(ml);
+        endCur = endCaptures = gen_and_score<CAPTURES, FillSliderCache>();
 
         sort_all(cur, endCur);
         ++stage;
@@ -594,9 +648,7 @@ top:
             // above: CAPTURE_INIT always runs before QUIET_INIT in one picker,
             // and the position a do_move/undo_move pair leaves behind is the
             // one the capture list saw.
-            MoveList<QUIETS> ml(pos, sliderCache, UseSliders{});
-
-            endCur = endGenerated = score<QUIETS>(ml);
+            endCur = endGenerated = gen_and_score<QUIETS, UseSliderCache>();
 
             sort_quiets(cur, endCur, -3560 * depth);
         }
@@ -605,10 +657,8 @@ top:
         return walk_lists();
 
     case EVASION_INIT : {
-        MoveList<EVASIONS> ml(pos);
-
         cur    = moves;
-        endCur = endGenerated = score<EVASIONS>(ml);
+        endCur = endGenerated = gen_and_score<EVASIONS, NoSliderCache>();
 
         sort_all(cur, endCur);
         ++stage;
