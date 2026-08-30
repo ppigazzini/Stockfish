@@ -55,6 +55,17 @@ namespace Stockfish {
 
 namespace {
 
+// The quiet sort's limit is -quietSortScale * depth, and a good quiet is one
+// scoring above goodQuietThreshold. The two are only ever COMPARED, never
+// computed with together, so the comparison folds to a bound on depth: the limit
+// reaches the threshold exactly when depth reaches ceil(14000 / 3560) = 4.
+// Spelling it that way is what stops gcc keeping the multiply --
+// `imul $0xfffff218,0x68(%rdi),%edx` and then a compare, on every GOOD_QUIET
+// entry -- where a bound is one `cmpl` against the member it already has.
+constexpr int   quietSortScale     = 3560;
+constexpr int   goodQuietThreshold = -14000;
+constexpr Depth goodQuietDepth = (-goodQuietThreshold + quietSortScale - 1) / quietSortScale;
+
 enum Stages {
     // generate main search moves
     MAIN_TT,
@@ -650,7 +661,7 @@ top:
             // one the capture list saw.
             endCur = endGenerated = gen_and_score<QUIETS, UseSliderCache>();
 
-            sort_quiets(cur, endCur, -3560 * depth);
+            sort_quiets(cur, endCur, -quietSortScale * depth);
         }
 
         ++stage;
@@ -688,8 +699,6 @@ top:
 // for the test to survive -- and leaving the FUNCTION is what drops the frame.
 Move MovePicker::walk_lists() {
 
-    constexpr int goodQuietThreshold = -14000;
-
     if (stage == GOOD_QUIET)
         goto good_quiet;
     if (stage == BAD_CAPTURE)
@@ -710,7 +719,7 @@ good_quiet:
         // node, nearly all of them in the 7.7% of visits that exhaust the list.
         if (!skipQuiets)
         {
-            if (-3560 * depth <= goodQuietThreshold)
+            if (depth >= goodQuietDepth)
             {
                 // Rolled for the reason select() is; see there.
 #if defined(__GNUC__) && !defined(__clang__)
