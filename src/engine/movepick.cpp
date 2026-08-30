@@ -51,6 +51,31 @@
     #define SF_NOINLINE
 #endif
 
+// Ubuntu's gcc turns on -fstack-protector-strong by default and `src/Makefile`
+// asks for no such thing, so the guard here is the toolchain's rather than this
+// project's; clang emits none of it. One local array is enough to trigger it and
+// generate_stage() holds two -- score()'s threatByLesser and checkSquare, both
+// inlined into this frame -- so every call pays a TLS load and a store on entry
+// and a reload, a subtract and a never-taken branch on the way out. Five
+// instructions over 2,366,624 calls a bench.
+//
+// Both arrays are indexed by `type_of(pos.moved_piece(m))`, which is a piece's
+// low three bits and so cannot exceed KING; the array is KING + 1 long. Nothing
+// else in the frame is a buffer written through a length: the generators write
+// the picker's own `moves` member, not a local, and their bound is MAX_MOVES,
+// which is a property of chess rather than of any input. There is no length read
+// from the board, the UCI stream or the net file left for the guard to check.
+// Named on this one function rather than taken for the whole program, exactly as
+// search.h and nnue_architecture.h name theirs.
+#if defined(__has_attribute)
+    #if __has_attribute(no_stack_protector)
+        #define SF_NO_STACK_PROTECTOR __attribute__((no_stack_protector))
+    #endif
+#endif
+#if !defined(SF_NO_STACK_PROTECTOR)
+    #define SF_NO_STACK_PROTECTOR
+#endif
+
 namespace Stockfish {
 
 namespace {
@@ -616,7 +641,7 @@ Move MovePicker::select(Pred filter) {
 // only ever walk a list. A warm 60-ply game at depth 20 spends 22.6 Ir a node
 // entering that frame and 26.7 leaving it, over 3.20 calls, which is 6% of the
 // whole of next_move() and buys nothing on the calls that do not generate.
-SF_NOINLINE Move MovePicker::generate_stage() {
+SF_NOINLINE SF_NO_STACK_PROTECTOR Move MovePicker::generate_stage() {
 
 top:
     switch (stage)
