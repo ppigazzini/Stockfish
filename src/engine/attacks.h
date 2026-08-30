@@ -143,7 +143,7 @@ struct alignas(32) DualMagic {
     // compact lookup table indexed by the 6 inner bits of the rank's occupancy
     // (the edge squares never affect the attack set), and with it they take the
     // lane the three ray masks leave empty.
-    std::pair<Bitboard, Bitboard> both_attacks_bb(Bitboard occupied) const {
+    sf_always_inline std::pair<Bitboard, Bitboard> both_attacks_bb(Bitboard occupied) const {
         // Reverse each 64-bit lane: vpshufb reverses the bytes, and under GFNI
         // the affine transform by the anti-diagonal matrix reverses the bits
         // inside each byte. Byte order across the two halves of a 128-bit lane
