@@ -116,7 +116,14 @@ case "$JOBS" in ''|*[!0-9]*) die "--jobs must be a number, got '$JOBS'" ;; esac
 # ---------------------------------------------------------------- locate IWYU
 
 if [ -z "$IWYU" ]; then
-    if [ -x "$ROOT/resources/iwyu/install/bin/include-what-you-use" ]; then
+    # The pinned tree first, and inside the LLVM prefix rather than beside it:
+    # an IWYU sitting next to the tarball's clang reads the tarball's libc++ off
+    # the default search path, which is what makes the probe below choose native
+    # over shim. resources/iwyu-setup.sh installs it there for that reason. The
+    # older split layout is still honoured so an existing build keeps working.
+    if [ -x "$ROOT/resources/iwyu/llvm/bin/include-what-you-use" ]; then
+        IWYU=$ROOT/resources/iwyu/llvm/bin/include-what-you-use
+    elif [ -x "$ROOT/resources/iwyu/install/bin/include-what-you-use" ]; then
         IWYU=$ROOT/resources/iwyu/install/bin/include-what-you-use
     elif command -v include-what-you-use >/dev/null; then
         IWYU=$(command -v include-what-you-use)
