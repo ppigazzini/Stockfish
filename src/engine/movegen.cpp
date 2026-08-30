@@ -40,8 +40,15 @@ namespace {
 
 #if defined(USE_AVX512ICL)
 
-template<Direction offset>
-inline Move* splat_pawn_moves(Move* moveList, Bitboard to_bb) {
+// The two packed splats store their moves as ADJACENT 16-bit lanes, so they
+// write a Move list and nothing else: an eight-byte stride would want a masked
+// permute per eight moves and four stores where there is one. This tier keeps
+// the packed buffer that movepick.cpp's SF_GENERATE_INTO_SLOTS names, and the
+// static_assert is what says so at the one place that would otherwise store a
+// list of the wrong shape.
+template<Direction offset, class Dst>
+inline Dst* splat_pawn_moves(Dst* moveList, Bitboard to_bb) {
+    static_assert(sizeof(Dst) == sizeof(Move), "the packed splat writes adjacent 16-bit lanes");
     assert(popcount(to_bb) <= 8);  // <= 8 pawns per side
 
     const __m128i toSquares =
@@ -54,7 +61,9 @@ inline Move* splat_pawn_moves(Move* moveList, Bitboard to_bb) {
     return moveList + popcount(to_bb);
 }
 
-inline Move* splat_moves(Move* moveList, Square from, Bitboard to_bb) {
+template<class Dst>
+inline Dst* splat_moves(Dst* moveList, Square from, Bitboard to_bb) {
+    static_assert(sizeof(Dst) == sizeof(Move), "the packed splat writes adjacent 16-bit lanes");
     assert(popcount(to_bb) <= 32);  // Q can attack up to 27 squares
 
     // THE STORE BELOW WRITES 32 MOVES REGARDLESS OF THE POPCOUNT. The caller's
@@ -76,8 +85,8 @@ inline Move* splat_moves(Move* moveList, Square from, Bitboard to_bb) {
 
 #else
 
-template<Direction offset>
-inline Move* splat_pawn_moves(Move* moveList, Bitboard to_bb) {
+template<Direction offset, class Dst>
+inline Dst* splat_pawn_moves(Dst* moveList, Bitboard to_bb) {
     while (to_bb)
     {
         Square to   = pop_lsb(to_bb);
@@ -86,7 +95,8 @@ inline Move* splat_pawn_moves(Move* moveList, Bitboard to_bb) {
     return moveList;
 }
 
-inline Move* splat_moves(Move* moveList, Square from, Bitboard to_bb) {
+template<class Dst>
+inline Dst* splat_moves(Dst* moveList, Square from, Bitboard to_bb) {
     while (to_bb)
         *moveList++ = Move(from, pop_lsb(to_bb));
     return moveList;
@@ -94,8 +104,8 @@ inline Move* splat_moves(Move* moveList, Square from, Bitboard to_bb) {
 
 #endif
 
-template<GenType Type, Direction D, bool Enemy>
-Move* make_promotions(Move* moveList, [[maybe_unused]] Square to) {
+template<GenType Type, Direction D, bool Enemy, class Dst>
+Dst* make_promotions(Dst* moveList, [[maybe_unused]] Square to) {
 
     constexpr bool          all  = Type == EVASIONS || Type == ALL;
     [[maybe_unused]] Square from = to - D;
@@ -114,8 +124,8 @@ Move* make_promotions(Move* moveList, [[maybe_unused]] Square to) {
 }
 
 
-template<Color Us, GenType Type>
-Move* generate_pawn_moves(const Position& pos, Move* moveList, Bitboard target) {
+template<Color Us, GenType Type, class Dst>
+Dst* generate_pawn_moves(const Position& pos, Dst* moveList, Bitboard target) {
 
     static_assert(Type != ALL, "Unsupported type in generate_pawn_moves()");
 
@@ -206,13 +216,13 @@ Move* generate_pawn_moves(const Position& pos, Move* moveList, Bitboard target) 
 
 // `CM` reaches only the three sliders: a knight's attack set is a table read,
 // which is already cheaper than the cache slot that would hold it.
-template<PieceType Pt, SliderCacheMode CM = NoSliderCache>
-Move* generate_moves(const Position&              pos,
-                     Move*                        moveList,
-                     Bitboard                     target,
-                     Color                        us,
-                     [[maybe_unused]] SliderCache* sc   = nullptr,
-                     [[maybe_unused]] int*         next = nullptr) {
+template<PieceType Pt, SliderCacheMode CM = NoSliderCache, class Dst = Move>
+Dst* generate_moves(const Position&              pos,
+                    Dst*                         moveList,
+                    Bitboard                     target,
+                    Color                        us,
+                    [[maybe_unused]] SliderCache* sc   = nullptr,
+                    [[maybe_unused]] int*         next = nullptr) {
 
     static_assert(Pt != KING && Pt != PAWN, "Unsupported piece type in generate_moves()");
 
@@ -265,8 +275,8 @@ Move* generate_moves(const Position&              pos,
 }
 
 
-template<GenType Type, SliderCacheMode CM = NoSliderCache>
-Move* generate_all(const Position& pos, Move* moveList, Color us, SliderCache* sc = nullptr) {
+template<GenType Type, SliderCacheMode CM = NoSliderCache, class Dst = Move>
+Dst* generate_all(const Position& pos, Dst* moveList, Color us, SliderCache* sc = nullptr) {
 
     static_assert(Type != ALL, "Unsupported type in generate_all()");
     static_assert(CM == NoSliderCache || Type == CAPTURES || Type == QUIETS,
@@ -316,6 +326,29 @@ Move* generate_all(const Position& pos, Move* moveList, Color us, SliderCache* s
     return moveList;
 }
 
+// The entry checks, written once for both destination types.
+template<GenType Type, class Dst>
+Dst* generate_body(const Position& pos, Dst* moveList) {
+
+    static_assert(Type != ALL, "Unsupported type in generate()");
+    assert((Type == EVASIONS) == bool(pos.checkers()));
+
+    Color us = pos.side_to_move();
+
+    return generate_all<Type, NoSliderCache, Dst>(pos, moveList, us);
+}
+
+template<GenType Type, SliderCacheMode CM, class Dst>
+Dst* generate_cached_body(const Position& pos, Dst* moveList, SliderCache& sc) {
+
+    static_assert(Type == CAPTURES || Type == QUIETS, "Unsupported type in generate_cached()");
+    assert((Type == EVASIONS) == bool(pos.checkers()));
+
+    Color us = pos.side_to_move();
+
+    return generate_all<Type, CM, Dst>(pos, moveList, us, &sc);
+}
+
 }  // namespace
 
 
@@ -326,13 +359,12 @@ Move* generate_all(const Position& pos, Move* moveList, Color us, SliderCache* s
 // Returns a pointer to the end of the move list.
 template<GenType Type>
 Move* generate(const Position& pos, Move* moveList) {
+    return generate_body<Type>(pos, moveList);
+}
 
-    static_assert(Type != ALL, "Unsupported type in generate()");
-    assert((Type == EVASIONS) == bool(pos.checkers()));
-
-    Color us = pos.side_to_move();
-
-    return generate_all<Type>(pos, moveList, us);
+template<GenType Type>
+ExtMove* generate(const Position& pos, ExtMove* moveList) {
+    return generate_body<Type>(pos, moveList);
 }
 
 // The same generator, with the slider sets written on the capture list and read
@@ -341,18 +373,26 @@ Move* generate(const Position& pos, Move* moveList) {
 // the codegen they had.
 template<GenType Type, SliderCacheMode CM>
 Move* generate_cached(const Position& pos, Move* moveList, SliderCache& sc) {
-
-    static_assert(Type == CAPTURES || Type == QUIETS, "Unsupported type in generate_cached()");
-    assert((Type == EVASIONS) == bool(pos.checkers()));
-
-    Color us = pos.side_to_move();
-
-    return generate_all<Type, CM>(pos, moveList, us, &sc);
+    return generate_cached_body<Type, CM>(pos, moveList, sc);
 }
 
-// Explicit template instantiations
+template<GenType Type, SliderCacheMode CM>
+ExtMove* generate_cached(const Position& pos, ExtMove* moveList, SliderCache& sc) {
+    return generate_cached_body<Type, CM>(pos, moveList, sc);
+}
+
+// Explicit template instantiations. The picker's three generating stages take
+// the ExtMove destination below avx512icl and the packed one above it, and only
+// the pair the tier actually calls is emitted.
+#if defined(USE_AVX512ICL)
 template Move* generate_cached<CAPTURES, FillSliderCache>(const Position&, Move*, SliderCache&);
 template Move* generate_cached<QUIETS, UseSliderCache>(const Position&, Move*, SliderCache&);
+#else
+template ExtMove*
+generate_cached<CAPTURES, FillSliderCache>(const Position&, ExtMove*, SliderCache&);
+template ExtMove* generate_cached<QUIETS, UseSliderCache>(const Position&, ExtMove*, SliderCache&);
+template ExtMove* generate<EVASIONS>(const Position&, ExtMove*);
+#endif
 
 template Move* generate<CAPTURES>(const Position&, Move*);
 template Move* generate<QUIETS>(const Position&, Move*);
