@@ -103,7 +103,7 @@ struct alignas(32) DualMagic {
     // compact lookup table indexed by the 6 inner bits of the rank's occupancy
     // (the edge squares never affect the attack set), and with it they take the
     // lane the three ray masks leave empty.
-    std::pair<Bitboard, Bitboard> both_attacks_bb(Bitboard occupied) const {
+    sf_always_inline std::pair<Bitboard, Bitboard> both_attacks_bb(Bitboard occupied) const {
 
 #ifndef USE_GFNI_RANK
         Bitboard rowOccupancy = rankAttacksLookup[(occupied >> (shift + 1)) & 0x3f];
