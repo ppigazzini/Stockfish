@@ -27,8 +27,8 @@
 #include <memory>
 #include <sstream>
 
+#include "compiler.h"
 #include "nnue/network.h"
-#include "nnue/nnue_architecture.h"
 #include "nnue/nnue_misc.h"
 #include "position.h"
 #include "types.h"

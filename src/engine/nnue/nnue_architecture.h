@@ -33,6 +33,7 @@
 #include "layers/sqr_clipped_relu.h"
 #include "nnue_common.h"
 #include "nnz_helper.h"
+#include "../compiler.h"
 #include "../hashing.h"
 
 namespace Stockfish::Eval::NNUE {
@@ -66,14 +67,6 @@ static_assert(PSQTBuckets % 8 == 0,
 // the compiler has already resolved -- every store into them is a SIMD store at
 // a constant offset -- so there is no bound left for it to be checking, and the
 // exemption is named per function rather than taken for the whole program.
-#if defined(__has_attribute)
-    #if __has_attribute(no_stack_protector)
-        #define SF_NO_STACK_PROTECTOR __attribute__((no_stack_protector))
-    #endif
-#endif
-#if !defined(SF_NO_STACK_PROTECTOR)
-    #define SF_NO_STACK_PROTECTOR
-#endif
 
 struct NetworkArchitecture {
     static constexpr IndexType TransformedFeatureDimensions = L1;

@@ -31,6 +31,7 @@
 #include <vector>
 #include <cstring>
 
+#include "compiler.h"
 #include "history.h"
 #include "nnue/nnue_accumulator.h"
 #include "position.h"
@@ -78,14 +79,6 @@ namespace Stockfish {
 // is a length read from the board, the UCI stream or the net file, so there is
 // nothing left for the guard to be checking. The exemption is named per function
 // rather than taken for the whole program.
-#if defined(__has_attribute)
-    #if __has_attribute(no_stack_protector)
-        #define SF_NO_STACK_PROTECTOR __attribute__((no_stack_protector))
-    #endif
-#endif
-#if !defined(SF_NO_STACK_PROTECTOR)
-    #define SF_NO_STACK_PROTECTOR
-#endif
 
 // Different node types, used as a template parameter
 enum NodeType {
