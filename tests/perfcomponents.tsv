@@ -59,7 +59,14 @@ copying (memcpy)	__memcpy_|__memmove_
 NNUE accumulator apply	apply_combined
 NNUE incremental update	update_accumulator_incremental
 NNUE refresh cache	update_accumulator_refresh_cache
-NNUE network evaluate	NNUE::Network::evaluate|NetworkArchitecture::propagate
+# `Eval::evaluate` is the free function wrapping the network call, and it survives as
+# a separate symbol only where the call was inlined INTO it rather than the other way
+# round. clang PGO does that on some revisions and not on others, so naming only
+# `Network::evaluate` groups the work on one side of a comparison and leaves it
+# ungrouped on the other -- 200 M Ir on one side of a bench-list pair here. An
+# unmatched block that size on the base side biases EVERY ratio in the table towards
+# the head. Both names, one row: it is the same work either way.
+NNUE network evaluate	NNUE::Network::evaluate|NetworkArchitecture::propagate|Eval::evaluate
 NNUE accumulator stack	AccumulatorStack::|AccumulatorCaches::
 # The affine output layers and the clipped-ReLU stages have NO row: both sides
 # inline them into NNUE::Network::evaluate, so they cannot be separated from it
@@ -71,7 +78,12 @@ NNUE feature transform	FeatureTransformer|HalfKAv2_hm|FullThreats|PP_3Wide|appen
 search node	Worker::search<
 qsearch	Worker::qsearch
 search driver	iterative_deepening|start_searching|aspiration|best_worker
-worker clear / init	Worker::clear|SharedHistories|ButterflyHistory|ContinuationHistory
+# The history typedefs are erased by the time a symbol is mangled, so clearing a
+# continuation history can survive as `MultiArray<StatsEntry<short, 8192, true>,
+# 16, 64>::fill` with no `ContinuationHistory` anywhere in the name. gcc PGO leaves
+# 160 M Ir under exactly that on one side of a bench-list pair and nothing under it
+# on the other, for the same reason and with the same bias as the row above.
+worker clear / init	Worker::clear|SharedHistories|ButterflyHistory|ContinuationHistory|MultiArray<Stockfish::StatsEntry
 time management	TimeManagement|check_time|Worker::elapsed
 
 # -- tablebases: absent from every default run, and 23.6% of a probing one --
