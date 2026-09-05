@@ -159,6 +159,21 @@ void prefetch(const void* addr) {
     #define sf_always_inline inline
 #endif
 
+// The cold-path attribute, here for the same reason sf_always_inline is. A
+// function marked with it is kept out of line and out of the hot path's
+// straight-line code; the caller decides which of its arms is rare, so only the
+// spelling lives here.
+//
+// An empty fallback costs a layout hint and nothing else, which is why this one
+// is allowed to be empty where SF_NO_STACK_PROTECTOR's is not.
+#if defined(__GNUC__)
+    #define sf_cold_path __attribute__((noinline, cold))
+#elif defined(_MSC_VER)
+    #define sf_cold_path __declspec(noinline)
+#else
+    #define sf_cold_path
+#endif
+
 }  // namespace Stockfish
 
 #endif  // #ifndef COMPILER_H_INCLUDED

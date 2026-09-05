@@ -104,6 +104,24 @@ ordering is most of what the table is for.
 transposed at a call site. `StatsEntry` `static_assert`s `D <= INT_MAX / D`, because the product
 `val * |clampedBonus|` is computed in `int`.
 
+**On the continuation-history path that clamp is dead code, and keeping it dead is a range
+obligation rather than an accident.** `update_continuation_histories` folds each step's weight
+and consistency multiplier into a `u16` table and guards the bonus against
+`StatsEntry::limit - 73`, which lets the compiler bound `bonus * scale / 65536` below `D` and
+delete the `std::clamp` from all six unrolled steps. Both halves carry the proof: an `int` table
+leaves the product's only bound the one undefined signed overflow gives, and an unguarded bonus
+leaves it at `INT_MAX / 65536`, which is over `D`. Drop either and two compares and two
+conditional moves come back per step. It is a value-range fact rather than a target one -- the
+clamp folds on every tier the CI matrix builds and on aarch64, ppc64le and armv7 -- so the check
+is a compile, not a benchmark:
+
+```sh
+cd src && make -Bn ARCH=x86-64-avx2 COMP=gcc build | grep -m1 -- '-c -o search\.o'
+```
+
+Run that command's output with `-S` in place of `-c -o search.o` and grep the emitted
+`update_continuation_histories` for `30000`: a hit means the clamp is back.
+
 | table | indexed by |
 |---|---|
 | `ButterflyHistory` | colour, from-to |
