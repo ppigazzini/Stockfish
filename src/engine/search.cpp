@@ -2395,43 +2395,54 @@ void update_all_stats(const Position& pos,
 
 // Updates the continuation histories for the move pairs formed by
 // the current move and the moves played in previous plies.
-void update_continuation_histories(Stack* ss, Piece pc, Square to, int bonus) {
-    // The step's WEIGHT and the consistency MULTIPLIER are one table, folded at
-    // compile time. The weight is a constant of the step and the multiplier is
-    // a run-time index, so their product never depends on the bonus and the
-    // loop was buying it with an `imul` on every step it took.
-    //
-    // Regrouping `(bonus * weight) * multiplier` as `bonus * (weight *
-    // multiplier)` is bit-identical, and the reason has to be stated because
-    // this product overflows: the fail-low arm in search() passes
-    // `scaledBonus * 263 / 16384`, which reaches 36,914, and 36,914 * 520 *
-    // 126 does not fit an int in either grouping. Integer multiplication is
-    // associative modulo 2^32, so both groupings wrap to the same bits.
-    //
-    // ConthistBonus stays the source of truth, so a tuner still edits the six
-    // weights and the seven multipliers rather than a derived table.
-    struct ConthistStep {
-        int                index;
-        std::array<int, 7> scale;
-    };
+// The six steps' weights and the seven consistency multipliers: the two things
+// an SPSA run edits, kept as the source of truth rather than a derived table.
+constexpr ConthistBonus conthist_bonuses[] = {{1, 520}, {2, 390}, {3, 145},
+                                              {4, 251}, {5, 66},  {6, 209}};
 
-    static constexpr auto conthist_steps = [] {
-        constexpr ConthistBonus bonuses[] = {{1, 520}, {2, 390}, {3, 145},
-                                             {4, 251}, {5, 66},  {6, 209}};
+// Multipliers for positive history consistency
+constexpr int CMHCMultipliers[] = {94, 103, 110, 106, 119, 126, 121};
 
-        // Multipliers for positive history consistency
-        constexpr int CMHCMultipliers[] = {94, 103, 110, 106, 119, 126, 121};
+constexpr int conthist_max_scale() {
+    int m = 0;
+    for (const auto& b : conthist_bonuses)
+        for (const int mu : CMHCMultipliers)
+            m = std::max(m, b.weight * mu);
+    return m;
+}
 
-        std::array<ConthistStep, 6> steps{};
-        for (usize k = 0; k < steps.size(); ++k)
-        {
-            steps[k].index = bonuses[k].index;
-            for (usize m = 0; m < steps[k].scale.size(); ++m)
-                steps[k].scale[m] = bonuses[k].weight * CMHCMultipliers[m];
-        }
-        return steps;
-    }();
+// A weight a tuner raises past this truncates in the u16 table below and changes
+// the search silently, so the table's type is an assertion and not a detail.
+static_assert(conthist_max_scale() <= 65535,
+              "the folded conthist scale must fit u16; see update_continuation_histories");
 
+struct ConthistStep {
+    int                index;
+    std::array<u16, 7> scale;
+};
+
+// The step's WEIGHT and the consistency MULTIPLIER are one table, folded at
+// compile time. The weight is a constant of the step and the multiplier is a
+// run-time index, so their product never depends on the bonus and the loop was
+// buying it with an `imul` on every step it took.
+//
+// The entries are u16 rather than int, and the narrow type is load-bearing
+// beyond the halved footprint: it is what tells the compiler the scale is below
+// 65536. Without it the product's only bound is the one signed overflow being
+// undefined gives, and update()'s clamp survives every step. The bound this
+// pays for is spelled out in update_continuation_histories.
+constexpr auto conthist_steps = [] {
+    std::array<ConthistStep, 6> steps{};
+    for (usize k = 0; k < steps.size(); ++k)
+    {
+        steps[k].index = conthist_bonuses[k].index;
+        for (usize m = 0; m < steps[k].scale.size(); ++m)
+            steps[k].scale[m] = u16(conthist_bonuses[k].weight * CMHCMultipliers[m]);
+    }
+    return steps;
+}();
+
+sf_always_inline void conthist_apply(Stack* ss, Piece pc, Square to, int bonus) {
     int positiveCount = 0;
 
     for (const auto& [i, scale] : conthist_steps)
@@ -2454,6 +2465,37 @@ void update_continuation_histories(Stack* ss, Piece pc, Square to, int bonus) {
             historyEntry.update(value, bonus * scale[positiveCount] / 65536 + 73 * (i < 2));
         }
     }
+}
+
+// The rare arm, out of line so the hot one keeps the straight-line code to
+// itself. It is the same loop; only the bound the caller proved is missing.
+sf_cold_path void conthist_apply_wide(Stack* ss, Piece pc, Square to, int bonus) {
+    conthist_apply(ss, pc, to, bonus);
+}
+
+void update_continuation_histories(Stack* ss, Piece pc, Square to, int bonus) {
+    // Every folded scale is below 65536, so `bonus * scale / 65536` is smaller
+    // in magnitude than `bonus`. A bonus inside +-(limit - 73) therefore cannot
+    // reach the limit StatsEntry::update clamps to, and the compiler deletes the
+    // clamp from all six steps of the arm that carries the bound -- two
+    // compares and two conditional moves per step, which is what the divisor
+    // going from 131072 to 65536 had put back. It is a range-propagation fact
+    // rather than a target one: the clamp goes on x86-64, aarch64, ppc64le and
+    // armv7 alike.
+    //
+    // The bound has to be a BRANCH and not a clamp on `bonus`. The six scales
+    // differ, so clamping the bonus would change the steps whose scale is small
+    // and whose product never approached the limit; only a branch leaves every
+    // step's arithmetic alone. Both arms run the same loop.
+    //
+    // Derive the limit rather than repeat it: a tuner moving PieceToHistory's D
+    // would otherwise leave this silently wrong and put the clamp back.
+    constexpr int ClampFree = PieceToHistory::value_type::value_type::limit - 73;
+
+    if (bonus >= -ClampFree && bonus <= ClampFree)
+        conthist_apply(ss, pc, to, bonus);
+    else
+        conthist_apply_wide(ss, pc, to, bonus);
 }
 
 // Updates move sorting heuristics
