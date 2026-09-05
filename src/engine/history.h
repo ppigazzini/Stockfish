@@ -117,6 +117,10 @@ static_assert(shared_slice_partitions(),
 // when we update values with the << operator
 template<typename T, int D, bool Shared = false>
 struct StatsEntry {
+    // The update limit, so a caller that has to reason about the range update()
+    // clamps to names it rather than repeating the number.
+    static constexpr int limit = D;
+
     static_assert(std::is_integral_v<T> && std::is_signed_v<T>, "Not a signed integer type");
     static_assert(D > 0 && D <= std::numeric_limits<T>::max()
                     && D <= std::numeric_limits<int>::max() / D,
