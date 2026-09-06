@@ -51,9 +51,15 @@ struct StateInfo {
     Key    minorPieceKey;
     Key    nonPawnKey[COLOR_NB];
     Value  nonPawnMaterial[COLOR_NB];
-    CastlingRights castlingRights;
+    // rule50 and pliesFromNull are adjacent and 8-byte aligned on purpose:
+    // do_move increments both and gcc pairs them into a single 8-byte access.
+    // Zen 4 forwards a smaller, fully contained read for free only when it is
+    // aligned; unaligned the read costs ~11 clocks (Agner, microarchitecture
+    // 24.17). At offsets 52/56 -- one CastlingRights earlier in the struct --
+    // the pair sat 4 mod 8 and paid that once per do_move.
     int    rule50;
     int    pliesFromNull;
+    CastlingRights castlingRights;
     Square epSquare;
 
     // Not copied when making a move (will be recomputed anyhow)
