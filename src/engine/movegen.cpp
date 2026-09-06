@@ -85,6 +85,62 @@ inline Dst* splat_moves(Dst* moveList, Square from, Bitboard to_bb) {
 
 #else
 
+// gcc's final value pass rewrites a loop cursor that is live past its loop.
+// The cursor these two walks return is exactly that, and the replacement it
+// builds is `moveList + popcount(to_bb)`: a copy of to_bb held in a register
+// across the walk to be popcounted after it, a decrement, a movslq because
+// popcount() returns int, and a lea -- five instructions to rebuild a pointer
+// the cursor already held. It is 67 of the 77 register-to-register sign
+// extensions in MovePicker::generate_stage() and all 51 in the two out-of-line
+// generate_body clones, and 149 popcounts in this translation unit alone.
+//
+// Naming the end pointer ahead of the walk kills the cursor at the loop's exit
+// and leaves to_bb free to be destroyed by the walk rather than held alive for
+// it. The empty bitboard -- a piece with no captures, a pawn shift that lands
+// nowhere -- must keep paying nothing, so the popcount stays under the guard
+// the walk already had; hoisted above it the same change reads +0.0508% where
+// this reads -0.0453%.
+//
+// clang does no such replacement: two popcounts in the whole translation unit
+// against gcc's 149, and eight sign extensions against 149. There the named
+// end pointer is 106 popcounts nothing asked for, and it costs +0.1606% at
+// -O3. And gcc drops the replacement itself where popcount() is not one
+// instruction: at ARCH=x86-64 the base emits none, and naming the pointer
+// there puts 97 calls to __popcountdi2 in this translation unit.
+//
+// So it is named where the replacement is already being paid AND the popcount
+// is hardware: gcc, and a tier that defines USE_POPCNT. The token stream every
+// other compiler and tier sees is the one below the #else, unchanged.
+#if defined(__GNUC__) && !defined(__clang__) && defined(USE_POPCNT)
+
+template<Direction offset, class Dst>
+inline Dst* splat_pawn_moves(Dst* moveList, Bitboard to_bb) {
+    if (!to_bb)
+        return moveList;
+
+    Dst* const end = moveList + usize(popcount(to_bb));
+    do
+    {
+        Square to   = pop_lsb(to_bb);
+        *moveList++ = Move(to - offset, to);
+    } while (to_bb);
+    return end;
+}
+
+template<class Dst>
+inline Dst* splat_moves(Dst* moveList, Square from, Bitboard to_bb) {
+    if (!to_bb)
+        return moveList;
+
+    Dst* const end = moveList + usize(popcount(to_bb));
+    do
+        *moveList++ = Move(from, pop_lsb(to_bb));
+    while (to_bb);
+    return end;
+}
+
+#else
+
 template<Direction offset, class Dst>
 inline Dst* splat_pawn_moves(Dst* moveList, Bitboard to_bb) {
     while (to_bb)
@@ -101,6 +157,8 @@ inline Dst* splat_moves(Dst* moveList, Square from, Bitboard to_bb) {
         *moveList++ = Move(from, pop_lsb(to_bb));
     return moveList;
 }
+
+#endif
 
 #endif
 
