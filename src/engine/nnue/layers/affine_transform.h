@@ -339,6 +339,25 @@ class AffineTransform {
                 acc[k] = vec_add_32(acc[k], acc[k + NumAccums]);
         #endif
     #endif
+            // This walk is PORT-bound too, on the same Zen 4 arithmetic that
+            // affine_transform_sparse_input.h records for fc_0, so an instruction removed
+            // from it is not a cycle either. Measured on the shipping gcc x86-64-avx2
+            // build, over the block of Network::evaluate that holds fc_1's dense pass, both
+            // activations, fc_2 and the epilogue -- 0x59b76 to 0x5a2c5, 330 instructions --
+            // against callgrind on `bench 16 1 8`, 61,741 evaluations:
+            //
+            //   retired                    311.49 instructions an evaluation
+            //   multiply pipes P01         140 vpmaddubsw/vpmaddwd/vpmulhw, recip tp 0.5,
+            //                              which is                        70.00 clk
+            //   uop issue, 6 a clock                                       51.92 clk
+            //   vector reads, 2 a clock    ~95 of them                     47.5  clk
+            //
+            // P01 binds, and issue has room for 108 more instructions an evaluation before
+            // the count is what waits. The multiply ops are not reachable from here: fc_1
+            // reads 16 chunks of 128 weight bytes, which is 4 vpmaddubsw a chunk at 32
+            // bytes a load, and the vpmaddwd that widens each i16 pair is refused the same
+            // way fc_0's is -- the products do not fit i16 across two chunks.
+            //
             // Unroll to eight and no further: the accumulators have to stay in registers for
             // the whole pass, and a full unroll makes gcc hold the input dwords there instead
             // and spill them. A smaller factor pays a register copy per accumulator on every
