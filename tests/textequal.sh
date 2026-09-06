@@ -321,19 +321,38 @@ if [ "$renumbered" -gt 0 ]; then
     echo "  (.isra/.constprop/.part/.cold renumbering, not a codegen change)"
     echo
 fi
+# `| head -20` closes the pipe on the 21st line, and every writer upstream --
+# comm, cut, uniq -- then dies of SIGPIPE and prints a "write error: Broken
+# pipe" of its own. awk reads its input to the end and truncates the OUTPUT
+# instead, so a listing longer than the limit stays a listing rather than
+# becoming a page of shell errors.
 echo "symbols only in base:"
-comm -23 <(cut -f1 "$WORK/base.txt" | uniq) <(cut -f1 "$WORK/head.txt" | uniq) | head -20
+comm -23 <(cut -f1 "$WORK/base.txt" | uniq) <(cut -f1 "$WORK/head.txt" | uniq) \
+    | awk 'NR <= 20; END { if (NR > 20) print "  ... and " NR - 20 " more" }'
 echo "symbols only in head:"
-comm -13 <(cut -f1 "$WORK/base.txt" | uniq) <(cut -f1 "$WORK/head.txt" | uniq) | head -20
+comm -13 <(cut -f1 "$WORK/base.txt" | uniq) <(cut -f1 "$WORK/head.txt" | uniq) \
+    | awk 'NR <= 20; END { if (NR > 20) print "  ... and " NR - 20 " more" }'
 echo
 echo "symbols whose body changed (first 20):"
-comm -12 <(cut -f1 "$WORK/base.txt" | uniq) <(cut -f1 "$WORK/head.txt" | uniq) \
-| while read -r s; do
+# The common set goes to a file rather than down a pipe for two reasons: a
+# `| head -20` here made the loop keep diffing and keep failing to echo for
+# every remaining symbol, which is where the bulk of the broken-pipe output came
+# from, and reading a file keeps the counter out of a subshell so the loop can
+# stop itself after the limit instead of being killed at it.
+comm -12 <(cut -f1 "$WORK/base.txt" | uniq) <(cut -f1 "$WORK/head.txt" | uniq) > "$WORK/common.txt"
+changed=0
+while read -r s; do
     if ! diff -q <(awk -F'\t' -v s="$s" '$1==s' "$WORK/base.txt") \
                  <(awk -F'\t' -v s="$s" '$1==s' "$WORK/head.txt") > /dev/null; then
-        echo "  $s"
+        changed=$((changed + 1))
+        if [ "$changed" -le 20 ]; then
+            echo "  $s"
+        else
+            echo "  ... and more; re-run with --keep and diff the kept listings"
+            break
+        fi
     fi
-done | head -20
+done < "$WORK/common.txt"
 echo
 echo "  A difference is not automatically a defect -- it means this change is not"
 echo "  pure code motion, so it needs tests/perfbudget.sh rather than this gate."
