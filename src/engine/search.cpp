@@ -1885,6 +1885,17 @@ moves_loop:  // When in check, search starts here
         int inc = (value == bestValue && ss->ply + 2 >= rootDepth && (int(nodes) & 14) == 0
                    && !is_win(std::abs(value) + 1));
 
+        // bestValue <= alpha on every iteration of this loop. It is raised at
+        // exactly two places inside the loop and neither can carry it past
+        // alpha: step 15's futility raise runs under `futilityValue <= alpha`,
+        // and the raise just below is followed by `alpha = value` on the one
+        // path that does not leave the loop. Entry has it at -VALUE_INFINITE,
+        // the tablebase arm at step 5 raises alpha to match, and alpha never
+        // falls. So the inner test below implies the outer one, and the outer
+        // one is a maximum: inc is 1 only where value == bestValue, and there
+        // the assignment is a no-op.
+        assert(bestValue <= alpha);
+
         if (value + inc > bestValue)
         {
             bestValue = value;
