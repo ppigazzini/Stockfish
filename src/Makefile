@@ -525,6 +525,29 @@ ifeq ($(MAKELEVEL),0)
 endif
 
 CXXFLAGS = $(ENV_CXXFLAGS) -Wall -Wcast-qual -fno-exceptions -std=c++17 $(EXTRACXXFLAGS)
+
+# Optional LOCAL tuning. EMPTY BY DEFAULT, and never derived from ARCH.
+#
+# The distributed binaries are flat: one build per ARCH tier has to run at full
+# speed on every part in that tier, so nothing on the default path may depend on
+# the machine that compiled it. ARCH already selects the instruction set; this
+# selects only the scheduling model, and it stays a separate decision that a
+# human types on a command line so it cannot drift into a release build.
+#
+# -mtune only, and -march deliberately not offered. -mtune tunes everything
+# except the ABI and the set of available instructions, so it can never emit an
+# instruction the target lacks and can never produce a binary that fails to run;
+# it can only be slower on parts other than the one named. -march does not have
+# that property.
+#
+# Plain '=' rather than '?=': a makefile assignment beats the environment, so an
+# unrelated MTUNE exported in a shell cannot retune a build, while `make
+# MTUNE=native` still works and reaches every profile-build sub-make through
+# MAKEFLAGS.
+MTUNE =
+ifneq ($(MTUNE),)
+	CXXFLAGS += -mtune=$(MTUNE)
+endif
 DEPENDFLAGS = $(ENV_DEPENDFLAGS) -std=c++17
 LDFLAGS = $(ENV_LDFLAGS) $(EXTRALDFLAGS)
 
