@@ -243,6 +243,44 @@ class AffineTransformSparseInput {
             acc[k] = vdupq_n_s32(0);
     #endif
 
+        // Both x86 walks below are PORT-bound, and the margin is wide enough that no
+        // instruction removed from either loop body can become a cycle. Counted from the
+        // shipping gcc disassembly on Zen 4 against Agner Fog's tables (instruction_tables
+        // 2025-09-20, microarchitecture 2026-05-23 ch. 24), per NON-ZERO CHUNK:
+        //
+        //                        x86-64-avx2                x86-64-avx512icl
+        //   loop body            17 insn, 85 bytes, 1 chunk  18 insn, 99 bytes, 3 chunks
+        //   multiply pipes P01   4 vpmaddubsw + 4 vpmaddwd,  2 vpdpbusd zmm, recip tp 1,
+        //                        recip tp 0.5      4.00 clk  both pipes each     2.00 clk
+        //   vector reads         4 x 256 bit, 2 a  2.00 clk  2 x 512 bit, "one read of
+        //                        clock                       512 bits" a clock   2.00 clk
+        //   uop issue, 6 a clock                   2.83 clk  cmp/jb fused        1.00 clk
+        //   decode, 4 insn a clock                 4.25 clk                      1.50 clk
+        //
+        // Decode binds only on a micro-op cache miss, and 17 and 18 ops against a 6912-op
+        // cache never take one. So the floor is P01: 4.00 clocks a chunk at avx2 and 2.00 at
+        // icl, against 2.83 and 1.00 clocks of issue. Seven instructions a chunk could be
+        // ADDED at avx2, and more than a whole body's worth at icl, before the count waits.
+        //
+        // The reading that moves the icl floor moves it the wrong way. Agner gives the
+        // 512-bit memory broadcast as P12 while vpdpbusd holds P0+P1, which puts three uses
+        // of P1 on a chunk and binds at 3.00 clocks. Relieving it means hoisting the weights
+        // into a register and taking the input through EVEX {1to16} on the dpbusd, trading
+        // one P1 slot for a second small vector read on a load port already at 2.00 -- no
+        // net floor, and an instruction more.
+        //
+        // What is left is the arithmetic: 128 bytes of weights a chunk on both tiers, eight
+        // multiply-class ops at avx2 and two at icl. Neither is reachable from this file --
+        // the x2 emulated dpbusd is refused by the shipped net's weights, and the chunk
+        // count is refused by density. Every measured win here came from the per-CALL and
+        // per-BLOCK code around these loops, which is bound by nothing, and so must the
+        // next one.
+        //
+        // Nothing else in the zone is dense enough to matter either: no aligned 16-byte
+        // block of Network::evaluate, of NetworkArchitecture::propagate or of Eval::evaluate
+        // carries more than three jumps at either tier, so Agner's ~2 clocks a jump above
+        // that threshold is never paid.
+
         // convince GCC to not do weird pointer arithmetic in the following loops
         const i8* weights_cp = weights;
 
