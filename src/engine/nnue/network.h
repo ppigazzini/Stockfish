@@ -28,7 +28,6 @@
 #include <tuple>
 #include <filesystem>
 
-#include "../compiler.h"
 #include "../types.h"
 #include "nnue_architecture.h"
 #include "nnue_feature_transformer.h"
@@ -66,9 +65,9 @@ class Network {
 
     usize get_content_hash() const;
 
-    SF_NO_STACK_PROTECTOR NetworkOutput evaluate(const Position&    pos,
-                                                 AccumulatorStack&  accumulatorStack,
-                                                 AccumulatorCaches& cache) const;
+    NetworkOutput evaluate(const Position&    pos,
+                           AccumulatorStack&  accumulatorStack,
+                           AccumulatorCaches& cache) const;
 
 
     void verify(const std::function<void(std::string_view)>& f,

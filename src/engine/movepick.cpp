@@ -633,7 +633,7 @@ Move MovePicker::select(Pred filter) {
 // only ever walk a list. A warm 60-ply game at depth 20 spends 22.6 Ir a node
 // entering that frame and 26.7 leaving it, over 3.20 calls, which is 6% of the
 // whole of next_move() and buys nothing on the calls that do not generate.
-SF_NOINLINE SF_NO_STACK_PROTECTOR Move MovePicker::generate_stage() {
+SF_NOINLINE Move MovePicker::generate_stage() {
 
 top:
     switch (stage)

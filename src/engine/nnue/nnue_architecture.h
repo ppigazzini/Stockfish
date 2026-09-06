@@ -112,8 +112,8 @@ struct NetworkArchitecture {
             && fc_2.write_parameters(stream);
     }
 
-    SF_NO_STACK_PROTECTOR i32 propagate(const TransformedFeatureType* transformedFeatures,
-                                        const NNZInfo<L1>&            nnzInfo) const {
+    i32 propagate(const TransformedFeatureType* transformedFeatures,
+                  const NNZInfo<L1>&            nnzInfo) const {
         struct alignas(CacheLineSize) Buffer {
             alignas(CacheLineSize) typename decltype(ac_sqr_0)::OutputType
               concat_buffer[ceil_to_multiple<IndexType>(FC_0_OUTPUTS * 2 + FC_1_OUTPUTS * 2, 32)];

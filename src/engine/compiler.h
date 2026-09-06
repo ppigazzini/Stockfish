@@ -124,30 +124,6 @@ void prefetch(const void* addr) {
 #define stringify2(x) #x
 #define stringify(x) stringify2(x)
 
-// The no-stack-protector attribute, here for the reason sf_always_inline is:
-// it is a property of the COMPILER. It had three identical definitions -- in
-// search.h, in nnue/nnue_architecture.h and in movepick.cpp -- each with its own
-// empty fallback, and that shape is a defect rather than duplication. An empty
-// fallback cannot fail to compile: a file that reaches the macro through an
-// include chain nothing states keeps building when the chain breaks, silently
-// drops the attribute, and the frame keeps a canary nobody measures again.
-// evaluate.cpp was found in exactly that state.
-//
-// Like RESTRICT above, a macro cannot be attributed to a header by
-// include-what-you-use, so a file that WRITES SF_NO_STACK_PROTECTOR must include
-// compiler.h itself rather than inherit it.
-//
-// Why each function is exempt is a property of that function, so the argument
-// stays at the use site; only the spelling lives here.
-#if defined(__has_attribute)
-    #if __has_attribute(no_stack_protector)
-        #define SF_NO_STACK_PROTECTOR __attribute__((no_stack_protector))
-    #endif
-#endif
-#if !defined(SF_NO_STACK_PROTECTOR)
-    #define SF_NO_STACK_PROTECTOR
-#endif
-
 // The always-inline attribute, here because it is a property of the COMPILER and
 // this is the compiler header.
 #if defined(__GNUC__)
@@ -164,8 +140,8 @@ void prefetch(const void* addr) {
 // straight-line code; the caller decides which of its arms is rare, so only the
 // spelling lives here.
 //
-// An empty fallback costs a layout hint and nothing else, which is why this one
-// is allowed to be empty where SF_NO_STACK_PROTECTOR's is not.
+// An empty fallback costs a layout hint and nothing else, so a compiler without
+// the attribute simply gets no hint.
 #if defined(__GNUC__)
     #define sf_cold_path __attribute__((noinline, cold))
 #elif defined(_MSC_VER)
