@@ -215,6 +215,11 @@ class FeatureTransformer {
         const Color perspectives[2] = {pos.side_to_move(), ~pos.side_to_move()};
         const auto& accumulation    = accumulatorState.accumulation;
 
+        // The perspective loop has a trip count of two known at compile time and gcc rolls
+        // it, one level out from the j loop straight-lined below.
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC unroll 2
+#endif
         for (IndexType p = 0; p < 2; ++p)
             transform_perspective(accumulation[perspectives[p]], output, p, nnzInfo);
     }
