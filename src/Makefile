@@ -526,6 +526,17 @@ endif
 
 CXXFLAGS = $(ENV_CXXFLAGS) -Wall -Wcast-qual -fno-exceptions -std=c++17 $(EXTRACXXFLAGS)
 
+# This project has never asked for a stack protector. Neither this Makefile nor
+# upstream's has ever set -fstack-protector in any form -- `git log --all -S` over
+# src/Makefile finds no commit on any ref that added one -- and clang emits no
+# canary at all here, so the guard is one distribution's gcc default and nothing
+# else. Left implicit it means the same source ships two different gcc binaries
+# depending on who built it, ~0.4% apart at the shipping tier, which is a
+# reproducibility defect before it is a speed one. Stated explicitly it is one
+# line instead of an attribute at every hot function, and no file can silently
+# lose it when an include chain changes.
+CXXFLAGS += -fno-stack-protector
+
 # Optional LOCAL tuning. EMPTY BY DEFAULT, and never derived from ARCH.
 #
 # The distributed binaries are flat: one build per ARCH tier has to run at full

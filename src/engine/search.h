@@ -30,7 +30,6 @@
 #include <vector>
 #include <cstring>
 
-#include "compiler.h"
 #include "history.h"
 #include "nnue/nnue_accumulator.h"
 #include "position.h"
@@ -524,13 +523,12 @@ class Worker {
 
     // This is the main search function, for both PV and non-PV nodes
     template<NodeType nodeType>
-    SF_SEARCH_NO_SLP SF_NO_STACK_PROTECTOR Value
+    SF_SEARCH_NO_SLP Value
     search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, const bool cutNode);
 
     // Quiescence search function, which is called by the main search
     template<NodeType nodeType>
-    SF_SEARCH_NO_SLP SF_NO_STACK_PROTECTOR Value
-    qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
+    SF_SEARCH_NO_SLP Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
 
     // deltaScaled is (beta - alpha) * 577 / rootDelta, already scaled. The
     // divisor is a search-wide constant and the dividend moves only when alpha
