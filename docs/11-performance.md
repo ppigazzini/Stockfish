@@ -857,6 +857,54 @@ That is a proof. A ratio of 1.00000 is a measurement, and a weaker statement.
 **6. Only then reach for cycles**, on an idle box, with the control beside it -- and expect it
 to decide nothing below a few percent.
 
+## Four hardware rules the gates here cannot report
+
+From [Agner Fog's manuals](https://www.agner.org/optimize/). Each is **general across x86
+generations** -- the constants move, the rule does not -- each is checkable by reading a
+disassembly rather than by running anything, and each has decided a candidate on this tree.
+The per-microarchitecture port and latency tables are not repeated here: they change every
+generation and belong in the manual.
+
+**A narrow read inside a wider write must be naturally aligned within it.** Store forwarding is
+what makes a write-then-read pair cheap, and every generation withdraws it when the read is
+offset to a boundary the write does not divide on. `do_move` paired `rule50` and
+`pliesFromNull` as one 8-byte access at offset 52 of a 32-byte store -- crossing the 8-byte
+boundary at 56, straddling two quarters of the write -- and the same shape is priced at ~12
+clocks on Sandy Bridge through Broadwell (forwarding fails outright), 11 on Skylake, **19-20 on
+Ice Lake and Tiger Lake**, 11 on Zen 4 and **up to 28 on Zen 5**, while Zen 1-3 forward it for
+free. Moving the pair to offset 48 made it one naturally aligned quarter. The tell is a narrow
+load following a wide store at an offset the load's own width does not divide; `alignof` on the
+struct decides it, not the caller's stack alignment.
+
+**Removing a branch is not removing a mispredict.** A loop with a small **constant** trip count
+is predicted essentially perfectly -- Agner puts the limit between 9 and over 100 depending on
+the part -- while a **data-dependent** trip count is mispredicted about once per entry. So a
+rewrite that deletes branches can still cost mispredicts, because the cost transfers to whatever
+branch survives. This tree has measured it five times on the hardware counters, three more on
+the simulator before that, and twice against a rule it had just written down: an AVX2 scan
+that removed 0.81% of all retired branches raised branch misses
+**1.52%** and the miss rate **2.35%** on gcc PGO, decided against a same-session A/A control,
+because the survivor was a walk over a 4-bit mask whose trip count is 0 to 4 and unlearnable.
+**State the surviving branch's predictability, not the branch count.**
+
+**The critical stride is cache size divided by associativity.** Addresses that far apart
+contend for one set, and only `associativity` of them can be resident. On a 32 KB 8-way L1d
+that is 4096 bytes. It is one division, and it is what closes a conflict-miss hypothesis before
+anyone builds a padding experiment: a census of distinct lines per occupied set either exceeds
+the associativity or it does not.
+
+**Hardware prefetching beats software prefetching in most cases**, in Agner's own words -- he
+reports no example in which an explicit prefetch improved speed, because modern parts prefetch
+regular strided patterns automatically. That is corroboration rather than theory here: software
+prefetch has been built and refuted four separate times on this tree, twice with the miss
+counter moving the *wrong* way. Treat "add a prefetch" as refuted unless the mechanism is one
+none of those four had.
+
+Which manual answers what: *Optimizing software in C++* for the source-level rules, *The
+microarchitecture of Intel, AMD and VIA CPUs* for store forwarding, branch prediction and cache
+geometry per generation, and *Instruction tables* for the µop count, latency and reciprocal
+throughput of one instruction on one named part.
+
 ## Where the instructions are
 
 A map is worth more than a guess about which file to open. Take it with the same warm workload
