@@ -315,32 +315,13 @@ on one engine and wrong for a driver that walks to an unrelated position each it
 costs whole seconds on a search that should take milliseconds.
 
 Worker 0 holds the `SearchManager` and is the main worker: only the main worker applies the depth
-cap and drives the aspiration loop. The rest hold a `NullSearchManager`, exactly as the pool builds
-them.
+cap and drives the aspiration loop. The rest hold a null one, exactly as the pool builds them.
 
-**A `Worker` holds the manager twice, and the second one is the typed view.** `ManagerSlot` pairs
-the owning `unique_ptr<ISearchManager>` with a `SearchManager*` that is null on every worker but the
-main one, and `main_manager()` reads that pointer behind an assert. A `static_cast` down the
-hierarchy guarded on `threadIdx` would not survive `-DNDEBUG`, which is what ships: it hands any
-other worker a `SearchManager*` aimed at a `NullSearchManager`, whose members do not exist, and
-reading time out of it is a plausible number rather than a fault. The pair is filled by
-`make_main_manager` or `make_null_manager` and by nothing else, at the one point where the type is
-still known, so the two halves cannot disagree.
-
-`Worker` stores the `unique_ptr` at its original offset and the typed pointer **last in the class**.
-That is deliberate: every member between them is on the per-node path, and storing the pair where
-the `unique_ptr` sat shifted all of them by eight bytes.  A type that enforces an invariant does not
-have to be the storage layout.
-
-**Both implementations are `final`, and that is a codegen decision rather than a style one.**
-Nothing derives from either, and without it the compiler cannot prove what a `SearchManager*` points
-at: the call in `search()` is a direct call at all three of its inlined copies and an indirect
-vtable dispatch without it.
-
-**`NullSearchManager::check_time` is never called.** The only call site is guarded by
-`is_mainthread()` -- which is the branch the Null Object Pattern exists to remove, so here both the
-branch and the null object are present. The hierarchy stays because removing it is a taste argument,
-but do not credit it with work it is not doing.
+**There is one manager type and nothing under it.** `Worker` owns a `unique_ptr<SearchManager>` and
+`main_manager()` returns its target, so a non-main worker holds a null pointer rather than an object
+whose members do not exist, and the call in `search()` is a direct call at each of its inlined
+copies rather than a vtable dispatch. The one call site is guarded by `is_mainthread()`, which is
+the branch a null object would have existed to remove.
 
 The heavy blocks are process-static and reused, so it is **not reentrant**: one search at a time,
 and two callers at once share one root position. Changing the worker count rebuilds them, which is
