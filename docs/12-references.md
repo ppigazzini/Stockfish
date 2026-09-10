@@ -117,7 +117,8 @@ Background for [09-type-design.md](09-type-design.md).
   as the claim that the measured cost rule qualifies rather than as one this codebase relies
   on.
 - [Parent, "Better Code: Runtime Polymorphism"][parent] -- on inheritance versus value
-  semantics, background for the `ISearchManager` null-object in `src/engine/search.h`.
+  semantics, background for the manager hierarchy `src/engine/search.h` used to carry and
+  no longer does.
 
 ## Codegen, LTO and measurement
 
