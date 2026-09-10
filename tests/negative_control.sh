@@ -135,7 +135,7 @@ row() {
 
 row signature
 if selected signature; then
-    REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+    REF=$(git log --format='%b' | grep -m1 -oE '^Bench: [1-9][0-9]{5,7}$' | grep -oE '[0-9]+')
     if [ -z "$REF" ]; then
         echo "negative-control: signature   SKIPPED -- no Bench: anywhere in the commit record"
         SKIP=$((SKIP+1))
@@ -266,7 +266,7 @@ fi
 
 row docslint-bench static
 if selected docslint-bench; then
-    REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+    REF=$(git log --format='%b' | grep -m1 -oE '^Bench: [1-9][0-9]{5,7}$' | grep -oE '[0-9]+')
     if [ -z "$REF" ]; then
         echo "negative-control: docslint    SKIPPED -- no Bench: in the commit record"
         SKIP=$((SKIP+1))
@@ -1255,7 +1255,7 @@ if selected optiondefaults; then
         # And the inverse, which is the whole argument for the gate: every other
         # check stays GREEN on the same tree. The bench reads the UCI side, so the
         # signature does not move.
-        REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+        REF=$(git log --format='%b' | grep -m1 -oE '^Bench: [1-9][0-9]{5,7}$' | grep -oE '[0-9]+')
         if [ -n "$REF" ] && ( cd src && ../tests/signature.sh "$REF" ) >/dev/null 2>&1; then
             echo "  signature green on the same tree, as expected -- the bench runs hosted"
         else
@@ -1686,7 +1686,7 @@ if selected b5-swap; then
     # another still compiles and no type check can refuse it; the bench
     # signature is the only thing that catches it. Do not describe the typing
     # above as closing this case.
-    REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+    REF=$(git log --format='%b' | grep -m1 -oE '^Bench: [1-9][0-9]{5,7}$' | grep -oE '[0-9]+')
     if [ -z "$REF" ]; then
         echo "negative-control: b5 [swap]  SKIPPED -- no Bench: in the commit record"
         SKIP=$((SKIP+1))
@@ -2264,7 +2264,7 @@ echo
 # Prove the tree is clean by RUNNING a gate, not by asserting it.
 ( cd src && make -j"$(nproc)" build ARCH=x86-64-avx2 ) >/dev/null 2>&1 \
     || die "the tree does not build after restore"
-REF=$(git log --format='%b' | grep -oE 'Bench: *[0-9]+' | head -1 | grep -oE '[0-9]+')
+REF=$(git log --format='%b' | grep -m1 -oE '^Bench: [1-9][0-9]{5,7}$' | grep -oE '[0-9]+')
 if [ -n "$REF" ] && ! ( cd src && ../tests/signature.sh "$REF" ) >/dev/null 2>&1; then
     die "the tree does not reproduce $REF after restore -- sources were NOT put back"
 fi
