@@ -87,13 +87,17 @@ echo
 echo "== commit bodies whose text reads as a footer ($SCOPE) =="
 offenders=$(
 git log --format='%H' "$RANGE" | while read -r f; do
-    hit=$(git show -s --format='%b' "$f" \
-          | grep -o '\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b' || true)
-    hit=$(printf '%s\n' "$hit" | sed -n '1p')
-    [ -n "$hit" ] || continue
-    # A real footer is fine. Anything else with that shape is not.
     body=$(git show -s --format='%b' "$f")
-    grep -qE '^Bench: *[1-9][0-9]{5,7}$' <<< "$body" && continue
+    # TEST THE FIRST MATCHING LINE, not the body. A line-by-line reader stops at
+    # the first hit, so a body carrying a decoy ABOVE a real footer answers with
+    # the decoy -- and asking whether a footer exists anywhere in the body passes
+    # exactly that commit. Measured here: a body listing three imported upstream
+    # commits as `<sha>  <subject>  Bench: <n>` above its own footer handed
+    # tests/negative_control.sh the wrong reference, which then reported that the
+    # sources had not been restored.
+    first=$(grep -m1 '\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b' <<< "$body" || true)
+    [ -n "$first" ] || continue
+    grep -qE '^Bench: *[1-9][0-9]{5,7}$' <<< "$first" && continue
     git rev-parse --short=8 "$f"
 done
 )
@@ -107,8 +111,9 @@ done
 # can quiet this gate -- and nothing outside that one row sets it.
 if [ -n "${ANCHOR_EXTRA_BODY:-}" ] && [ -f "$ANCHOR_EXTRA_BODY" ]; then
     fixture=$(cat "$ANCHOR_EXTRA_BODY")
-    if grep -q '\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b' <<< "$fixture" \
-       && ! grep -qE '^Bench: *[1-9][0-9]{5,7}$' <<< "$fixture"; then
+    ffirst=$(grep -m1 '\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b' <<< "$fixture" || true)
+    if [ -n "$ffirst" ] \
+       && ! grep -qE '^Bench: *[1-9][0-9]{5,7}$' <<< "$ffirst"; then
         offenders=$(printf '%s\nfixture\n' "$offenders" | grep -v '^$')
     fi
 fi
