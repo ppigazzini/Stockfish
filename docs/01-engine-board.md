@@ -111,8 +111,11 @@ bit without the index, for callers that only want the mask.
 `popcount` has the same two arms and no `#error`, so a third toolchain fails at `lsb` rather than
 at the first thing it cannot compile. `constexpr_popcount` beside them is the form a compile-time
 table can call, and `src/engine/nnue/features/full_threats.cpp` is its only caller.
-`constexpr_lsb` has none -- it is dead, and a grep for its callers is what says so, not a
-comment.
+
+`constexpr_lsb` sat beside it with no caller at all. This page said so, on the grounds that a
+grep for its callers is what establishes deadness rather than a comment claiming it; upstream
+031dfeb4 then deleted it, along with the `lsb_index64` de Bruijn table only its non-intrinsic
+arm read. The grep is still the check -- it now returns nothing because the function is gone.
 
 `bitboard.cpp` holds only `Bitboards::pretty`, the ASCII dump used from a debugger.
 
