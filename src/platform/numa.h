@@ -31,6 +31,12 @@
 #include <cstring>  // IWYU pragma: keep
 #include <functional>
 #include <iostream>
+// Kept: std::inserter is used only by get_combined() inside the _WIN64 block
+// below, so a Linux analyze lane compiles no use of it and asks for a removal.
+// Upstream 86433ca7 reports the deletion failing four translation units at once
+// under clang 23.1.1 on Windows with "no member named 'inserter' in namespace
+// 'std'", on a standard library that does not supply it transitively.
+#include <iterator>  // IWYU pragma: keep
 // Kept: std::numeric_limits is used only inside the _WIN64 blocks below, which a
 // Linux analyze lane never compiles, so IWYU sees no use and asks for a removal
 // that breaks the Windows build on a standard library whose transitive includes
