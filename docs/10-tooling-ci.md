@@ -44,7 +44,7 @@ subject it holds.
 | "nothing NEW breaks it, at the stdin surface" | `tests/fuzz.py` | a correctly-read corrupt table; and the run's own budget bounds the claim | this page |
 | "nothing NEW breaks it, in the node body" | `tests/fuzzsearch.sh` | the same, and it registers no seam, so nothing a host would have supplied | [02-engine-search.md](02-engine-search.md) |
 | "the engine plays" | `tests/match.sh` | strength; and any defect both binaries share | this page |
-| "it costs the same" / "it is faster" / "it scales" | the six axes in [11-performance.md](11-performance.md) | each other -- see that page's selector | [11-performance.md](11-performance.md) |
+| "it costs the same" / "it is faster" / "it scales" / "it pays at a long clock" | the seven axes in [11-performance.md](11-performance.md) | each other -- see that page's selector | [11-performance.md](11-performance.md) |
 | "this gate can still fail" | `tests/negative_control.sh` | a gate with no row, which is simply absent from it | this page |
 | "every gate runs somewhere" | `tests/lanecheck.sh` | whether the gate asserts anything once it runs | this page |
 | "the docs are not rotten" | `tests/docslint.sh` | whether a sentence is false | [13-writing.md](13-writing.md) |
