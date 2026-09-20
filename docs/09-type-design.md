@@ -390,8 +390,8 @@ and its *width* rather than about how many instances are live.
 
 **The operations you give it are part of its cost.** `~cr` on a four-atom algebra has to mask
 back into four bits, because `~NO_CASTLING` is `ANY_CASTLING` and not 255. Every use in this
-engine is *relative* -- `position.cpp:471` and `:965` are both `rights \ cr` -- so that mask is
-dead at both sites, removed by the `&` that follows. It still cost **+0.014%** of bench
+engine is *relative* -- `Position::set_castling_right` and `Position::do_move` are both
+`rights \ cr` -- so that mask is dead at both sites, removed by the `&` that follows. It still cost **+0.014%** of bench
 instructions under gcc against an `operator-` that never forms it. *Give it the algebra the
 quantity actually has and no more* is the rule three sections above; this is its price.
 

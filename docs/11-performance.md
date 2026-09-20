@@ -269,7 +269,7 @@ Sharing one magic lookup across a capture's two scans has two shapes. As a thin 
 body in a helper taking the two attack sets, the outer function reduced to a wrapper that takes
 the lookup and calls it -- clang keeps the helper out of line and takes the saving, **-0.120%**;
 gcc inlines the WRAPPER into `do_move`, leaves the helper behind a six-argument call, and so
-expands the lookup at every one of `do_move`'s five call sites, **+0.345%**. As a template
+expands the lookup at every one of `do_move`'s call sites, **+0.345%**. As a template
 parameter pair, with no wrapper left to inline, gcc emits `.constprop` clones with the dead
 arguments stripped, `do_move` shrinks by 172 bytes, and the sign is **-0.314%**.
 

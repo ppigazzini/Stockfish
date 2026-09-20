@@ -219,8 +219,8 @@ second time. The entries index non-zero **chunks** of four inputs, not individua
 columns.
 
 The activation after `fc_0` and again after `fc_1` is a concatenation of two functions of the same
-input -- `SqrClippedReLU` alongside `ClippedReLU` -- so the network gets a quadratic term without a
-second layer. Under `USE_PAIR_ACTIVATIONS` both are produced by one `propagate_pair` call instead of
+input -- `SqrClippedReLU` (`nnue/layers/sqr_clipped_relu.h`) alongside `ClippedReLU`
+(`nnue/layers/clipped_relu.h`) -- so the network gets a quadratic term without a second layer. Under `USE_PAIR_ACTIVATIONS` both are produced by one `propagate_pair` call instead of
 two `propagate` calls; the values are the same either way.
 
 `src/engine/nnue/simd.h` carries the vector kernels, with an arm per ISA (`USE_AVX2`, `USE_SSE41`,

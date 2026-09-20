@@ -382,7 +382,9 @@ Its counts are **facts about chess**, not a golden. A mismatch is always a moveg
 
 ## `eval`
 
-Prints the evaluation with its breakdown. Rendering centipawns needs `to_cp`, which is the
+Prints the evaluation with its breakdown. `Eval::trace` assembles it and calls
+`NNUE::trace` in `engine/nnue/nnue_misc.cpp`; `engine/nnue/nnue_misc.h` is where that
+function, `EvalFile` and `NnueEvalTrace` are declared. Rendering centipawns needs `to_cp`, which is the
 win-rate model fitted to fishtest statistics -- evaluation-domain knowledge rather than
 protocol -- so it lives in `score.h/.cpp` and not here. `tests/depcheck.sh` is what keeps an
 engine file from reaching into this zone for it.

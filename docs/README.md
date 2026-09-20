@@ -16,7 +16,7 @@ is the claim this set makes about it.
 | [08-idiomatic-cpp.md](08-idiomatic-cpp.md) | the C++17 this tree commits to, the spellings that measured, and the detector for each | hot-path and build contributors | hot |
 | [09-type-design.md](09-type-design.md) | the value domain: what each quantity means and which are distinguishable | anyone adding a type or changing an encoding | cold |
 | [10-tooling-ci.md](10-tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
-| [11-performance.md](11-performance.md) | the six axes, what each proves and what it cannot see; `fingerprint.sh` | anyone measuring a refactor or an optimisation | hot |
+| [11-performance.md](11-performance.md) | the seven axes, what each proves and what it cannot see; `fingerprint.sh` | anyone measuring a refactor or an optimisation | hot |
 | [12-references.md](12-references.md) | external links: chess programming, C++17, Make, LTO, gates | all developers | cold |
 | [13-writing.md](13-writing.md) | technical writing: pages, code comments, commit messages | anyone writing prose about this code | cold |
 | [14-glossary.md](14-glossary.md) | the vocabulary, in tiers | all contributors | cold |
@@ -25,10 +25,11 @@ is the claim this set makes about it.
 table is what routes the rest.** The seam headers, `engine/host`, `engine/basetypes.h`,
 `engine/hashing.h`, `engine/prng.h`, `engine/compiler.h`, `platform/text`, `platform/misc` and
 `shell/console` are named there and nowhere else, so a search that starts at a zone page finds
-nothing for them. To find the owner of any file:
+nothing for them. To find the owner of any file -- search the stem, because a page names a
+file as `engine/arena` or `platform/text` about as often as it writes the extension:
 
 ```sh
-grep -n 'prng\.h' docs/*.md      # substitute any basename under src/
+grep -n 'prng' docs/*.md      # substitute any basename under src/, WITHOUT its extension
 ```
 
 `numa` and `shm` appear once each, under `06`. The split from `04` is by question rather than
