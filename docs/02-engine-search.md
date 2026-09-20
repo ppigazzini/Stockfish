@@ -432,7 +432,7 @@ every `elapsed > min(totalTime, maximum)` false -- a search that never stops on 
 
 ## `search.cpp` -- the node
 
-`Worker::search<NodeType>` is a single function structured as 21 numbered Steps, and it is the
+`Worker::search<NodeType>` is a single function structured as 24 numbered Steps, and it is the
 largest in the tree:
 
 ```sh
@@ -453,21 +453,24 @@ The Steps, in the order the node applies them:
 | 3 | mate-distance pruning |
 | 4 | transposition lookup |
 | 5 | static evaluation, corrected |
-| 6 | tablebase probe |
-| 7 | razoring |
-| 8 | futility pruning (child node) |
-| 9 | null-move search with verification |
-| 10 | internal iterative reduction |
-| 11-12 | ProbCut |
-| 13 | the move loop |
-| 14 | pruning at shallow depth |
-| 15 | extensions, including singular |
-| 16 | make the move |
-| 17 | late move reduction |
-| 18 | full-depth search when LMR is skipped |
-| 19 | undo |
-| 20 | new best move |
-| 21 | mate and stalemate |
+| 6 | early TT cutoff, at non-PV nodes |
+| 7 | tablebase probe |
+| 8 | razoring |
+| 9 | futility pruning (child node) |
+| 10 | null-move search with verification |
+| 11 | internal iterative reduction |
+| 12-13 | ProbCut, and the small ProbCut idea after it |
+| 14 | the move loop |
+| 15 | pruning at shallow depth |
+| 16 | extensions, including singular |
+| 17 | make the move |
+| 18 | late move reduction |
+| 19 | full-depth search when LMR is skipped |
+| 20 | full PV search on the first move, PV nodes only |
+| 21 | undo |
+| 22 | new best move |
+| 23 | mate and stalemate |
+| 24 | write what was gathered to the transposition table |
 
 What each pruning rule assumes, since that is what decides when it is unsound:
 
@@ -493,7 +496,7 @@ the evaluation of positions sharing a pawn structure, a minor-piece configuratio
 material count has historically been from what the search actually found, and the node starts from
 the corrected value; `correction_value` in `search.cpp` is the one place the five terms are weighed.
 
-`qsearch` is the same shape in 9 Steps: stand-pat, then captures and promotions only, until the
+`qsearch` is the same shape in 10 Steps: stand-pat, then captures and promotions only, until the
 position is quiet enough for the evaluation to mean something. It never reads `stopFlag`.
 
 ## `timeman.cpp` -- the budget
