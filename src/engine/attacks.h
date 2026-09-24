@@ -38,13 +38,17 @@
 #elif defined(__loongarch__) && __loongarch_grlen == 64
     #define USE_HYPERBOLA_QUINT
 #elif defined(USE_AVX2)
-    // All three, and the two narrower ones are not redundant: DualMagic's
-    // both_attacks_bb finishes in SSE -- _mm_or_si128 is <emmintrin.h>,
-    // _mm_extract_epi64 is <smmintrin.h> -- and <immintrin.h> reaching them is
-    // a property of this toolchain, not of the language.
+    // None of these is redundant: DualMagic's both_attacks_bb finishes in SSE --
+    // _mm_cvtsi128_si64 is <emmintrin.h>, _mm_extract_epi64 is <smmintrin.h>,
+    // and the _MM_SHUFFLE of the fold a GFNI host compiles out is
+    // <xmmintrin.h> -- and <immintrin.h> reaching them is a property of this
+    // toolchain, not of the language.
     #include <emmintrin.h>
     #include <immintrin.h>
     #include <smmintrin.h>
+    #ifndef __GFNI__
+        #include <xmmintrin.h>
+    #endif
     // Kept: DualMagic's rankAttacksLookup is a `const u8*`, and its member sits
     // under `#ifndef USE_GFNI_RANK`. A GFNI host compiles that member out --
     // x86-64-avx512icl is one -- so IWYU sees no use at that tier and asks for a
