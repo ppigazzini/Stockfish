@@ -236,29 +236,34 @@ the order `packus` wants them, permuted on read and unpermuted on write, so
 
 ## `evaluate.cpp` -- from network output to a search value
 
-`Eval::evaluate` sums the two heads and then makes four adjustments. Read the current arithmetic
-from the function rather than from here, because every constant in it is tuned and moves with the
-next SPSA patch:
+`Network::evaluate` returns the sum of the two heads, and `Eval::evaluate` passes that raw value to
+`scale_evaluation`, which adjusts it in four steps. Read the current arithmetic from the functions
+rather than from here, because every constant in them is tuned and moves with the next SPSA patch:
 
 ```sh
-sed -n '/^Value Eval::evaluate(/,/^}/p' src/engine/evaluate.cpp
+sed -n '/^static int simple_eval/,/^}/p;/^Value scale_evaluation(.*) {$/,/^}/p' src/engine/evaluate.cpp
 ```
 
 What survives tuning is the shape, and each step is doing something specific:
 
-- **Complexity** is `abs(psqt - positional)`, the disagreement between the two heads. Where they
-  disagree the position is sharp, so optimism is amplified and the raw evaluation is damped -- the
-  network is less sure, so the number is trusted less and the search's own disposition counts for
-  more.
-- **Optimism** is the per-thread search disposition. It is mixed in at a flat weight while the
-  network's term is the one scaled by `material`, so the more material stands on the board the more
-  the network outweighs the disposition. It is what makes different threads explore differently in
-  Lazy SMP.
+- **Alignment** weighs the network against `simple_eval`, the material balance from the side to
+  move. Both are squashed into [-1024, 1024] and multiplied, so the product is positive where the
+  network agrees with the material and negative where it sees compensation the material does not.
+  Agreement moves the evaluation away from zero and disagreement pulls it towards zero: a
+  straightforward position is trusted beyond its nominal score, a compensated one short of it.
+  **Optimism**, the per-thread search disposition, enters only through the same product -- applied
+  as it stands where the two agree, reversed where they disagree. It is what makes different
+  threads explore differently in Lazy SMP.
+- **The material scale** multiplies the blended value, optimism included, by a factor that grows
+  with the material on the board, both sides' pawns and pieces alike.
 - **The fifty-move damping** scales the value down by `pos.rule50_count()`: an advantage that cannot
   be converted before the rule draws the game is not worth its nominal value.
 - **The clamp** is `std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1)`, which
   keeps the evaluation **strictly** inside the tablebase band, so an estimate can never be read as a
   proven verdict or a mate. [05-tablebases.md](05-tablebases.md) shows the other side of that band.
+
+`Eval::trace` calls `scale_evaluation` with zero optimism, so the final figure `eval` prints is the
+one a thread with no disposition would search with.
 
 `assert(!pos.checkers())` -- **the evaluation is never called in check.** The network is not trained
 on positions in check, and the search always resolves the check first. `Eval::trace` returns
