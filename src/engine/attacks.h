@@ -37,13 +37,17 @@
 #include "bitboard.h"
 
 #if defined(USE_AVX2)
-    // All three, and the two narrower ones are not redundant: DualMagic's
-    // both_attacks_bb finishes in SSE -- _mm_cvtsi128_si64 is <emmintrin.h>,
-    // _mm_extract_epi64 is <smmintrin.h> -- and <immintrin.h> reaching them is
-    // a property of this toolchain, not of the language.
+    // None of these is redundant: DualMagic's both_attacks_bb finishes in SSE --
+    // _mm_cvtsi128_si64 is <emmintrin.h>, _mm_extract_epi64 is <smmintrin.h>,
+    // and the _MM_SHUFFLE of the fold a GFNI host compiles out is
+    // <xmmintrin.h> -- and <immintrin.h> reaching them is a property of this
+    // toolchain, not of the language.
     #include <emmintrin.h>
     #include <immintrin.h>
     #include <smmintrin.h>
+    #ifndef __GFNI__
+        #include <xmmintrin.h>
+    #endif
     #ifdef __GFNI__
         // vgf2p8affineqb reverses the bits inside every byte of a vector in one
         // instruction, which turns the byte reversal DualMagic already does into
