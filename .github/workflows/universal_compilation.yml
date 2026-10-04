@@ -96,7 +96,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup msys and install required packages
-        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: mingw64
           install: mingw-w64-x86_64-gcc make git zip
@@ -224,7 +224,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup msys and install required packages
-        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: clangarm64
           install: mingw-w64-clang-aarch64-clang make git zip
