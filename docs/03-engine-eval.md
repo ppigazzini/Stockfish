@@ -14,7 +14,7 @@ Audience: evaluation and NNUE.
 | Question | File | Symbol |
 |---|---|---|
 | what the search calls | `engine/evaluate.cpp` | `Eval::evaluate` |
-| how the two heads are produced | `nnue/network.cpp` | `Network::evaluate` |
+| how the raw evaluation is produced | `nnue/network.cpp` | `Network::evaluate` |
 | dimensions and layer order | `nnue/nnue_architecture.h` | `L1`, `L2`, `L3`, `NetworkArchitecture` |
 | the accumulator and its stack | `nnue/nnue_accumulator.h` | `Accumulator`, `AccumulatorStack` |
 | the refresh cache | `nnue/nnue_accumulator.h` | `AccumulatorCaches`, its `Entry` |
@@ -51,18 +51,20 @@ concatenates the two perspectives. Halving and doubling cancel. Change `L1` and 
 together; change the pairing and only one does.
 
 Everything is integer arithmetic. `nnue_common.h` fixes the types -- `BiasType = i16`,
-`WeightType = i16`, `ThreatWeightType = i8`, `PSQTWeightType = i32`, `TransformedFeatureType = u8`
--- and `WeightScaleBits` fixes where the binary point sits, so a layer is a multiply and a shift
-rather than floating point. That is what makes the forward pass affordable at every leaf.
+`WeightType = i16`, `ThreatWeightType = i8`, `TransformedFeatureType = u8` -- and
+`WeightScaleBits` fixes where the binary point sits, so a layer is a multiply and a shift rather
+than floating point. That is what makes the forward pass affordable at every leaf.
 
 **There are eight of everything after the transformer.** `Network` holds
 `NetworkArchitecture network[LayerStacks]` and `Network::evaluate` picks one with
-`(pos.count<ALL_PIECES>() - 1) / 4`. The same index selects the PSQT bucket, and
-`PSQTBuckets == LayerStacks == 8`. A change to the bucket formula changes which of eight weight
+`(pos.count<ALL_PIECES>() - 1) / 4`. A change to the bucket formula changes which of eight weight
 sets a position is evaluated by, so it is a network-format change and not a tuning tweak.
 
-The two heads are the PSQT sum, which `transform` returns as
-`(psqt[stm][bucket] - psqt[!stm][bucket]) / 2`, and the layer stack's own output.
+The selected stack's output, divided by `OutputScale`, is the whole raw evaluation:
+`FeatureTransformer::transform` writes the activations and returns no term of its own, so nothing
+reaches the evaluation except through the bucket's stack. The activations do not depend on the
+bucket, which is what lets `Network::trace_evaluate` transform once and propagate the same buffer
+through all eight stacks.
 
 ## The accumulator is the whole design
 
@@ -138,10 +140,10 @@ incrementally, and refresh both cache entries on the way through. Its two remain
   *castling uses add_sq and remove_sq to remove and add the rook*.
 
 **The refresh cache** (`AccumulatorCaches`) is what makes the last branch affordable. It is
-per-Worker and indexed `[square][colour]`, so 128 entries. Each `Entry` holds an accumulation, its
-PSQT counterpart, and the `pieces` array and `pieceBB` it was computed from, so a refresh diffs
-against that cached board rather than starting from the biases -- usually a handful of features
-rather than all of them. The idea is Luecx's, from Koivisto, and the header calls it by its usual
+per-Worker and indexed `[square][colour]`, so 128 entries. Each `Entry` holds an accumulation and
+the `pieces` array and `pieceBB` it was computed from, so a refresh diffs against that cached
+board rather than starting from the biases -- usually a handful of features rather than all of
+them. The idea is Luecx's, from Koivisto, and the header calls it by its usual
 name, Finny tables.
 
 **An unseeded cache is indeterminate memory, not an empty one.** `AccumulatorCaches()` is the
@@ -236,9 +238,10 @@ the order `packus` wants them, permuted on read and unpermuted on write, so
 
 ## `evaluate.cpp` -- from network output to a search value
 
-`Network::evaluate` returns the sum of the two heads, and `Eval::evaluate` passes that raw value to
-`scale_evaluation`, which adjusts it in four steps. Read the current arithmetic from the functions
-rather than from here, because every constant in them is tuned and moves with the next SPSA patch:
+`Network::evaluate` returns the selected stack's output, and `Eval::evaluate` passes that raw value
+to `scale_evaluation`, which adjusts it in four steps. Read the current arithmetic from the
+functions rather than from here, because every constant in them is tuned and moves with the next
+SPSA patch:
 
 ```sh
 sed -n '/^static int simple_eval/,/^}/p;/^Value scale_evaluation(.*) {$/,/^}/p' src/engine/evaluate.cpp
@@ -299,11 +302,10 @@ selection or refuses to search, and both are states this seam already knows how 
 
 ### LEB128, and which arrays use it
 
-The large weight arrays are signed-LEB128 compressed and the small ones are not.
-`FeatureTransformer::read_parameters` is where the split is visible: `read_leb_128` for `biases`,
-`threatPsqtData()`, `pawnPairPsqtData()`, `weights` and `psqtWeights`; plain
-`read_little_endian` for `threatWeightData()` and `pawnPairWeightData()`. Each compressed block
-is prefixed by the literal `Leb128MagicString` and a `u32` byte count.
+The transformer's `i16` arrays are signed-LEB128 compressed and its `i8` arrays are not.
+`FeatureTransformer::read_parameters` is where the split is visible: `read_leb_128` for `biases`
+and `weights`; plain `read_little_endian` for `threatWeightData()` and `pawnPairWeightData()`.
+Each compressed block is prefixed by the literal `Leb128MagicString` and a `u32` byte count.
 
 Both affine layers read every weight one at a time through `read_little_endian<WeightType>`:
 
