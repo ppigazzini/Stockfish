@@ -303,8 +303,8 @@ The strongest evidence a pure code-motion change can carry: not a benchmark with
 floor but a proof that the compiler emitted the same instructions.
 
 **It does not prove the shipped binary unchanged**, and the reason is worth carrying: the
-tree links with `-flto=full` (clang) or `-flto -flto-partition=one` (gcc) by default, and LTO
-is exactly where a moved function changes an inlining decision. The gate also clears the
+tree links with `-flto=full` (clang) or `-flto` (gcc) by default, and LTO is exactly where a
+moved function changes an inlining decision. The gate also clears the
 build stamp (`GIT_SHA`, `GIT_DATE`, `GIT_DIFFINDEX`) on both sides so the version string
 cannot shift rodata under it -- another reason it is not a statement about the shipped
 binary, which carries its stamp.
