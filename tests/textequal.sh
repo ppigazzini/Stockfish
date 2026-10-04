@@ -14,8 +14,8 @@
 #   what the compiler produced.
 #
 #   Does NOT prove the shipped build is unchanged. Stockfish links with
-#   -flto=full (clang) or -flto -flto-partition=one (gcc) by default, and LTO is
-#   exactly where a moved function changes an inlining decision. A green run
+#   -flto=full (clang) or -flto (gcc) by default, and LTO is exactly where a
+#   moved function changes an inlining decision. A green run
 #   here narrows what tests/perfbudget.sh has to catch; it does not replace it.
 #
 #   Quote both halves. A check whose limits are unstated will be quoted past
@@ -140,7 +140,7 @@ prepare_tree() {
 #
 # EXTRACXXFLAGS CANNOT TURN LTO OFF. src/Makefile interpolates EXTRACXXFLAGS
 # into its CXXFLAGS assignment, and the per-compiler block below that appends
-# `-flto=full` (clang) or `-flto -flto-partition=one` (gcc) AFTER it, so the
+# `-flto=full` (clang) or `-flto` plus a `-flto-partition` (gcc) AFTER it, so the
 # Makefile's flag is last and wins. Passing -fno-lto that way builds an LTO
 # binary while the log says otherwise -- and this gate disassembles the linked
 # image, so it keeps working and keeps comparing something other than what it
