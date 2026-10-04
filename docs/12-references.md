@@ -134,13 +134,20 @@ perf gates.
   what `always_inline`, `noinline` and `aligned` are and are not a request for.
 - [Intel intrinsics guide][intel-intrinsics] -- the lookup for the per-ISA kernels in
   `src/engine/nnue/simd.h`.
-- [Agner Fog's optimisation manuals][agner] -- four documents, and which one answers a
-  question matters. *The microarchitecture of Intel, AMD and VIA CPUs* has the **store
-  forwarding**, **branch prediction** and **cache geometry** sections per generation, which is
-  what prices a write-then-read pair or a removed branch; *Instruction tables* gives µop
-  count, latency and reciprocal throughput for one instruction on one named part;
-  *Optimizing software in C++* carries the source-level rules. The general results this tree
-  uses are in [11-performance.md](11-performance.md); the per-generation tables are not copied
+- [Agner Fog's optimisation manuals][agner] -- five manuals, and which one answers a question
+  matters. *The microarchitecture of Intel, AMD and VIA CPUs* has the **store forwarding**,
+  **branch prediction** and **cache geometry** sections per generation, which is what prices a
+  write-then-read pair or a removed branch; *Instruction tables* gives µop count, latency and
+  reciprocal throughput for one instruction on one named part; *Optimizing software in C++*
+  carries the source-level rules. *Calling conventions* gives the register each argument
+  travels in -- six integer registers on x86-64 Linux, so a seventh argument costs a stack
+  slot -- and its table 6 says which objects travel in registers at all: one with a
+  non-trivial copy constructor or destructor goes as a pointer to a temporary copy, so a
+  wrapper is free to pass, as [09-type-design.md](09-type-design.md) assumes, only while both
+  stay trivial. *Optimizing subroutines in assembly language* tunes hand-written kernels; every
+  `asm` statement in this tree is one instruction or an empty optimisation barrier, apart from
+  the directives `src/incbin/incbin.h` embeds the net with. The general results this tree uses
+  are in [11-performance.md](11-performance.md); the per-generation tables are not copied
   anywhere, because they change every generation.
 - [What every programmer should know about memory][drepper] -- cache lines and data layout,
   the background for the 32-byte transposition cluster.
