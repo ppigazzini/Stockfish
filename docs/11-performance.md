@@ -869,22 +869,24 @@ generation and belong in the manual.
 what makes a write-then-read pair cheap, and every generation withdraws it when the read is
 offset to a boundary the write does not divide on. `do_move` paired `rule50` and
 `pliesFromNull` as one 8-byte access at offset 52 of a 32-byte store -- crossing the 8-byte
-boundary at 56, straddling two quarters of the write -- and the same shape is priced at ~12
-clocks on Sandy Bridge through Broadwell (forwarding fails outright), 11 on Skylake, **19-20 on
+boundary at 56, straddling two quarters of the write. Forwarding fails outright on that shape
+from Sandy Bridge to Broadwell, at ~12 clocks on Sandy Bridge and Ivy Bridge and 10 extra on
+Haswell and Broadwell; it costs 11 extra on Skylake, a **19-20 clock write-to-read latency on
 Ice Lake and Tiger Lake**, 11 on Zen 4 and **up to 28 on Zen 5**, while Zen 1-3 forward it for
 free. Moving the pair to offset 48 made it one naturally aligned quarter. The tell is a narrow
 load following a wide store at an offset the load's own width does not divide; `alignof` on the
 struct decides it, not the caller's stack alignment.
 
 **Removing a branch is not removing a mispredict.** A loop with a small **constant** trip count
-is predicted essentially perfectly -- Agner puts the limit between 9 and over 100 depending on
-the part -- while a **data-dependent** trip count is mispredicted about once per entry. So a
-rewrite that deletes branches can still cost mispredicts, because the cost transfers to whatever
-branch survives. This tree has measured it five times on the hardware counters, three more on
-the simulator before that, and twice against a rule it had just written down: an AVX2 scan
-that removed 0.81% of all retired branches raised branch misses
-**1.52%** and the miss rate **2.35%** on gcc PGO, decided against a same-session A/A control,
-because the survivor was a walk over a 4-bit mask whose trip count is 0 to 4 and unlearnable.
+is predicted essentially perfectly -- Agner measures the limit at about 32 on Haswell through
+the later Lakes, 64 on Zen 3 and Zen 4 and 128 on Zen 5 -- while a **data-dependent** trip count
+is mispredicted about once per entry. So a rewrite that deletes branches can still cost
+mispredicts, because the cost transfers to whatever branch survives. This tree has measured it
+five times on the hardware counters, three more on the simulator before that, and twice against
+a rule it had just written down: an AVX2 scan that removed 0.81% of all retired branches raised
+branch misses **1.52%** and the miss rate **2.35%** on gcc PGO, decided against a same-session
+A/A control, because the survivor was a walk over a 4-bit mask whose trip count is 0 to 4 and
+unlearnable.
 **State the surviving branch's predictability, not the branch count.**
 
 **The critical stride is cache size divided by associativity.** Addresses that far apart
@@ -893,17 +895,23 @@ that is 4096 bytes. It is one division, and it is what closes a conflict-miss hy
 anyone builds a padding experiment: a census of distinct lines per occupied set either exceeds
 the associativity or it does not.
 
-**Hardware prefetching beats software prefetching in most cases**, in Agner's own words -- he
-reports no example in which an explicit prefetch improved speed, because modern parts prefetch
-regular strided patterns automatically. That is corroboration rather than theory here: software
-prefetch has been built and refuted four separate times on this tree, twice with the miss
-counter moving the *wrong* way. Treat "add a prefetch" as refuted unless the mechanism is one
-none of those four had.
+**"Automatic hardware prefetching is more efficient than explicit software prefetching in most
+cases"**, in the words of every Zen chapter of the microarchitecture manual, and *Optimizing
+software in C++* reports no tested example in which an explicit prefetch improved speed, because
+modern parts prefetch regular, fixed-stride patterns automatically. The result is scoped to those
+patterns, and this tree's evidence reaches past it: software prefetch has been built and refuted
+four separate times here, every time on an index- or hash-addressed lookup -- feature weight
+rows, continuation rows, the transposition table -- which is the case the manual does not cover,
+and twice with the miss counter moving the *wrong* way. Treat "add a prefetch" as refuted unless
+the mechanism is one none of those four had. The rule says nothing about removing a prefetch
+already in the tree, such as `do_move`'s `tt.first_entry` one: all four were measured with it in
+place.
 
 Which manual answers what: *Optimizing software in C++* for the source-level rules, *The
 microarchitecture of Intel, AMD and VIA CPUs* for store forwarding, branch prediction and cache
-geometry per generation, and *Instruction tables* for the µop count, latency and reciprocal
-throughput of one instruction on one named part.
+geometry per generation, *Instruction tables* for the µop count, latency and reciprocal
+throughput of one instruction on one named part, and *Calling conventions* for which register,
+stack slot or hidden pointer an argument travels in.
 
 ## Where the instructions are
 
