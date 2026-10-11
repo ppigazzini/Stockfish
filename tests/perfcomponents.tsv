@@ -109,7 +109,7 @@ SEE	see_ge
 # -- board --
 do/undo move	Position::do_move|Position::undo_move|Worker::do_move|Worker::undo_move
 threats	update_piece_threats|Position::threats
-legality / check	Position::legal|Position::gives_check|Position::pseudo_legal|update_slider_blockers
+legality / check	Position::legal|Position::gives_check|update_slider_blockers
 attacks / bitboards	Attacks::|attacks_bb|Bitboards::|between_bb|line_bb
 position key / state	adjust_key50|Position::set|Position::fen|StateInfo
 
