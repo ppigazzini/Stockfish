@@ -105,7 +105,7 @@ uci->loop();
 
 `Position::init()` must follow `Attacks::init()`, and two readers depend on it:
 `Position::init` calls `attacks_bb` to enumerate the reversible one-piece moves the cuckoo table
-is built from, and every later `Position::set` calls `set_check_info`, which calls
+is built from, and every later `Position::set` calls `set_extra_bitboards`, which calls
 `both_attacks_bb`. Neither crashes on zeroed tables. The cuckoo table simply comes out empty, so
 `upcoming_repetition` never fires, and a `Position` built too early finds no checkers and
 generates no piece moves -- both present as a search bug rather than a startup bug.

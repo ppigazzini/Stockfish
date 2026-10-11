@@ -19,13 +19,13 @@ Audience: board and movegen.
 | what a move changes, so NNUE can follow | `types.h` | `Dirties`, `DirtyPiece`, `DirtyThreats` |
 | which squares does a slider attack | `attacks.h` | `Attacks::attacks_bb`, `Attacks::both_attacks_bb` |
 | which of my pieces may not move | `position.h` | `Position::blockers_for_king`, `Position::pinners` |
-| is this move legal | `position.cpp` | `Position::legal` |
-| is a move off the transposition table even playable | `position.cpp` | `Position::pseudo_legal` |
+| is a move off the transposition table legal here | `position.cpp` | `Position::legal` |
+| which squares does the side not to move attack | `position.h` | `Position::threats_by` |
 | does it give check | `position.cpp` | `Position::gives_check` |
 | make and unmake | `position.cpp` | `Position::do_move`, `Position::undo_move` |
 | is this a draw | `position.cpp` | `Position::is_draw`, `Position::is_repetition`, `Position::upcoming_repetition` |
 | is this capture sequence worth it | `position.cpp` | `Position::see_ge` |
-| generate moves | `movegen.cpp` | `generate<GenType>`, `MoveList<GenType>` |
+| generate the legal moves | `movegen.cpp` | `generate<GenType>`, `MoveList<GenType>` |
 | where the castling rook actually is | `position.h` | `Position::castling_rook_square`, `Position::castling_impeded` |
 
 ## Startup: two `init`s in one order
@@ -100,7 +100,7 @@ the one engine-to-shell include in the tree, and the sole entry in `tests/depche
 A `Bitboard` is a `u64`, one bit per square, LSB = a1. Shifts and masks do the geometry:
 `shift<D>` covers the eight directions plus the two double pushes, `shift<NORTH>` is `<< 8`, and
 the file masks are what stop an east or west shift wrapping onto the far edge. Drop a mask and
-the generator produces a move from h4 to a5 that `legal()` will happily accept.
+the generator produces a move from h4 to a5, and nothing downstream tests a generated move again.
 
 `pop_lsb` is how every move loop advances, so it is written as `lsb(b)` followed by `b &= b - 1`
 and nothing else -- a `tzcnt`/`blsr` pair where the ISA has them. Anything added to it is added
@@ -163,7 +163,7 @@ the four masks are the first 32 bytes of the struct, so reordering a member abov
 dropping the alignment turns a legal aligned load into a fault.
 
 Five call sites in `position.cpp` want both sets and get them without touching two structures --
-`set_check_info`, `attackers_to`, `gives_check`, `update_piece_threats` and `see_ge`:
+`set_extra_bitboards`, `attackers_to`, `gives_check`, `update_piece_threats` and `see_ge`:
 
 ```sh
 grep -n 'both_attacks_bb' src/engine/position.cpp
@@ -183,8 +183,8 @@ than one struct, and which one a debugger shows you depends on the build.
 the same attack sets, and what holds that is the compile matrix benching one signature after every
 architecture build it does ([10-tooling-ci.md](10-tooling-ci.md)).
 
-`Attacks::init` fills `LineBB`, `BetweenBB` and `RayPassBB` on every tier, and the slider tables
-only on the two that need them. `between_bb(s1, s2)` **includes `s2`** -- the last line of the
+`Attacks::init` fills `LineBB`, `BetweenBB`, `inverse_RayPassBB`, `DiagBB` and `AntiDiagBB` on every
+tier, and the slider tables only on the two that need them. `between_bb(s1, s2)` **includes `s2`** -- the last line of the
 loop is `BetweenBB[s1][s2] |= s2` -- which is what lets the evasion generator use it as a target
 mask and thereby include capturing the checker.
 
@@ -260,23 +260,50 @@ number back, so a caller wanting the size of the exchange has to bisect it.
 
 ## `movegen.cpp` -- the generator
 
-`generate<Type>` is instantiated for `CAPTURES`, `QUIETS`, `EVASIONS` and `NON_EVASIONS`, each
-`static_assert`ing it is not `LEGAL`; `generate<LEGAL>` is a separate explicit specialisation that
-calls one of the four and filters. `MoveList<Type>` in `movegen.h` is the wrapper that owns the
-buffer.
+`generate<Type>` is instantiated for `CAPTURES`, `QUIETS` and `EVASIONS`, each `static_assert`ing
+it is not `ALL`; `generate<ALL>` is a separate explicit specialisation that returns the evasions in
+check and otherwise the captures followed by the quiets, with nothing filtered out. `MoveList<Type>`
+in `movegen.h` is the wrapper that owns the buffer.
 
-Everything below `generate` is templated on colour as well as `GenType`, so the push directions
-and promotion ranks fold to constants and the generator for one side has no branch on colour.
+Only the pawn generator is templated on colour, which is what folds its push directions and
+promotion ranks to constants. `generate_moves` and `generate_all` take the colour at run time, so
+each `GenType` is one instantiation of them rather than two.
 
-**Pseudo-legal by default.** Moves that leave the king in check are filtered by `Position::legal`
-where the search makes them, not at generation:
+**Legal by construction.** Every list the generator returns is legal, so no generated move is
+tested again. `Position::legal` is for a move that did not come from the generator -- the
+transposition move, which a 16-bit key collision or a racing write can make unplayable:
 
 ```sh
-grep -n 'pos.legal(' src/engine/search.cpp
+grep -rn 'pos.legal(' src/engine/
 ```
 
-Filtering earlier would cost a legality test on every generated move, and most generated moves
-are never made.
+Each piece answers for its own king in a mask:
+
+- **a pinned piece** -- `generate_moves` walks a type's unpinned pieces and then its pinned ones,
+  cutting a pinned piece's targets to `line_bb(ksq, from)`. A pinned knight is never walked, since
+  no knight move stays on a line.
+- **a pawn** -- `generate_pawn_moves` builds three masks from `blockers_for_king(Us)`: a pinned pawn
+  pushes only on its king's file and captures only along its king's diagonal or anti-diagonal
+  (`diag_bb`, `antidiag_bb`), en passant included.
+- **the king** -- its targets lose `threats_by(ALL_PIECES)`, the squares the side not to move
+  attacks. `set_extra_bitboards` computes them with that king removed from the occupancy, so a king
+  in check cannot step back along the checking ray: with the king in the occupancy the ray stops at
+  the king and the square behind it reads as safe.
+- **castling** -- emitted with the quiets only, so never in check, and only when the path is empty,
+  no square of `between_bb(ksq, to)` -- the king's destination included -- is threatened, and the
+  castling rook is not a blocker for its own king.
+  That last test is **unconditional**, not gated on Chess960: `Position::set` adopts the first rook
+  it meets walking in from the corner, so a sloppy castling field records a 960 rook square on a
+  board the option calls standard. In standard geometry a corner rook lies on no line between its
+  own king and any slider, so there the test can never reject. `tests/cases/castling.uci` is that
+  board under both options.
+
+The capture list and the quiet list of one picker share their slider attack sets through
+`SliderCache`, **positionally**: the k-th set the capture list writes is the k-th the quiet list
+reads. That holds only while both walk the pieces in the same order -- bishops, rooks, queens, each
+type's unpinned pieces before its pinned ones, each by ascending square -- so a change to that walk
+in one list and not the other hands a piece another piece's attacks, and every move it then
+generates is still well-formed.
 
 **Under check, evasions are one set.** No capture/quiet split: there are few evasions and omitting
 any is unsound. Under *double* check `generate_all` skips the non-king generators entirely, because
@@ -284,42 +311,35 @@ no interposition or capture can answer two checkers. Otherwise the target mask i
 `between_bb(ksq, lsb(checkers))`, which includes the checker's own square, so captures of the
 checker are in the same sweep.
 
-### What `legal()` checks, and what it does not
+### En passant, the capture the masks cannot see
 
-`Position::legal` has exactly three branches:
-
-- **castling** -- generation deliberately does not test whether the king's path is attacked, so
-  `legal` walks it here. It then tests that the castling rook is not itself a blocker for its own
-  king. That test is **unconditional**, not gated on Chess960: `Position::set` adopts the first
-  rook it meets walking in from the corner, so a sloppy castling field records a 960 rook square
-  on a board the option calls standard, and the option is not evidence about the geometry. In
-  standard geometry a corner rook lies on no line between its own king and any slider, so the
-  test costs one comparison and changes nothing there.
-- **a king move** -- the destination must not be attacked with the king removed from the
-  occupancy, or it would shield itself along the ray it is fleeing.
-- **anything else** -- legal if the piece is not a blocker for its own king, or if it moves along
-  the ray to or from that king.
-
-**En passant is not one of them.** There is no `EN_PASSANT` case in `legal()`, so an en-passant
-capture by an unpinned pawn falls through the third branch and is returned legal without further
-test -- and the pin test genuinely cannot settle it, because the capture removes a pawn from a
-square the moving pawn never occupied. What keeps an illegal en passant off the list is that
-**`st->epSquare` is only ever written when a legal en-passant capture exists.** Both writers do
-that check: `Position::set` walks every attacking pawn and clears the square unless one of them
-can capture without exposing its king, and `do_move` sets it after a double push only when a
-capturing pawn is not a blocker for the enemy king, or lies on the line from the enemy king
-through the new en-passant square.
+The pin masks keep a pinned pawn on its pin line. They cannot see the **rank pin**: an en-passant
+capture empties two squares of one rank, so a pawn that is no blocker for its king while the
+captured pawn stands beside it can still uncover that king along the rank. Nothing in the generator
+tests for it. What keeps that capture off the list is that **`st->epSquare` is only ever written
+when a legal en-passant capture exists.** Both writers do that check: `Position::set` walks every
+attacking pawn and clears the square unless one of them can capture without exposing its king, and
+`do_move` sets it after a double push only when a capturing pawn is not a blocker for the enemy
+king, or lies on the line from the enemy king through the new en-passant square -- judged on the
+blockers of the position before the push, where the captured pawn was not yet on the rank.
 
 ```sh
 grep -n 'epSquare *=' src/engine/position.cpp
 ```
 
-`generate<LEGAL>` still routes `EN_PASSANT` through `legal()` alongside king moves and pinned
-pieces, so the filter reads as three disjuncts; only two of them reach a test that can reject.
+### What `legal()` checks
 
-```sh
-grep -n 'type_of() == EN_PASSANT' src/engine/movegen.cpp
-```
+`Position::legal(m)` takes an arbitrary 16-bit move and says whether it is one the generator would
+produce here. A move that is not `NORMAL` -- castling, en passant, a promotion -- goes the slow way,
+`MoveList<ALL>(*this).contains(m)`, and is right by construction. A `NORMAL` move is checked
+directly: the moving piece is the side to move's, the destination holds none of its pieces, the
+geometry is the piece's (a pawn's push, double push or capture), and then
+
+- **a king move** -- the destination is not in `threats_by(ALL_PIECES)`, the same x-ray set the
+  generator uses;
+- **anything else** -- in double check nothing is legal; in single check the destination must be
+  on `between_bb(ksq, checker)`; and the piece must not be a blocker for its own king unless it
+  moves along the ray to or from that king.
 
 ### `MAX_MOVES` is a buffer contract, not a headroom number
 
