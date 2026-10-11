@@ -28,16 +28,16 @@ NNUE network contributions (Normalized, White to move)
 +------------+------------+
 |   Bucket   | Evaluation |
 +------------+------------+
-|  0         |  -  4.54   |
-|  1         |  -  0.72   |
-|  2         |  -  1.11   |
-|  3         |  -  1.16   |
-|  4         |  -  0.79   |
-|  5         |  -  0.77   | <-- this bucket is used
-|  6         |  -  0.76   |
-|  7         |  -  0.75   |
+|  0         |  -  0.14   |
+|  1         |  -  0.65   |
+|  2         |  -  0.62   |
+|  3         |  -  0.58   |
+|  4         |  -  0.54   |
+|  5         |  -  0.58   | <-- this bucket is used
+|  6         |  -  0.64   |
+|  7         |  -  0.63   |
 +------------+------------+
 
-NNUE evaluation          -237 (side to move, internal units)
-NNUE evaluation        -0.77 (white side)
-Final evaluation      -0.91 (white side) [with scaled NNUE, ...]
+NNUE evaluation          -179 (side to move, internal units)
+NNUE evaluation        -0.58 (white side)
+Final evaluation      -0.69 (white side) [with scaled NNUE, ...]
