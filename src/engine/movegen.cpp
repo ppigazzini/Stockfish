@@ -450,6 +450,9 @@ template ExtMove*
 generate_cached<CAPTURES, FillSliderCache>(const Position&, ExtMove*, SliderCache&);
 template ExtMove* generate_cached<QUIETS, UseSliderCache>(const Position&, ExtMove*, SliderCache&);
 template ExtMove* generate<EVASIONS>(const Position&, ExtMove*);
+    #if !SF_QCAPTURE_FILLS_SLIDERS
+template ExtMove* generate<CAPTURES>(const Position&, ExtMove*);
+    #endif
 #endif
 
 template Move* generate<CAPTURES>(const Position&, Move*);

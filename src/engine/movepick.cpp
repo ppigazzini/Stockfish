@@ -717,8 +717,11 @@ top:
         return ttMove;
 
     case CAPTURE_INIT :
+#if SF_QCAPTURE_FILLS_SLIDERS
     case PROBCUT_INIT :
-    case QCAPTURE_INIT : {
+    case QCAPTURE_INIT :
+#endif
+    {
         cur = endBadCaptures = moves;
         endCur = endCaptures = gen_and_score<CAPTURES, FillSliderCache>();
 
@@ -726,6 +729,18 @@ top:
         ++stage;
         goto top;
     }
+
+#if !SF_QCAPTURE_FILLS_SLIDERS
+    case PROBCUT_INIT :
+    case QCAPTURE_INIT : {
+        cur = endBadCaptures = moves;
+        endCur = endCaptures = gen_and_score<CAPTURES, NoSliderCache>();
+
+        sort_all(cur, endCur);
+        ++stage;
+        goto top;
+    }
+#endif
 
     case GOOD_CAPTURE :
         if (select([&]() {
