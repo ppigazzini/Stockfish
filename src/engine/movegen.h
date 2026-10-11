@@ -82,6 +82,20 @@ struct SliderCache {
     Bitboard att[16];
 };
 
+// Whether the qsearch and ProbCut capture lists fill the cache. No quiet list
+// follows them, so the fill there buys nothing, and which arm costs less is a
+// property of the compiler's inliner rather than of the work. clang retires
+// fewer instructions with those lists split into an uncached arm of their own;
+// gcc retires more, because with two capture arms its inliner keeps the
+// uncached walk's per-piece generators out of line and the calls cost more than
+// the fill. Measure a change to either side with tests/perfbudget.sh on both
+// compilers, at -O3 and under PGO.
+#if defined(__clang__)
+    #define SF_QCAPTURE_FILLS_SLIDERS 0
+#else
+    #define SF_QCAPTURE_FILLS_SLIDERS 1
+#endif
+
 // Tags rather than a bool, so the mode is a template argument and the piece
 // loop carries no test.
 struct FillSliders {};

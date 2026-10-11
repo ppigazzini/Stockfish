@@ -303,7 +303,9 @@ The capture list and the quiet list of one picker share their slider attack sets
 reads. That holds only while both walk the pieces in the same order -- bishops, rooks, queens, each
 type's unpinned pieces before its pinned ones, each by ascending square -- so a change to that walk
 in one list and not the other hands a piece another piece's attacks, and every move it then
-generates is still well-formed.
+generates is still well-formed. The qsearch and ProbCut capture lists have no quiet list after
+them, and whether they fill the cache anyway is chosen per compiler, by what each one's inliner
+makes cheaper: `SF_QCAPTURE_FILLS_SLIDERS` in `movegen.h`.
 
 **Under check, evasions are one set.** No capture/quiet split: there are few evasions and omitting
 any is unsound. Under *double* check `generate_all` skips the non-king generators entirely, because
