@@ -17,7 +17,7 @@ Audience: search.
 |---|---|---|
 | what one node does, in order | `search.cpp` | `Worker::search<NodeType>`, 21 numbered Steps |
 | what a node remembers about its ancestors | `search.h` | `Stack`, addressed `(ss - n)` |
-| how deep does a late move get searched | `search.cpp` | `Worker::reduction(improving, depth, moveCount, delta)` |
+| how deep does a late move get searched | `search.cpp` | `Worker::reduction(improving, depth, moveCount)` |
 | what the root loop does between iterations | `search.cpp` | `Worker::iterative_deepening` |
 | when does the search stop | `search.cpp` | `SearchManager::check_time`, and the time block in `iterative_deepening` |
 | how a position becomes a table slot | `tt.cpp` | `TranspositionTable::first_entry`, `probe` |
@@ -222,10 +222,10 @@ few of them and skipping any is unsound.
 The stage is entered by arithmetic rather than a branch:
 
 ```cpp
-stage = EVASION_TT + !(ttm && pos.pseudo_legal(ttm));
+stage = EVASION_TT + !(ttm && pos.legal(ttm));
 ```
 
-A transposition move that is not pseudo-legal in this position -- which a 16-bit key collision can
+A transposition move that is not legal in this position -- which a 16-bit key collision can
 produce -- skips the stage rather than being played.
 
 **Every generating stage sorts, and they do not sort alike.** `partial_insertion_sort` orders
@@ -487,9 +487,9 @@ What each pruning rule assumes, since that is what decides when it is unsound:
   that move *excluded*, through `ss->excludedMove`. The same search yields multi-cut when the node
   fails high anyway.
 - **LMR** -- late moves in a well-ordered list are unlikely to be best, so they are searched
-  shallower, with a re-search at full depth if the reduced search beats alpha. How much shallower is
-  `Worker::reduction(improving, depth, moveCount, delta)`, off the `reductions` table plus a
-  `rootDelta`-relative term.
+  shallower, with a re-search at full depth if the reduced search beats alpha. How much shallower
+  starts from `Worker::reduction(improving, depth, moveCount)`, off the `reductions` table, and a PV
+  node takes a constant off it before the move-specific terms.
 
 **The static evaluation is corrected before any of this.** Correction-history tables record how far
 the evaluation of positions sharing a pawn structure, a minor-piece configuration or a non-pawn
