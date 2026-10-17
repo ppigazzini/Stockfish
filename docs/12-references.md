@@ -45,8 +45,6 @@ Audience: all developers.
   [ODbL][odbl].
 - [NNUE, Chess Programming Wiki][cpw-nnue] -- the accumulator, the incremental update and the
   refresh cache the `AccumulatorCaches` comment calls Finny tables.
-- [LEB128][leb128] -- the variable-length integer encoding the large weight arrays are stored
-  in. `nnue_common.h` cites this page from `read_leb_128` and `write_leb_128`.
 
 ### Syzygy tablebases
 
@@ -258,7 +256,6 @@ Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
 [intel-intrinsics]: https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html
 [kennedy]:          https://doi.org/10.1007/978-3-642-17685-2_8
 [lc0-data]:         https://storage.lczero.org/files/training_data
-[leb128]:           https://en.wikipedia.org/wiki/LEB128
 [libfuzzer]:        https://llvm.org/docs/LibFuzzer.html
 [llvm-lto]:         https://llvm.org/docs/LinkTimeOptimization.html
 [llvm-vec]:         https://llvm.org/docs/Vectorizers.html

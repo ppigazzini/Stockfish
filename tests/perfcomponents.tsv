@@ -29,8 +29,9 @@
 
 # CHOOSE A SYMBOL THAT SURVIVES ON BOTH COMPILERS, NOT JUST ON gcc. clang
 # inlines more aggressively, and a row anchored on the narrow callee alone goes
-# empty there while its cost reappears inside a wider symbol: `read_leb_128`
-# vanishes into `Network::read_parameters`, and `NetworkArchitecture::propagate`
+# empty there while its cost reappears inside a wider symbol:
+# `FeatureTransformer::read_parameters` vanishes into
+# `Network::read_parameters`, and `NetworkArchitecture::propagate`
 # survives at sse41 but is folded into `Network::evaluate` at avx2. Both rows
 # below therefore name the narrow symbol AND the wider one that swallows it, so
 # the component means the same work under either compiler.
@@ -46,7 +47,7 @@
 # row that did match -- compare the group, not the row, on a clang profile.
 
 # -- startup: the net parse and the tables built before the first search --
-net parse	read_leb_128|Network::read_parameters|NetworkArchitecture::read_parameters
+net parse	FeatureTransformer::read_parameters|Network::read_parameters|NetworkArchitecture::read_parameters
 # hash_bytes belongs HERE, not in a row of its own: it survives as a call on one
 # side and inlines into the shared-memory constructor on the other, so a row of
 # its own matches on one side only and reports one symbol's move as a
@@ -72,7 +73,7 @@ NNUE accumulator stack	AccumulatorStack::|AccumulatorCaches::
 # inline them into NNUE::Network::evaluate, so they cannot be separated from it
 # and a row for them would report MATCHED NOTHING forever -- which trains a
 # reader to ignore that diagnostic. Their cost is inside `NNUE network evaluate`.
-NNUE feature transform	FeatureTransformer|HalfKAv2_hm|FullThreats|PP_3Wide|append_active_indices
+NNUE feature transform	FeatureTransformer|K32Q2|FullThreats|PP_3Wide|append_active_indices
 
 # -- search: the alpha-beta spine --
 search node	Worker::search<
