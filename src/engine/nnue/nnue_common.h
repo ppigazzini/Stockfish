@@ -148,15 +148,14 @@ constexpr IntType ceil_to_multiple(IntType n, IntType base) {
 //
 // The register's reason for leaving this alone was wrong. It recorded the value
 // as harmless because "every caller tests the stream immediately and discards
-// it" -- `read_leb_128` does not. It takes this result as `bytes_left` and
-// spends it as a byte budget before it looks at the stream at all.
+// it" -- Network::read_header does not. It takes this result as the
+// description's length and spends it before it looks at the stream at all.
 //
 // One array serves both arms, which is where the gcc win comes from:
 // `IsLittleEndian` is a runtime bool, not a constant, so reading into `&result`
 // on one arm compiled two `stream.read` call sites. Zeroing the RESULT was
 // measured and rejected -- `result = 0` costs 12.8M startup instructions under
-// gcc, 1.7% of the 731M this header's LEB128 decoder spends, by perturbing what
-// gets inlined here.
+// gcc, by perturbing what gets inlined here.
 template<typename IntType>
 inline IntType read_little_endian(std::istream& stream) {
     u8 u[sizeof(IntType)] = {};
