@@ -20,7 +20,7 @@ Audience: evaluation and NNUE.
 | the refresh cache | `nnue/nnue_accumulator.h` | `AccumulatorCaches`, its `Entry` |
 | accumulator to layer input | `nnue/nnue_feature_transformer.h` | `FeatureTransformer`, its `transform` |
 | which inputs the sparse layer skips | `nnue/nnz_helper.h` | `NNZInfo` |
-| the file format and its bounds | `nnue/network.cpp`, `nnue/nnue_common.h` | `read_header`, `read_leb_128` |
+| the file format and its bounds | `nnue/network.cpp`, `nnue/nnue_common.h` | `read_header`, `read_little_endian` |
 | the per-ISA kernels | `nnue/simd.h` | one arm per `USE_*` macro |
 
 ## The network, shape first
@@ -51,20 +51,32 @@ concatenates the two perspectives. Halving and doubling cancel. Change `L1` and 
 together; change the pairing and only one does.
 
 Everything is integer arithmetic. `nnue_common.h` fixes the types -- `BiasType = i16`,
-`WeightType = i16`, `ThreatWeightType = i8`, `TransformedFeatureType = u8` -- and
+`WeightType = i8`, `ThreatWeightType = i8`, `TransformedFeatureType = u8` -- and
 `WeightScaleBits` fixes where the binary point sits, so a layer is a multiply and a shift rather
 than floating point. That is what makes the forward pass affordable at every leaf.
 
-**There are eight of everything after the transformer.** `Network` holds
-`NetworkArchitecture network[LayerStacks]` and `Network::evaluate` picks one with
-`(pos.count<ALL_PIECES>() - 1) / 4`. A change to the bucket formula changes which of eight weight
-sets a position is evaluated by, so it is a network-format change and not a tuning tweak.
+**Every feature-transformer weight row is `i8` and the accumulator is `i16`**, so a row is
+widened as it is added. On x86 with SSSE3 or better the widening is paid once per TWO rows:
+`apply_feature_pair` in `nnue_accumulator.cpp` interleaves the bytes of two rows with an
+unpack and sums each pair with one `maddubs` against a vector of ones, which is one shuffle
+where a sign extension per row was two. `WeightRows` is what makes the pairing possible: it
+resolves the feature indices of all three sets to row pointers once, outside the tile loop, so
+a piece-square row and a threat row can be partners. `simd.h` defines `USE_PAIRED_WIDENING_ADD`
+where the kernel applies, and `FeatureTransformer::WideningPairOrder` permutes the rows at load
+time so the accumulator's layout is unchanged -- which is why `export_net` has to undo it.
+
+**There are thirty-two of everything after the transformer.** `Network` holds
+`NetworkArchitecture network[LayerStacks]` and `Network::evaluate` picks one from the piece
+count and the two queens: `(pos.count<ALL_PIECES>() - 1) / 4` is the piece-count bucket, scaled
+by four, and the low two bits say whether the side to move and its opponent each still have a
+queen. A change to the bucket formula changes which of thirty-two weight sets a position is
+evaluated by, so it is a network-format change and not a tuning tweak.
 
 The selected stack's output, divided by `OutputScale`, is the whole raw evaluation:
 `FeatureTransformer::transform` writes the activations and returns no term of its own, so nothing
 reaches the evaluation except through the bucket's stack. The activations do not depend on the
 bucket, which is what lets `Network::trace_evaluate` transform once and propagate the same buffer
-through all eight stacks.
+through all thirty-two stacks.
 
 ## The accumulator is the whole design
 
@@ -102,23 +114,26 @@ flowchart TD
     B -->|no| S["evaluate_side, per perspective"]
     S --> C{"last usable accumulator<br/>computed for this side?"}
     C -->|yes| F["forward_update_incremental<br/>walk forward from it"]
-    C -->|no| H{"own king moved, prev ply computed,<br/>enough pieces, same board half,<br/>add_sq == SQ_NONE?"}
+    C -->|no| H{"own king moved, not onto the opponent's queen,<br/>prev ply computed, enough pieces,<br/>same board half, add_sq == SQ_NONE?"}
     H -->|yes| HY["update_accumulator_hybrid"]
     H -->|no| R["update_accumulator_refresh_cache<br/>then backward_update_incremental"]
 ```
 
-**Any move of the perspective's own king ends the incremental chain, whatever square it moves to.**
-The refresh predicate is the whole condition, and it tests nothing else:
+**Any move of the perspective's own king ends the incremental chain, whatever square it moves to,
+and so does the opponent's queen leaving or entering the board.** The refresh predicate is the
+whole condition, and it tests nothing else:
 
 ```sh
-sed -n '/^bool HalfKAv2_hm::requires_refresh/,/^}/p' src/engine/nnue/features/half_ka_v2_hm.cpp
+sed -n '/^bool K32Q2::requires_refresh/,/^}/p' src/engine/nnue/features/k32q2.cpp
 ```
 
-It returns `diff.pc == make_piece(perspective, KING)`. Every feature in all three sets is indexed
-relative to that king's square -- `make_index` takes `ksq` in `half_ka_v2_hm`, `full_threats` and
-`pp_3wide` alike -- so a king move renumbers the entire input space for that side. Do not read
-`KingBuckets` as the boundary: `SQ_E1` and `SQ_E2` sit in different buckets and both are refreshes,
-because the bucket is not what the predicate looks at.
+It returns true for `diff.pc == make_piece(perspective, KING)`, and for a `remove_pc` or an
+`add_pc` that is the opponent's queen -- a capture of it, or a promotion to it. Every feature in
+all three sets is indexed relative to that king's square -- `make_index` takes `ksq` in `k32q2`,
+`full_threats` and `pp_3wide` alike -- so a king move renumbers the entire input space for that
+side, and the piece-square set is indexed by the opponent's queen presence as well, so a change in
+it renumbers that set. Do not read `KingBuckets` as the boundary: `SQ_E1` and `SQ_E2` sit in
+different buckets and both are refreshes, because the bucket is not what the predicate looks at.
 
 **The mirror is what the hybrid guard tests, and it is a different question.** The guard is
 `(int(dirtyPiece.from) & 0b100) == (int(dirtyPiece.to) & 0b100)` -- bit 2 of the square index, the
@@ -130,8 +145,11 @@ the wrong orientation. Inside one half those deltas stay valid, so the path is a
 **What the hybrid path actually does** (`update_accumulator_hybrid`) is start from
 `accumulators[size - 2]` -- the **previous ply**, not two back -- subtract the refresh-cache entry
 for the old king square, add the entry for the new one, apply the threat and pawn-pair deltas
-incrementally, and refresh both cache entries on the way through. Its two remaining guards:
+incrementally, and refresh both cache entries on the way through. Its three remaining guards:
 
+- `dirtyPiece.remove_pc != make_piece(~perspective, QUEEN)` -- a king that captures the
+  opponent's queen changes the queen state every piece-square feature is indexed by, and both
+  cache entries the path reads were computed under the other one;
 - `pos.count<ALL_PIECES>() >= MIN_PC_COUNT_HYBRID`, a function-local `constexpr` in
   `evaluate_side` -- below that piece count a plain refresh is cheap enough that the extra
   bookkeeping does not pay, which makes this an opening and middlegame optimisation;
@@ -140,7 +158,7 @@ incrementally, and refresh both cache entries on the way through. Its two remain
   *castling uses add_sq and remove_sq to remove and add the rook*.
 
 **The refresh cache** (`AccumulatorCaches`) is what makes the last branch affordable. It is
-per-Worker and indexed `[square][colour]`, so 128 entries. Each `Entry` holds an accumulation and
+per-Worker and indexed `[opponent has a queen][square][colour]`, so 256 entries. Each `Entry` holds an accumulation and
 the `pieces` array and `pieceBB` it was computed from, so a refresh diffs against that cached
 board rather than starting from the biases -- usually a handful of features rather than all of
 them. The idea is Luecx's, from Koivisto, and the header calls it by its usual
@@ -159,17 +177,20 @@ Three, under `src/engine/nnue/features/`, all feeding **one** accumulator:
 
 | Set | Alias in `nnue_architecture.h` | What it encodes | `Dimensions` |
 |---|---|---|---|
-| `HalfKAv2_hm` | `PSQFeatureSet` | (king square, piece, piece square) | `SQUARE_NB * PS_NB / 2` |
+| `K32Q2` | `PSQFeatureSet` | (king square, opponent queen present, piece, piece square) | `SQUARE_NB * PS_NB` |
 | `FullThreats` | `ThreatFeatureSet` | which piece attacks which | a literal in `full_threats.h` |
 | `PP_3Wide` | `PairFeatureSet` | pawn-pair structure | `PawnIds * (PawnIds - 1) / 2` |
 
-"Half" means one perspective: the accumulator is computed twice, once from each side's point of
-view, and `transform` reads the side to move's half first. "hm" is the horizontal mirror -- the
-header states the convention as *position mirrored such that king is always on e..h files* -- which
-halves the weight table, hence the `/ 2` above.
+The accumulator is computed twice, once from each side's point of view, and `transform` reads
+the side to move's half first. "K32" is the king's square in 32 buckets: the header states the
+convention as *position mirrored such that king is always on e..h files*, so `KingBuckets` folds
+the a-d files onto e-h and `OrientTBL` mirrors every square with it. "Q2" is the opponent's
+queen, present or not, and it is the second half of `B(v)` in the header -- each king bucket
+holds two `PS_NB` blocks, one per queen state -- which is why `Dimensions` is the whole
+`SQUARE_NB * PS_NB` rather than half of it.
 
 The threat and pair weights share one array. `FeatureTransformer` keeps `weights` for the
-`HalfKAv2_hm` half and `threatAndPpWeights` for the other two concatenated, reached through
+`K32Q2` half and `threatAndPpWeights` for the other two concatenated, reached through
 `threatWeightData()` and `pawnPairWeightData()`. The concatenation is load-bearing and is asserted
 where it can be seen:
 
@@ -300,12 +321,11 @@ half one file and half the other. `load_external` and `load_internal` answer tha
 `evalFile.current` and `netDescription` on failure: the engine then either reloads on the next
 selection or refuses to search, and both are states this seam already knows how to be in.
 
-### LEB128, and which arrays use it
+### Every array is plain little-endian
 
-The transformer's `i16` arrays are signed-LEB128 compressed and its `i8` arrays are not.
-`FeatureTransformer::read_parameters` is where the split is visible: `read_leb_128` for `biases`
-and `weights`; plain `read_little_endian` for `threatWeightData()` and `pawnPairWeightData()`.
-Each compressed block is prefixed by the literal `Leb128MagicString` and a `u32` byte count.
+`FeatureTransformer::read_parameters` reads its four arrays with `read_little_endian` and nothing
+else: no compression, no magic string, no byte count. The transformer's weight rows are `i8`, so
+there is nothing a variable-length encoding would shorten.
 
 Both affine layers read every weight one at a time through `read_little_endian<WeightType>`:
 
@@ -330,10 +350,10 @@ and no test of the stream, which is what a test would have cost: `stream`'s `ope
 vbase-offset traversal. `gcount()` is a plain member of `basic_istream` and would have been cheaper;
 neither is needed.
 
-The reason to care is not tidiness. `read_leb_128` takes this result as `bytes_left` and spends it
-as a byte budget **before** it looks at the stream, so on a truncated net the decode loop would be
-bounded by an indeterminate number. Zeroing the *result* instead is a different shape and was
-measured to cost, by perturbing what gets inlined in this header; the figure and the command that
+The reason to care is not tidiness. `read_header` takes this result as the description length
+and `Network::read_parameters` as a section hash, so a truncated net would otherwise be judged
+by an indeterminate number. Zeroing the *result* instead is a different shape and was measured
+to cost, by perturbing what gets inlined in this header; the figure and the command that
 produced it are in the comment above `read_little_endian` in `nnue_common.h`.
 
 ### Where the net comes from

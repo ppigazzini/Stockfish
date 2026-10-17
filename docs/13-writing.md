@@ -53,7 +53,7 @@ The claims that survive review and fail verification are always the same shapes:
 - **a real symbol under a wrong name** -- `TBCursedWin` for `WDLCursedWin`;
 - **a case list that omits a case** -- `legal()` described without castling;
 - **a paraphrase that inverts a condition** -- "an own-king move forces a refresh only across a
-  bucket boundary", when `HalfKAv2_hm::requires_refresh` tests `diff.pc == make_piece(perspective,
+  bucket boundary", when `K32Q2::requires_refresh` tests `diff.pc == make_piece(perspective,
   KING)` and every one of them does.
 
 Three of the four are catchable only by opening the file. **The wrong count is the exception,
