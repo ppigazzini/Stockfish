@@ -104,7 +104,7 @@ fi
 #
 # A job with no timeout-minutes inherits GitHub's six-hour default. This branch's
 # defect register is largely ways an engine fails to come back -- a setoption
-# during go infinite, a movetime of zero, a crafted LEB128 net -- and the lanes
+# during go infinite, a movetime of zero, a crafted net -- and the lanes
 # that would hit one had no deadline at all.
 #
 # A workflow with no permissions block takes whatever the repository default

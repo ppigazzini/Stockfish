@@ -1040,8 +1040,8 @@ share is printed beside the coverage figure on every run.
 
 **Anchor a component on a symbol that survives both compilers.** clang inlines more
 aggressively, so a row naming only the narrow callee empties there while its cost reappears
-inside a wider symbol. Name both: `net parse` matches `read_leb_128` and the
-`read_parameters` that swallows it, and `NNUE network evaluate` matches `Network::evaluate` and
+inside a wider symbol. Name both: `net parse` matches `FeatureTransformer::read_parameters`
+and the `Network::read_parameters` that swallows it, and `NNUE network evaluate` matches `Network::evaluate` and
 the `NetworkArchitecture::propagate` that survives at some tiers and folds in at others. Anchor
 on `Name::` when widening, or a bare identifier will claim same-named methods from the rows
 below it -- the file is first-match-wins.
