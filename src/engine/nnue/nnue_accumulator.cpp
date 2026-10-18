@@ -940,26 +940,21 @@ sf_always_inline void update_accumulator_incremental(Color                     p
     const auto* threatPpBase = &featureTransformer.threatAndPpWeights[0];
     IndexType   pfStride     = FeatureTransformer::OutputDimensions;
 
-    // The psq lists are built FIRST because apply_combined consumes them first:
-    // each tile applies its psq rows before its threat rows, so a psq row
-    // prefetched here has the whole threat and pawn-pair index build to travel
-    // in, and one built last would have none. The three calls write to disjoint
-    // lists, so the order between them is free.
     if constexpr (Forward)
     {
-        PSQFeatureSet::append_changed_indices(perspective, ksq, dirtyPiece, psqRemoved, psqAdded);
         ThreatFeatureSet::append_changed_indices(perspective, ksq, dirtyThreats, thrRemoved,
                                                  thrAdded, threatPpBase, pfStride);
         PairFeatureSet::append_changed_indices(perspective, ksq, dirtyPawnPairs, thrRemoved,
                                                thrAdded, threatPpBase, pfStride);
+        PSQFeatureSet::append_changed_indices(perspective, ksq, dirtyPiece, psqRemoved, psqAdded);
     }
     else
     {
-        PSQFeatureSet::append_changed_indices(perspective, ksq, dirtyPiece, psqAdded, psqRemoved);
         ThreatFeatureSet::append_changed_indices(perspective, ksq, dirtyThreats, thrAdded,
                                                  thrRemoved, threatPpBase, pfStride);
         PairFeatureSet::append_changed_indices(perspective, ksq, dirtyPawnPairs, thrAdded,
                                                thrRemoved, threatPpBase, pfStride);
+        PSQFeatureSet::append_changed_indices(perspective, ksq, dirtyPiece, psqAdded, psqRemoved);
     }
 
     apply_combined(perspective, featureTransformer, computed, target_state, SF_CHANGED_ARGS,
@@ -986,16 +981,16 @@ void update_accumulator_incremental_both(const FeatureTransformer& featureTransf
     const auto* threat_pp_base = &featureTransformer.threatAndPpWeights[0];
     const auto  pf_stride      = FeatureTransformer::OutputDimensions;
 
-    PSQFeatureSet::append_changed_indices(WHITE, white_ksq, target_state.dirtyPiece,
-                                          SF_PSQ_REMOVED(WHITE), SF_PSQ_ADDED(WHITE));
-    PSQFeatureSet::append_changed_indices(BLACK, black_ksq, target_state.dirtyPiece,
-                                          SF_PSQ_REMOVED(BLACK), SF_PSQ_ADDED(BLACK));
     ThreatFeatureSet::append_changed_indices_both(
       white_ksq, black_ksq, target_state.dirtyThreats, SF_THR_REMOVED(WHITE),
       SF_THR_ADDED(WHITE), SF_THR_REMOVED(BLACK), SF_THR_ADDED(BLACK), threat_pp_base, pf_stride);
     PairFeatureSet::append_changed_indices_both(
       white_ksq, black_ksq, target_state.dirtyPawnPairs, SF_THR_REMOVED(WHITE),
       SF_THR_ADDED(WHITE), SF_THR_REMOVED(BLACK), SF_THR_ADDED(BLACK), threat_pp_base, pf_stride);
+    PSQFeatureSet::append_changed_indices(WHITE, white_ksq, target_state.dirtyPiece,
+                                          SF_PSQ_REMOVED(WHITE), SF_PSQ_ADDED(WHITE));
+    PSQFeatureSet::append_changed_indices(BLACK, black_ksq, target_state.dirtyPiece,
+                                          SF_PSQ_REMOVED(BLACK), SF_PSQ_ADDED(BLACK));
 
     apply_combined(WHITE, featureTransformer, computed, target_state, SF_CHANGED_ARGS_BOTH(WHITE),
                    featureTransformer.psq_weights(whiteBlock));
