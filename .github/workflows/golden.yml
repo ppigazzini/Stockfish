@@ -50,8 +50,36 @@ jobs:
       - name: Fetch the 3-4-man tablebases
         run: ./tests/tbfetch.sh --men 4
 
+      # The `tablebase5` case needs the `--men 5` corpus, KNNvKP and the four stems
+      # a capture from it reaches: the only corpus here with a DTZ past 100, so the
+      # only one whose positions are cursed wins and blessed losses. The prober adds
+      # the hundred on that branch and ranks a root under Syzygy50MoveRule on it,
+      # and no other lane reads either. 23 MB, cached on the script as the
+      # sanitizers lane caches the same corpus.
+      #
+      # BEST EFFORT, unlike the 3-4-man fetch above: a mirror outage skips the one
+      # case rather than failing the lane, and the comparison step below says so in
+      # a warning, because a lane that skipped the case did not cover it.
+      - name: Cache the KNNvKP corpus
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: resources/syzygy-5man
+          key: syzygy-5man-${{ hashFiles('tests/tbfetch.sh') }}
+      - name: Fetch the KNNvKP corpus (best effort; tablebase5 skips without it)
+        continue-on-error: true
+        run: ./tests/tbfetch.sh --men 5
+
+      # The gate's own exit code decides the step; the output is read only for the
+      # skip, which golden.sh reports in its summary rather than as a failure.
       - name: Compare the corpus
-        run: ./tests/golden.sh
+        run: |
+          rc=0
+          ./tests/golden.sh > golden.out 2>&1 || rc=$?
+          cat golden.out
+          if grep -q 'SKIPPED' golden.out; then
+            echo "::warning title=golden case SKIPPED::$(grep 'SKIPPED' golden.out | head -1 | sed 's/^ *//')"
+          fi
+          exit "$rc"
 
       # Owns its own deadline, which is the whole gate: a wedged engine is a
       # harness timeout to golden.sh and to instrumented.py, and a harness

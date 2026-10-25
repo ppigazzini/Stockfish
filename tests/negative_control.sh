@@ -517,6 +517,11 @@ if selected lanecheck-stale-workflow-excuse; then
     restore
 fi
 
+# golden.yml pins actions/cache twice, once per tablebase corpus, and mutate()
+# refuses an anchor that is not unique. The rows below that touch the cache pin
+# name the 3-4-man step by the path line that follows its pin.
+PATH34=$'\n        with:\n          path: tests/syzygy-34man'
+
 row actionpins-pin static
 if selected actionpins-pin; then
     # A CACHE THAT HIDES A FINDING IS WORSE THAN THE FLAKINESS IT CURED. The
@@ -528,8 +533,8 @@ if selected actionpins-pin; then
     echo "negative-control: actionpins  -- a pin whose SHA is not its claimed tag"
     ./tests/actionpins.sh >/dev/null 2>&1 || true   # warm the cache first
     mutate .github/workflows/golden.yml \
-        'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0' \
-        'actions/cache@0000000000000000000000000000000000000000 # v6.1.0'
+        "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0$PATH34" \
+        "actions/cache@0000000000000000000000000000000000000000 # v6.1.0$PATH34"
     if ./tests/actionpins.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- a pin that lies about its tag passed"; FAIL=$((FAIL+1))
     else
@@ -1305,8 +1310,8 @@ if selected actionpins; then
     # No network needed for this row. The split is visible in the files.
     echo "negative-control: actionpins  -- one action pinned at two versions"
     mutate .github/workflows/golden.yml \
-        'uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0' \
-        'uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0'
+        "uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0$PATH34" \
+        "uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0$PATH34"
     if ./tests/actionpins.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- a split pin passed"; FAIL=$((FAIL+1))
     else
