@@ -20,12 +20,15 @@
 
 #include "k32q2.h"
 
+#include <array>
+#include <initializer_list>
+
 #include "../../types.h"
+#include "../nnue_common.h"
+#include "../../basetypes.h"
 
 #if defined(USE_AVX512ICL)
     #include <immintrin.h>
-    #include <array>
-    #include "../../basetypes.h"
     #include "../../bitboard.h"
 #endif
 
@@ -77,6 +80,51 @@ void K32Q2::write_indices(const std::array<Piece, SQUARE_NB>& oldPieces,
 
     _mm512_storeu_si512(write_removed, removed_indices);
     _mm512_storeu_si512(write_added, added_indices);
+}
+#endif
+
+// clang's copies of the two feature builders; gcc compiles the ones in k32q2.h,
+// pinned inline, and k32q2.h says why the two compilers are split.
+#if !(defined(__GNUC__) && !defined(__clang__))
+IndexType
+K32Q2::make_index(Color perspective, Square s, Piece pc, Square ksq, bool opponentHasQueen) {
+    alignas(64) static constexpr auto offsets = [] {
+        std::array<std::array<u16, PIECE_NB>, 2 * COLOR_NB * SQUARE_NB> table{};
+        for (bool q : {false, true})
+            for (int c = 0; c < COLOR_NB; ++c)
+                for (int sq = 0; sq < SQUARE_NB; ++sq)
+                {
+                    const u16 flip        = 56 * c;
+                    const u16 orient      = u16(OrientTBL[sq]) ^ flip;
+                    const u16 queenOffset = q ? PS_NB : 0;
+                    for (int pieceIndex = 0; pieceIndex < PIECE_NB; ++pieceIndex)
+                        table[(int(q) * COLOR_NB + c) * SQUARE_NB + sq][pieceIndex] =
+                          PieceSquareIndex[c][pieceIndex] + KingBuckets[sq ^ flip] + queenOffset
+                          + orient;
+                }
+        return table;
+    }();
+
+    return IndexType(s)
+         ^ offsets[(int(opponentHasQueen) * COLOR_NB + perspective) * SQUARE_NB + ksq][pc];
+}
+
+void K32Q2::append_changed_indices(Color           perspective,
+                                   Square          ksq,
+                                   const DiffType& diff,
+                                   bool            opponentHasQueen,
+                                   IndexList&      removed,
+                                   IndexList&      added) {
+    removed.push_back(make_index(perspective, diff.from, diff.pc, ksq, opponentHasQueen));
+    if (diff.to != SQ_NONE)
+        added.push_back(make_index(perspective, diff.to, diff.pc, ksq, opponentHasQueen));
+
+    if (diff.remove_sq != SQ_NONE)
+        removed.push_back(
+          make_index(perspective, diff.remove_sq, diff.remove_pc, ksq, opponentHasQueen));
+
+    if (diff.add_sq != SQ_NONE)
+        added.push_back(make_index(perspective, diff.add_sq, diff.add_pc, ksq, opponentHasQueen));
 }
 #endif
 

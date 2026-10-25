@@ -21,13 +21,16 @@
 #ifndef NNUE_FEATURES_K32Q2_H_INCLUDED
 #define NNUE_FEATURES_K32Q2_H_INCLUDED
 
-#include <array>
-#include <initializer_list>
+#include <array>             // IWYU pragma: keep
+#include <initializer_list>  // IWYU pragma: keep
 
 #include "../../types.h"
 #include "../nnue_common.h"
 #include "../../basetypes.h"
-#include "../../compiler.h"
+#include "../../compiler.h"  // IWYU pragma: keep
+// Kept: the gcc branch below defines the two feature builders here, and they
+// read <array>, <initializer_list> and sf_always_inline. IWYU runs on clang,
+// sees the branch that only declares them, and would drop all three.
 
 
 namespace Stockfish::Eval::NNUE::Features {
@@ -128,6 +131,15 @@ class K32Q2 {
     // and not the change's, and no A/A control can see it, because the flip is
     // perfectly reproducible for a given tree. Pinning the cheaper state costs
     // the attribute and gives every measurement on this tree one lane back.
+    //
+    // gcc only. clang reads the pin the other way: forced into every caller,
+    // the builders grow AccumulatorStack::evaluate and its inliner pays for the
+    // size elsewhere in the search, and left in this header without the
+    // attribute they still cost clang PGO. So clang gets them out of line, in
+    // k32q2.cpp, where they were before the pin. The two bodies are one
+    // function and must stay identical: the bench signature under each compiler
+    // is what says they still are.
+#if defined(__GNUC__) && !defined(__clang__)
     static sf_always_inline IndexType
     make_index(Color perspective, Square s, Piece pc, Square ksq, bool opponentHasQueen) {
         alignas(64) static constexpr auto offsets = [] {
@@ -170,6 +182,17 @@ class K32Q2 {
             added.push_back(
               make_index(perspective, diff.add_sq, diff.add_pc, ksq, opponentHasQueen));
     }
+#else
+    static IndexType
+    make_index(Color perspective, Square s, Piece pc, Square ksq, bool opponentHasQueen);
+
+    static void append_changed_indices(Color           perspective,
+                                       Square          ksq,
+                                       const DiffType& diff,
+                                       bool            opponentHasQueen,
+                                       IndexList&      removed,
+                                       IndexList&      added);
+#endif
 
     // Returns whether the change stored in this DirtyPiece means
     // that a full accumulator refresh is required.

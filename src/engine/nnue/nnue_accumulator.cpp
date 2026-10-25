@@ -52,14 +52,18 @@ using namespace SIMD;
 
 namespace {
 
-// Pinned inline for the reason k32q2.h gives for the feature builder it
-// now calls inline: folding that builder in makes THIS function bigger, and
-// clang's profile-guided inliner answers the extra size by declining to fold it
-// into AccumulatorStack::evaluate_side -- a function neither change mentions.
-// The two decisions are one decision, so both are taken here rather than left
-// to a cost model that reads them apart.
+// Pinned inline wherever k32q2.h pins the feature builders it calls, which is
+// gcc only: folding the builders in makes THIS function bigger, and an inliner
+// left to weigh the two placements apart reads them as two decisions when they
+// are one. On clang the builders are out of line, and so is this decision.
+#if defined(__GNUC__) && !defined(__clang__)
+    #define SF_INCREMENTAL_INLINE sf_always_inline
+#else
+    #define SF_INCREMENTAL_INLINE
+#endif
+
 template<bool Forward>
-sf_always_inline void update_accumulator_incremental(Color                     perspective,
+SF_INCREMENTAL_INLINE void update_accumulator_incremental(Color                     perspective,
                                                      const FeatureTransformer& featureTransformer,
                                                      const Square              ksq,
                                                      bool                      opponentHasQueen,
@@ -801,7 +805,7 @@ void apply_combined(Color                     perspective,
 }
 
 template<bool Forward>
-sf_always_inline void update_accumulator_incremental(Color                     perspective,
+SF_INCREMENTAL_INLINE void update_accumulator_incremental(Color                     perspective,
                                                      const FeatureTransformer& featureTransformer,
                                                      const Square              ksq,
                                                      bool                      opponentHasQueen,
