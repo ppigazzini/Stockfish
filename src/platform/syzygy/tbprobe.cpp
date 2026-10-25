@@ -1698,6 +1698,27 @@ u8* set_sizes(PairsData* d, u8* data, const u8* end) {
     return data + symlenSize * sizeof(LR) + (symlenSize & 1);
 }
 
+// Refuse a symmetric pawn DTZ table that claims to store black to move. A
+// symmetric table (key == key2) stores white to move only, and do_probe_table
+// maps every position of one to white; check_dtz_stm exempts a PAWNLESS one from
+// the side test, but not one with pawns. Such a file answers CHANGE_STM for BOTH
+// sides, and probe_dtz's one-ply search then recurses until the stack is gone.
+// Every real table has the bit clear: KPvKP.rtbz, the only symmetric pawn table
+// up to five men, carries 0x02 on all four files.
+bool symmetric_stm_holds(TBTable<WDL>&, File) { return true; }
+
+bool symmetric_stm_holds(TBTable<DTZ>& e, File maxFile) {
+
+    if (e.key != e.key2 || !e.hasPawns)
+        return true;
+
+    for (File f = FILE_A; f <= maxFile; ++f)
+        if (e.get(0, f)->flags & TBFlag::STM)
+            return false;
+
+    return true;
+}
+
 u8* set_dtz_map(TBTable<WDL>&, u8* data, File, const u8*) { return data; }
 
 u8* set_dtz_map(TBTable<DTZ>& e, u8* data, File maxFile, const u8* end) {
@@ -1820,6 +1841,9 @@ bool set(T& e, u8* data, const u8* end) {
         for (int i = 0; i < sides; i++)
             if (!(data = set_sizes(e.get(i, f), data, end)))
                 return false;
+
+    if (!symmetric_stm_holds(e, maxFile))
+        return false;
 
     if (!(data = set_dtz_map(e, data, maxFile, end)))
         return false;

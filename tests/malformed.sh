@@ -32,7 +32,7 @@
 #
 # Exit codes:  0 every fixture refused   1 a fixture was not   2 skipped
 #
-# A SKIP IS NOT A PASS, and eight of the fifteen fixtures below need the 3-man
+# A SKIP IS NOT A PASS, and nine of the eighteen fixtures below need the 3-man
 # corpus. Reaching the end with any of them unrun exits 2, the code this header
 # has always named: a gate that returns 0 over half its cases counts in a lane
 # summary as coverage it did not provide.
@@ -207,16 +207,52 @@ def symlen_past_domain():
     return b
 
 
+# KPvKP's own order and piece bytes, copied from the real tables: the flags byte
+# (HasPawns, no Split -- the table is symmetric), then per file A to D two order
+# bytes and four pieces, then the word-alignment byte.
+KPVKP_WDL_HEAD = bytes.fromhex("423322119966EE3311119966EE22111199EE6633221199EE6600")
+KPVKP_DTZ_HEAD = bytes.fromhex("4201030109060E03020109060E03010109060E03010109060E00")
+
+
+def kpvkp_pair(dtz_flags):
+    """A single-valued KPvKP pair: the WDL file says won, the DTZ file carries DTZ_FLAGS."""
+    wdl = bytearray([0x71, 0xE8, 0x23, 0x5D]) + KPVKP_WDL_HEAD + bytes([0x80, 4]) * 4
+    dtz = bytearray([0xD7, 0x66, 0x0C, 0xA5]) + KPVKP_DTZ_HEAD + bytes([dtz_flags, 1]) * 4
+    return {"KPvKP.rtbw": wdl + bytes(80 - len(wdl)), "KPvKP.rtbz": dtz + bytes(80 - len(dtz))}
+
+
+def symmetric_dtz_black():
+    """A symmetric pawn DTZ table whose every file claims to store black to move."""
+    return kpvkp_pair(0x80 | 0x01)
+
+
+def symmetric_dtz_white():
+    """Its twin with the flag clear, as every real table has it."""
+    return kpvkp_pair(0x80)
+
+
 dest = sys.argv[2]
 os.makedirs(dest, exist_ok=True)
-with open(os.path.join(dest, "KQvK.rtbw"), "wb") as fh:
-    fh.write(bytes(globals()[sys.argv[1]]()))
+out = globals()[sys.argv[1]]()
+for name, body in (out.items() if isinstance(out, dict) else [("KQvK.rtbw", out)]):
+    with open(os.path.join(dest, name), "wb") as fh:
+        fh.write(bytes(body))
 PY
 
-# Every synthetic fixture is a KQvK table, so they all take the same probe.
+# Every synthetic fixture but one is a KQvK table and takes this probe.
 KQVK_FEN="4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
 
-# name            | generator
+# The exception is a KPvKP PAIR, and the only fixture whose defect lies past the
+# parse. Both files are single-valued -- the WDL one says every position is won
+# -- and every file of the DTZ one claims to store black to move. A symmetric
+# table maps every position to white to move, so that DTZ table answers "the
+# other side" for BOTH sides, and probe_dtz's one-ply search recursed down the
+# king moves until the stack was gone: ASan's stack-overflow on this tree, exit
+# 139 from upstream on the same pair. The position is black to move with both
+# pawns blocked, so no capture or pawn move ends the probe before the DTZ table.
+KPVKP_FEN="8/3k4/8/1K4p1/6P1/8/8/8 b - - 0 1"
+
+# name            | generator          | probe (default KQVK_FEN)
 FIXTURES=(
   "symbol-oob     |symbol_oob"
   "negative-resize|negative_resize"
@@ -224,6 +260,7 @@ FIXTURES=(
   "base64-shift   |base64_shift"
   "btree-past-end |btree_past_end"
   "symlen-past-domain|symlen_past_domain"
+  "symmetric-dtz-black|symmetric_dtz_black|$KPVKP_FEN"
 )
 
 PASS=0; FAIL=0; SKIP=0
@@ -275,14 +312,51 @@ check() {
 
 echo
 for row in "${FIXTURES[@]}"; do
-    IFS='|' read -r name gen <<< "$row"
+    IFS='|' read -r name gen fen <<< "$row"
     dir="$WORK/fx/${gen}"
     if ! python3 "$WORK/gen.py" "$gen" "$dir"; then
         echo "malformed: SKIPPED -- the $gen generator failed" >&2
         exit 2
     fi
-    check "$name" "$dir" "$KQVK_FEN"
+    check "$name" "$dir" "${fen:-$KQVK_FEN}"
 done
+
+# ------------------------------------------------------- the control fixture
+#
+# `symmetric-dtz-black`'s twin, flagged as every real symmetric table is. It must
+# LOAD -- no diagnostic -- and still answer, which is what fails a fix that
+# refuses every symmetric pawn table instead of the one flag that breaks them.
+check_loads() {
+    local name=$1 dir=$2 fen=$3 out rc
+    out=$( ( printf 'setoption name SyzygyPath value %s\nisready\n' "$dir"; sleep 0.4;
+             printf 'position fen %s\ngo depth 8\n' "$fen"; sleep 4;
+             printf 'quit\n'; sleep 0.3 ) \
+           | ( cd "$EXEDIR" && timeout -s KILL 60 "$EXE" ) 2>&1 )
+    rc=$?
+
+    local bad=0
+    [ "$rc" = "0" ] || { note "exit $rc -- a table that loads exits 0"; bad=1; }
+    if grep -qE 'AddressSanitizer|runtime error:|UndefinedBehaviorSanitizer' <<< "$out"; then
+        note "a sanitizer reported:"
+        grep -m2 -E 'AddressSanitizer|runtime error:' <<< "$out" | sed 's/^/    /'
+        bad=1
+    fi
+    grep -qi 'corrupt' <<< "$out" && { note "a well-formed table was refused"; bad=1; }
+    grep -q '^bestmove' <<< "$out" || { note "no bestmove -- it stopped answering"; bad=1; }
+
+    if [ "$bad" = "0" ]; then
+        echo "malformed: $name  loaded"; PASS=$((PASS+1))
+    else
+        echo "malformed: $name  NOT LOADED"; FAIL=$((FAIL+1))
+    fi
+}
+
+dir="$WORK/fx/symmetric_dtz_white"
+if ! python3 "$WORK/gen.py" symmetric_dtz_white "$dir"; then
+    echo "malformed: SKIPPED -- the symmetric_dtz_white generator failed" >&2
+    exit 2
+fi
+check_loads "symmetric-dtz-white" "$dir" "$KPVKP_FEN"
 
 # ------------------------------------------------------- the corpus fixture
 #

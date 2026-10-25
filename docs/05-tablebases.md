@@ -232,7 +232,8 @@ byte in a downloaded table is a case the reader has to answer rather than crash 
 is checked at load; the block walk and both bitstream reads are clamped; and a `base64[]` table
 that is not a canonical Huffman code, a pairing that closes a loop, a flags byte contradicting
 the material, a declared symbol count larger than the domain that indexes it, an empty
-`blockLength[]` and a block narrower than the bitstream word are all refused.
+`blockLength[]`, a block narrower than the bitstream word and a symmetric pawn DTZ table that
+claims to store black to move are all refused.
 `tests/malformed.sh` is what holds that, one fixture per field. It builds under
 `sanitize="address undefined" debug=yes`, so an out-of-bounds read the shipped build would absorb
 into mmap page padding is reported rather than survived, and it exits 2 rather than 0 when the 3-man
@@ -274,6 +275,18 @@ an 80-byte file goes down the full decode path, where every span it then describ
 mapping.
 `tests/malformed.sh`'s `corpus-flags` fixture clears it in a real `KNvK.rtbw`, which is the shape a
 bad download actually produces.
+
+Its `STM` bit is the third claim, and the one a file can make with every span in bounds. A DTZ
+table stores one side to move, and `check_dtz_stm` answers `CHANGE_STM` for the other, which
+sends `probe_dtz` into a one-ply search. A **symmetric** table (`key == key2`) stores white to
+move only, and `do_probe_table` maps every position of one to white -- so a symmetric DTZ file
+with pawns that sets the bit answers "the other side" for BOTH sides, and that one-ply search
+recurses until the stack is gone. A pawnless one is exempt from the test and cannot loop. `set`
+refuses the file at load, where the contradiction is first visible; upstream reads it and
+segfaults. Every real table has the bit clear: `KPvKP.rtbz`, the only symmetric pawn table up to
+five men, carries `0x02` on all four files. `tests/malformed.sh`'s `symmetric-dtz-black` is that
+file, and `symmetric-dtz-white`, its twin with the bit clear, must load in silence -- the control
+that fails a refusal of every symmetric pawn table.
 
 ## Extending a PV into the tables
 
@@ -394,6 +407,8 @@ and a blob hides that:
 | `flags-vs-material` | the `Split`/`HasPawns` bits against the material asked for | a file laid out to one plan and read to another |
 | `bitstream-walk` | a block index from the padded region of `blockLength[]` | a forward stream walk leaving the mapping at both ends |
 | `sparse-block` | the first `SparseEntry` block index = `0xFFFFFFFF` | a block far past `blockLengthSize` |
+| `symmetric-dtz-black` | a `KPvKP` pair whose DTZ file sets `STM` on every file | `probe_dtz` recursing until ASan's stack-overflow; exit 139 from upstream |
+| `symmetric-dtz-white` | the same pair with `STM` clear, as every real table has it | nothing -- the control: it must load without a diagnostic |
 | `alloc-failure` | 16 threads under a 128 MB allocation cap | an allocation the host refuses, rather than a corrupt file |
 
 The last is a different question from the rest -- it asks what the engine does when the
