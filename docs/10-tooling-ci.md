@@ -432,7 +432,7 @@ entry for the six that build or publish rather than check.
 | `upload_binaries.yml` | release artifacts |
 | `official_release.yml` | the tagged release, on a manual dispatch only; it builds through the same reusable lanes and runs no gate of its own |
 | `perfbudget.yml` | `perfbudget.sh` at two tiers, base against head, then `textequal.sh` as `continue-on-error` -- the codegen comparison informs, it does not block |
-| `golden.yml` | `optiondefaults.sh`, then `golden.sh` against the corpus `tbfetch.sh --men 4` fetches, then `liveness.sh` |
+| `golden.yml` | `optiondefaults.sh`, then `golden.sh` against the corpora `tbfetch.sh --men 4` and `--men 5` fetch, the second best effort, then `liveness.sh` |
 | `docs.yml` | `docslint.sh`, `lanecheck.sh`, `shellcheck.sh`, `buildcoverage.sh`, `depcheck.sh`, `actionpins.sh`, `anchor.sh`, then `linkcheck.sh` and `enginelink.sh` |
 | `fuzz.yml` | nightly: all four `fuzz.py` harnesses -- `uci`, `tb`, `net`, `shm` -- one job each, then `fuzzsearch.sh`, over the corpus `tbfetch.sh` writes |
 | `platformbattery.yml` | the functional battery on Linux arm64 and Windows arm64: `signature.sh` on both, `uci_driver.py`, `instrumented.py` and `malformed.sh` on Linux only, over the corpus `tbfetch.sh` writes |

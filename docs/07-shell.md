@@ -500,8 +500,9 @@ other mechanism.
 build makes the break the expected output. Update only from a tree whose signature matches the
 commit record, and put the diff in the commit body.
 
-Dispatched by `golden.yml`, which fetches the 3-4-man corpus first so the tablebase case runs
-rather than skipping.
+Dispatched by `golden.yml`, which fetches the 3-4-man corpus first so the `tablebase` case runs
+rather than skipping, and the `--men 5` corpus for `tablebase5` -- best effort, so a mirror outage
+skips that one case and the lane prints a warning naming it.
 
 ### `tests/liveness.sh`
 
