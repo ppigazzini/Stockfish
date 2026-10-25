@@ -221,15 +221,17 @@ pointers into it must survive a resize**.
 
 ### `do_move` and `undo_move`
 
-Two overloads. The short one -- `do_move(m, newSt, tt)` -- is for perft and for the shell
+Two overloads. The short one -- `do_move(m, newSt)` -- is for perft and for the shell
 replaying a game. The search takes the long one, which additionally carries `givesCheck` (already
 computed by the caller), the `Dirties&` NNUE record, and a `const SharedHistories*` for the
 prefetches.
 
 `do_move` maintains the incremental state: the Zobrist key, the pawn/minor/non-pawn/material keys,
-the check information, and the dirty-piece record. It also issues the transposition and history
-prefetches from the point the child's keys become final -- inside `do_move` rather than at the
-caller, because that is where the lead time is longest. The four correction-history prefetches are
+the check information, and the dirty-piece record. It also issues the history prefetches from the
+point the child's keys become final -- inside `do_move` rather than at the caller, because that is
+where the lead time is longest. The transposition prefetch is the one exception: the search's own
+`do_move` issues it before the make, from `prefetch_key`, which predicts the child's key from the
+move alone and so starts the load earlier still. The four correction-history prefetches are
 written out at the call site rather than wrapped in a helper: a function whose only effect is a
 prefetch has no observable effect, so the compiler may delete the call, and four prefetches
 silently missing score as an *improvement* on the instruction axis

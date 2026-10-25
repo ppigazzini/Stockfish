@@ -59,9 +59,9 @@ than floating point. That is what makes the forward pass affordable at every lea
 widened as it is added. On x86 with SSSE3 or better the widening is paid once per TWO rows:
 `apply_feature_pair` in `nnue_accumulator.cpp` interleaves the bytes of two rows with an
 unpack and sums each pair with one `maddubs` against a vector of ones, which is one shuffle
-where a sign extension per row was two. `WeightRows` is what makes the pairing possible: it
-resolves the feature indices of all three sets to row pointers once, outside the tile loop, so
-a piece-square row and a threat row can be partners. `simd.h` defines `USE_PAIRED_WIDENING_ADD`
+where a sign extension per row was two. `apply_combined_features` pairs the rows of each sign
+within a feature set and, when the piece-square rows are odd in number, pairs the last of them
+with the first threat or pawn-pair row, so at most one row per sign is widened alone. `simd.h` defines `USE_PAIRED_WIDENING_ADD`
 where the kernel applies, and `FeatureTransformer::WideningPairOrder` permutes the rows at load
 time so the accumulator's layout is unchanged -- which is why `export_net` has to undo it.
 

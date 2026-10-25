@@ -43,7 +43,7 @@
 // ATTRIBUTE, neither of which leaves an AST node for IWYU to attribute a use
 // to. It asks for this header on a tier where the SIMD branches are compiled
 // and asks to drop it on one where they are not, and the second answer is the
-// wrong one -- WeightRows::apply carries the macro whatever the tier. Same
+// wrong one -- apply_features carries the macro whatever the tier. Same
 // reason engine/attacks.h keeps compiler.h.
 
 namespace Stockfish::Eval::NNUE {
@@ -278,7 +278,7 @@ constexpr IndexType Dimensions = FeatureTransformer::OutputDimensions;
 // Check the relation that makes all three accumulator folds legal: the
 // accumulator is the bias vector plus one weight row per active feature, summed
 // in the free abelian group whose inverse is the `sign` template parameter of
-// WeightRows::apply. The incremental fold, the Finny
+// apply_features. The incremental fold, the Finny
 // refresh and the hybrid king move each produce that value by a different
 // route, and every other assert in this file compares a `computed` flag or the
 // shape of a DirtyPiece -- none compares a value.
