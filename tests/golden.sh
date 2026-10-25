@@ -155,9 +155,10 @@ print('\n'.join(out))
 PY
 }
 
-# The one substitution a case may carry, and it exists because a `.uci` file is
+# The two substitutions a case may carry, and they exist because a `.uci` file is
 # engine input piped raw: it cannot name a path, and a tablebase case is useless
-# without one. `@SYZYGY@` is replaced with the corpus tbfetch.sh writes.
+# without one. `@SYZYGY@` and `@SYZYGY5@` are replaced with corpora tbfetch.sh
+# writes.
 #
 # THE 3-4-MAN SET, not the 3-man one, and the difference is recorded in the
 # golden rather than incidental to it: MaxCardinality is 4 with this corpus and
@@ -171,6 +172,13 @@ PY
 # skip is for a developer who has not -- "6 of 6 match" over a corpus missing
 # the only case that loads tables is a sentence about nothing.
 SYZYGY="$ROOT/tests/syzygy-34man"
+
+# `@SYZYGY5@` is the `--men 5` corpus: KNNvKP and the four stems a capture from it
+# reaches. It is the only corpus here holding a DTZ past 100, which is what a
+# cursed win and a blessed loss ARE, so the branches of the prober that add the
+# hundred and that rank a root under Syzygy50MoveRule run against nothing smaller.
+# 23 MB, so it lives under resources/ as tbfetch.sh says, and the lane caches it.
+SYZYGY5="$ROOT/resources/syzygy-5man"
 
 pass=0; fail=0; compared=0; skipped=0
 WORK=$(mktemp -d) || exit 2
@@ -197,6 +205,14 @@ for c in "$CASES"/*.uci; do
         fi
         script="$WORK/$name.uci"
         sed "s#@SYZYGY@#$SYZYGY#g" "$c" > "$script"
+    elif grep -q '@SYZYGY5@' "$c"; then
+        if ! ls "$SYZYGY5"/*.rtbw >/dev/null 2>&1; then
+            echo "  SKIPPED  $name -- no corpus at resources/syzygy-5man; run tests/tbfetch.sh --men 5"
+            skipped=$((skipped+1))
+            continue
+        fi
+        script="$WORK/$name.uci"
+        sed "s#@SYZYGY5@#$SYZYGY5#g" "$c" > "$script"
     fi
 
     got=$(drive "$script" | filter)

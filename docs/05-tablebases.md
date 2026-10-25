@@ -357,8 +357,11 @@ worth carrying in git:
 **`--men 5` is not the 5-man set.** It is one 5-man stem, `KNNvKP`, plus the four a capture from
 it can reach, which is the closure a probe needs and 23 MB of which one stem is 99%. It lands
 under `resources/`, the scratch tree `.gitignore` covers wholesale, rather than beside a 12 KB
-corpus in `tests/`. `tbpv.py` below is what needs it, and needs exactly it: adding stems changes
-what the sweep reproduces.
+corpus in `tests/`. `tbpv.py` below needs exactly it -- adding stems changes what the sweep
+reproduces -- and so does `golden.sh`'s `tablebase5` case: it is the only corpus here with a DTZ
+past 100, so its cursed wins and blessed losses are the only positions on which the prober adds
+the hundred and ranks a root under `Syzygy50MoveRule`. The case pins `d`'s two rows on five of
+them and the root move with the rule on and off.
 
 **Separate directories, because what a corpus CONTAINS is part of what a test using it
 records.** `MaxCardinality` reads 3 or 4 depending on which is there and the engine prints the
