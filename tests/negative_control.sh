@@ -950,6 +950,28 @@ if selected malformed; then
     fi
 fi
 
+row malformed-symmetric
+if selected malformed-symmetric; then
+    # The one refusal malformed.sh holds that is not a bound: a symmetric pawn DTZ
+    # table claiming black to move is a file whose every span fits. Without the
+    # refusal its fixture is the stack overflow the refusal was written for, and
+    # the white-flagged twin still loads -- so the gate must go red on the one row.
+    echo "negative-control: malformed-symmetric -- the symmetric-STM refusal removed"
+    mutate src/platform/syzygy/tbprobe.cpp \
+        'if (!symmetric_stm_holds(e, maxFile))' \
+        'if (false && !symmetric_stm_holds(e, maxFile))'
+    ./tests/malformed.sh >/dev/null 2>&1; NCRC=$?
+    restore
+    if [ "$NCRC" = "2" ]; then
+        echo "  SKIPPED -- malformed.sh could not build or run"; SKIP=$((SKIP+1))
+    elif [ "$NCRC" = "0" ]; then
+        echo "  NOT DETECTED -- a symmetric pawn DTZ table storing black was accepted"
+        FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+fi
+
 # --------------------------------------------------------------- uci_driver
 
 row uci_driver
