@@ -20,6 +20,7 @@
 
 #include <cassert>
 #include <limits>
+#include <utility>
 
 #include "bitboard.h"
 #include "misc.h"
@@ -27,22 +28,33 @@
 
 namespace Stockfish {
 
-enum Stages : i8 {
-    TT,
-    INIT_FIRST_STAGE,
+namespace {
 
+enum Stages {
+    // generate main search moves
+    MAIN_TT,
+    CAPTURE_INIT,
     GOOD_CAPTURE,
+    QUIET_INIT,
     GOOD_QUIET,
-    BAD_MOVES,
+    BAD_CAPTURE,
+    BAD_QUIET,
 
-    QSEARCH,
-
+    // generate evasion moves
+    EVASION_TT,
+    EVASION_INIT,
     EVASION,
 
+    // generate probcut moves
+    PROBCUT_TT,
+    PROBCUT_INIT,
     PROBCUT,
-};
 
-namespace {
+    // generate qsearch moves
+    QSEARCH_TT,
+    QCAPTURE_INIT,
+    QCAPTURE
+};
 
 #ifdef USE_AVX512
 // Load the Move, and the ExtMove value, into all lanes of 512-bit registers
@@ -93,7 +105,6 @@ struct MoveSorter {
     }
 };
 #endif
-
 
 // Sort moves in descending order up to and including a given limit.
 // The order of moves smaller than the limit is left unspecified.
@@ -159,11 +170,10 @@ MovePicker::MovePicker(const Position&              p,
     ply(pl) {
 
     if (pos.checkers())
-        first_stage = EVASION;
-    else
-        first_stage = depth > 0 ? GOOD_CAPTURE : QSEARCH;
+        stage = EVASION_TT + !(ttm && pos.legal(ttm));
 
-    stage = ttm && pos.legal(ttm) ? TT : INIT_FIRST_STAGE;
+    else
+        stage = (depth > 0 ? MAIN_TT : QSEARCH_TT) + !(ttm && pos.legal(ttm));
 }
 
 // MovePicker constructor for ProbCut: we generate captures with Static Exchange
@@ -173,18 +183,16 @@ MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceTo
     captureHistory(cph),
     ttMove(ttm),
     threshold(th) {
-
     assert(!pos.checkers());
 
-    first_stage = PROBCUT;
-    stage       = ttm && pos.capture_stage(ttm) && pos.legal(ttm) ? TT : INIT_FIRST_STAGE;
+    stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm) && pos.legal(ttm));
 }
 
 // Assigns a numerical value to each move in a list, used for sorting.
 // Captures are ordered by Most Valuable Victim (MVV), preferring captures
 // with a good history. Quiet moves are ordered using the history tables.
 template<GenType Type>
-ExtMove* MovePicker::generate_and_score() {
+ExtMove* MovePicker::score(const MoveList<Type>& ml) {
 
     static_assert(Type == CAPTURES || Type == QUIETS || Type == EVASIONS, "Wrong type");
 
@@ -200,8 +208,6 @@ ExtMove* MovePicker::generate_and_score() {
         threatByLesser[QUEEN] = pos.threats_by(ROOK) | threatByLesser[ROOK];
         threatByLesser[KING]  = 0;
     }
-
-    MoveList<Type> ml(pos);  // move generation
 
     ExtMove* it = cur;
     for (auto move : ml)
@@ -276,87 +282,106 @@ Move MovePicker::select(Pred filter) {
 Move MovePicker::next_move() {
 
     constexpr int goodQuietThreshold = -14000;
-dispatch:
+top:
     switch (stage)
     {
 
-    case TT :
-        stage = INIT_FIRST_STAGE;
+    case MAIN_TT :
+    case EVASION_TT :
+    case QSEARCH_TT :
+    case PROBCUT_TT :
+        ++stage;
         return ttMove;
 
-    case INIT_FIRST_STAGE :
-        cur = endBadMoves = moves;
+    case CAPTURE_INIT :
+    case PROBCUT_INIT :
+    case QCAPTURE_INIT : {
+        MoveList<CAPTURES> ml(pos);
 
-        if (first_stage == EVASION)
-            endCur = generate_and_score<EVASIONS>();
-        else
-            endCur = generate_and_score<CAPTURES>();
+        cur = endBadCaptures = moves;
+        endCur = endCaptures = score<CAPTURES>(ml);
 
         partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
-
-        stage = first_stage;
-        goto dispatch;
+        ++stage;
+        goto top;
+    }
 
     case GOOD_CAPTURE :
         if (select([&]() {
                 if (pos.see_ge(*cur, -cur->value / 18))
                     return true;
-                *endBadMoves++ = *cur;
+                std::swap(*endBadCaptures++, *cur);
                 return false;
             }))
             return *(cur - 1);
 
-        endBadCaptures = endBadMoves;
+        ++stage;
+        [[fallthrough]];
 
+    case QUIET_INIT :
         if (!skipQuiets)
         {
-            // initialize quiet moves
-            cur    = endBadMoves;
-            endCur = generate_and_score<QUIETS>();
+            MoveList<QUIETS> ml(pos);
+
+            endCur = endGenerated = score<QUIETS>(ml);
 
             partial_insertion_sort(cur, endCur, -3560 * depth);
-
-            stage = GOOD_QUIET;
-            [[fallthrough]];
-
-        case GOOD_QUIET :
-            if (select([&]() {
-                    if (cur->value > goodQuietThreshold)
-                        return true;
-                    *endBadMoves++ = *cur;
-                    return false;
-                }))
-                return *(cur - 1);
         }
+
+        ++stage;
+        [[fallthrough]];
+
+    case GOOD_QUIET :
+        if (!skipQuiets && select([&]() { return cur->value > goodQuietThreshold; }))
+            return *(cur - 1);
 
         // Prepare the pointers to loop over the bad captures
         cur    = moves;
-        endCur = endBadMoves;
+        endCur = endBadCaptures;
 
-        stage = BAD_MOVES;
+        ++stage;
         [[fallthrough]];
 
-    case BAD_MOVES :
-    case QSEARCH :
+    case BAD_CAPTURE :
+        if (select([]() { return true; }))
+            return *(cur - 1);
+
+        // Prepare the pointers to loop over quiets again
+        cur    = endCaptures;
+        endCur = endGenerated;
+
+        ++stage;
+        [[fallthrough]];
+
+    case BAD_QUIET :
+        if (!skipQuiets)
+            return select([&]() { return cur->value <= goodQuietThreshold; });
+
+        return Move::none();
+
+    case EVASION_INIT : {
+        MoveList<EVASIONS> ml(pos);
+
+        cur    = moves;
+        endCur = endGenerated = score<EVASIONS>(ml);
+
+        partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
+        ++stage;
+        [[fallthrough]];
+    }
+
     case EVASION :
+    case QCAPTURE :
         return select([]() { return true; });
 
     case PROBCUT :
         return select([&]() { return pos.see_ge(*cur, threshold); });
-
-    default :
-        assert(false);
-        sf_unreachable();
     }
+
+    assert(false);
+    return Move::none();  // Silence warning
 }
 
-void MovePicker::skip_quiet_moves() {
-    skipQuiets = true;
-    if (stage == BAD_MOVES || stage == GOOD_QUIET)
-    {
-        endCur      = endBadCaptures;  // discards any quiet moves in the current stage
-        endBadMoves = endBadCaptures;  // discards bad quiet moves
-    }
-}
+void MovePicker::skip_quiet_moves() { skipQuiets = true; }
 
 }  // namespace Stockfish
