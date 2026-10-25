@@ -219,6 +219,14 @@ quiescence    QSEARCH_TT -> QCAPTURE_INIT -> QCAPTURE
 In check there is no capture/quiet split: every evasion is generated at once, because there are
 few of them and skipping any is unsound.
 
+**Upstream merges these into one `TT` and one `INIT_FIRST_STAGE`**, keeps the picker's kind in a
+stored `first_stage`, and copies each losing quiet behind the bad captures as the good-quiet walk
+passes it, so that one `BAD_MOVES` stage replays both. This picker keeps the per-kind stages. The
+copy is paid on every node that reaches the good-quiet walk, where `BAD_QUIET`'s second walk is
+paid only by the nodes that get that far, and every port of the merge onto this picker measured
+costs clang PGO search instructions. The commit at the base of the branch that keeps the stages
+carries the grid; re-measure before porting the merge again.
+
 The stage is entered by arithmetic rather than a branch:
 
 ```cpp
