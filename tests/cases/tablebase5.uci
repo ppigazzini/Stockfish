@@ -1,0 +1,25 @@
+setoption name SyzygyPath value @SYZYGY5@
+isready
+position fen 8/7p/1k6/8/8/N1N2K2/8/8 w - - 0 1
+d
+position fen 8/8/8/2k1p3/8/6N1/3K3N/8 w - - 0 1
+d
+position fen 2k5/6K1/4N3/8/4p3/8/8/3N4 w - - 0 1
+d
+position fen 3k2N1/8/7p/8/4N3/8/6K1/8 b - - 0 1
+d
+position fen 7N/8/5N2/4p3/4K3/8/5k2/8 b - - 0 1
+d
+position fen 8/8/k2N4/3K4/8/5p2/8/N7 w - - 0 1
+d
+position fen 8/pk3K2/8/8/8/N7/8/3N4 w - - 0 1
+d
+position fen 2k5/6K1/4N3/8/4p3/8/8/3N4 w - - 0 1
+go depth 1
+position fen 7N/8/5N2/4p3/4K3/8/5k2/8 b - - 0 1
+go depth 1
+setoption name Syzygy50MoveRule value false
+position fen 2k5/6K1/4N3/8/4p3/8/8/3N4 w - - 0 1
+go depth 1
+position fen 7N/8/5N2/4p3/4K3/8/5k2/8 b - - 0 1
+go depth 1
