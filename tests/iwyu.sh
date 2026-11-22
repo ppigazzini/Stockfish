@@ -31,7 +31,7 @@
 #
 # THREE TIERS by default, because the include set of a file holding #if is a
 # property of the tier and not of the file: the generic scalar path, the AVX2
-# path, and the AVX-512 one. attacks.cpp needs prng.h in the first and not in
+# path, and the AVX-512 one. k32h3.cpp needs bitboard.h in the last and not in
 # the other two, and one tier alone would have missed it.
 #
 # WHAT NEITHER MODE CAN SEE: a use behind another host's #ifdef. Three includes

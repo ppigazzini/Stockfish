@@ -13,7 +13,7 @@
 #     the code, so it cannot be reproduced by a reviewer and it drifts upward.
 #
 #   * Startup is subtracted BY MEASUREMENT, per binary. The net load and the
-#     magic-table build are a large share of a short bench, so a whole-process
+#     line-table build are a large share of a short bench, so a whole-process
 #     ratio describes the loader as much as the engine -- and the share grows
 #     as the depth falls, which is the direction a cheap run moves.
 #
@@ -438,7 +438,7 @@ fi
 
 if [ "$S_VERDICT" = "FAIL" ]; then
     echo "perfbudget: FAIL -- startup regression of ${S_DELTA}% exceeds the ${STARTUP_TOLERANCE}% tolerance"
-    echo "  Startup is the net load and the magic-table build, paid once per process."
+    echo "  Startup is the net load and the line-table build, paid once per process."
     echo "  It is subtracted from the search figure above, so a search that passed says"
     echo "  nothing about it. Raise --startup-tolerance only with a reason written down."
 else

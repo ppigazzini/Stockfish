@@ -73,7 +73,7 @@ NNUE accumulator stack	AccumulatorStack::|AccumulatorCaches::
 # inline them into NNUE::Network::evaluate, so they cannot be separated from it
 # and a row for them would report MATCHED NOTHING forever -- which trains a
 # reader to ignore that diagnostic. Their cost is inside `NNUE network evaluate`.
-NNUE feature transform	FeatureTransformer|K32Q2|FullThreats|PP_3Wide|append_active_indices
+NNUE feature transform	FeatureTransformer|K32H3|FullThreats|PP_3Wide|append_active_indices
 
 # -- search: the alpha-beta spine --
 search node	Worker::search<

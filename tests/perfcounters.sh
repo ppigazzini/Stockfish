@@ -201,7 +201,7 @@ if [ -n "$SYZYGY" ]; then
                  | awk '{ if (length($0) > m) m = length($0) } END { print m }')
 fi
 
-# The startup probe loads the net and builds the magic tables, then quits without
+# The startup probe loads the net and builds the line tables, then quits without
 # searching. With --syzygy it maps the tables too, so the table LOAD lands in
 # startup and what is left in the search figure is the PROBE.
 #
@@ -371,7 +371,7 @@ for arch in $TIERS; do
     # rather than adding a verdict to it. A tier whose startup probe did not pair
     # still has a whole-process result, and that result is not in doubt.
     echo
-    echo "  startup only -- net load, magic tables$([ -n "$SYZYGY" ] && printf '%s' ', table mapping')"
+    echo "  startup only -- net load, line tables$([ -n "$SYZYGY" ] && printf '%s' ', table mapping')"
     python3 tests/perfcounters_report.py "$RESULTS" "$arch/startup" || true
     echo
     echo "  search only -- each run minus its own startup, paired within the round"
