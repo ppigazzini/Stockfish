@@ -170,7 +170,7 @@ it as a pass.
 
 | trap | detail |
 |---|---|
-| **Startup is a large share of a depth-8 bench**: net load plus magic tables. A whole-process instruction ratio describes the loader as much as the engine. Subtract startup by measurement, and only on the instruction axis. | `tests/perfbudget.sh` does it per binary |
+| **Startup is a large share of a depth-8 bench**: net load plus the line tables. A whole-process instruction ratio describes the loader as much as the engine. Subtract startup by measurement, and only on the instruction axis. | `tests/perfbudget.sh` does it per binary |
 | **A node count that moved makes the comparison VOID**, not expensive. Fix the behaviour change first; `signature.sh` owns it. | both perf gates refuse |
 | **callgrind implements no AVX-512** and dies on the first instruction it does not know. The instruction axis tops out at avx2/bmi2, below the tier a player builds. Instructions at avx2, time at native; never quote one tier's instruction ratio beside another tier's time ratio. | `perfbudget.sh` refuses an avx512 ARCH |
 | **LTO is on by default** (`-flto=full` clang; `-flto` gcc, which `src/Makefile` partitions `balanced` from gcc 14 and `one` below it or in a universal slice), and **`EXTRACXXFLAGS=-fno-lto` CANNOT TURN IT OFF**: `src/Makefile` interpolates `EXTRACXXFLAGS` into `CXXFLAGS` and appends `-flto` after it, so the Makefile's flag is last and wins. Passing the flag changes nothing and reports nothing, so a gate that passes it measures the LTO build while believing it did not. Every gate needing LTO off builds through a `COMPCXX` wrapper that strips the argument. | `textequal.sh`, `linkcheck.sh`, `enginelink.sh`, `fuzzsearch.sh` |

@@ -31,14 +31,13 @@ The threads diverge for three reasons, all of them in the code:
 
 - they share the transposition table, so a position one thread has already searched returns a
   cutoff to another;
-- each worker carries its own `optimism` values, which `Search::Worker::evaluate` passes into
-  `Eval::evaluate` to be blended with the network's output, so their evaluations differ;
 - each opens its aspiration window at a width derived from `threadIdx`, so the same root move
   fails high or low on different threads at different iterations
-  ([02-engine-search.md](02-engine-search.md)).
+  ([02-engine-search.md](02-engine-search.md));
+- odd-numbered threads reduce a null move one ply less, so they prune a different tree.
 
 ```sh
-grep -n 'threadIdx % 8\|optimism\[' src/engine/search.cpp
+grep -n 'threadIdx % 8\|threadIdx & 1' src/engine/search.cpp
 ```
 
 The speedup comes from the shared table: work one thread did is work another does not repeat.
@@ -110,7 +109,7 @@ awk '/^void SearchManager::check_time/,/^}/' src/engine/search.cpp
 **The races are intentional and are typed rather than avoided.** A transposition entry can be
 read while another thread writes it, and a torn entry is possible. Making that safe would
 need a lock per cluster, which would cost more than the occasional wrong entry -- and a wrong
-entry is already tolerated, because a 16-bit key check does not exclude collisions either.
+entry is already tolerated, because a 21-bit key check does not exclude collisions either.
 
 What `RelaxedAtomic` buys is that the race is **defined**. A plain `u64` written by one thread
 and read by another is undefined behaviour, which a compiler may optimise on the assumption it

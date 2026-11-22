@@ -28,15 +28,15 @@ Audience: board and movegen.
 | generate the legal moves | `movegen.cpp` | `generate<GenType>`, `MoveList<GenType>` |
 | where the castling rook actually is | `position.h` | `Position::castling_rook_square`, `Position::castling_impeded` |
 
-## Startup: two `init`s in one order
+## Startup: one `init`
 
-`src/shell/main.cpp` calls `Attacks::init()` and then `Position::init()`, and **that order is a
-requirement, not a listing**. `Position::init` builds the cuckoo table by asking
-`attacks_bb(type_of(pc), s1, 0)` for every piece and square, so on any build that fills its slider
-tables at run time -- the `HyperbolaMagic` and `BitboardMagic` branches below -- it reads tables
-`Attacks::init` has not written yet. Reversing the two costs a wrong cuckoo table, which is a
-repetition detector that silently disagrees with the rules, on the tiers where AVX2 does not put
-the table in `constexpr` storage and hide the bug.
+`src/shell/main.cpp` calls `Attacks::init()`, and it is the only table the board builds at run
+time. Everything else it reads is `constexpr` and exists before `main`: `PseudoAttacks`, the slider
+table `DualMagics` and its rank table, the Zobrist keys, and the repetition table below.
+`Attacks::init` fills the line tables -- `LineBB`, `BetweenBB`, `inverse_RayPassBB`, `DiagBB`,
+`AntiDiagBB` -- which `Position::set` reads to compute blockers and pins, so it must run before the
+first position is set. Nothing checks that order: a position set before it reads zeroed line
+tables, and its pins come out empty.
 
 ```sh
 grep -n 'init()' src/shell/main.cpp
@@ -119,48 +119,51 @@ arm read. The grep is still the check -- it now returns nothing because the func
 
 `bitboard.cpp` holds only `Bitboards::pretty`, the ASCII dump used from a debugger.
 
-## `attacks.h` -- slider attacks, three ways
+## `attacks.h` -- slider attacks, one struct on every tier
 
 Leapers (king, knight, pawn) come out of `PseudoAttacks`, a `constexpr` table built at compile
-time. Sliders are the interesting case, and **there are three implementations**, selected by the
-`#if` chain at the top of `attacks.h` in this order:
+time. Sliders are `DualMagic`, one per square in `DualMagics`, also `constexpr`, and **every tier
+uses it**. What a tier changes is how `DualMagic::both_attacks_bb` computes, chosen inside the
+function:
 
-| selected when | type | how |
-|---|---|---|
-| `__aarch64__`, or 64-bit loongarch (`USE_HYPERBOLA_QUINT`) | `HyperbolaMagic` | hyperbola quintessence over a full 64-bit bit reversal, one attack set at a time |
-| `USE_AVX2` (`USE_DUAL_HYPERBOLA_QUINT`) | `DualMagic` | hyperbola quintessence in 256-bit lanes, returning bishop and rook sets together |
-| otherwise | `BitboardMagic` | magic bitboards: multiply the masked occupancy, shift, index |
+| compiled when | how |
+|---|---|
+| `USE_AVX2` | hyperbola quintessence in the four 64-bit lanes of one 256-bit vector |
+| `__wasm_simd128__` | the same in two 128-bit vectors, the diagonals in one and the file in the other |
+| otherwise | the same in scalar arithmetic, one mask at a time |
 
 ```sh
-grep -n 'USE_HYPERBOLA_QUINT\|USE_DUAL_HYPERBOLA_QUINT\|using Magic' src/engine/attacks.h
+grep -n 'ifdef USE_AVX2\|wasm_simd128__\|USE_GFNI_RANK' src/engine/attacks.h
 ```
 
 **There is no PEXT slider path.** `-DUSE_PEXT` is still a real build switch -- `src/Makefile`
-sets it for the bmi2 and later x86-64 tiers -- but nothing in attack generation reads it:
-`BitboardMagic::index` is unconditionally a multiply and a shift, the `pext(b, m)` macro in
-`types.h` has no consumer at all, and `HasPext` reaches only the compiler banner in
-`src/platform/misc.cpp`. This is a gap, not a design: on a bmi2 tier `USE_AVX2` is also set, so
-the dual path wins and nobody notices the switch is inert. Do not add a PEXT row to the table
+sets it for the bmi2 and later x86-64 tiers -- but nothing in attack generation reads it: the
+`pext(b, m)` macro in `types.h` has no consumer at all, and `HasPext` reaches only the compiler
+banner in `src/platform/misc.cpp`. This is a gap, not a design. Do not add a PEXT row to the table
 above on the strength of the macro existing.
 
 ```sh
 git grep -n 'pext\|HasPext' -- src | grep -v Makefile
 ```
 
-Hyperbola quintessence computes attacks arithmetically from a reversal. **The two hyperbola
-variants differ in how they get the rank**, and that is not cosmetic. `HyperbolaMagic` reverses
-the whole 64-bit word, so one `hyperbola()` serves every direction including the rank.
-`DualMagic` reverses bytes within 128-bit lanes, which works for file, diagonal and antidiagonal
--- those put every square in a different byte -- and cannot work for a rank, where all eight
-squares share one. So the AVX2 path alone carries `RankAttacks` in `attacks.cpp`, indexed by the
-slider's file and the six inner bits of the rank occupancy (the edge squares never change the
-attack set), `alignas(64) constexpr` so it is built at compile time rather than at startup.
-`DualMagic::rankAttacksLookup` points a square at its file's row.
+Hyperbola quintessence computes attacks arithmetically from a reversal, and **the rank is the one
+direction a byte reversal cannot serve**. File, diagonal and antidiagonal put every square in a
+different byte, so reversing bytes reverses them; a rank's eight squares share one byte. So every
+path but one takes the rank from `RankAttacks` in `attacks.cpp`, indexed by the slider's file and
+the six inner bits of the rank occupancy (the edge squares never change the attack set),
+`alignas(64) constexpr`; `DualMagic::rankAttacksLookup` points a square at its file's row. The
+exception is a GFNI host -- `x86-64-avx512icl` is the one enumerated tier that passes `-mgfni` --
+where `vgf2p8affineqb` reverses the bits inside each byte, the byte shuffle and that together are
+a full bit reversal, and the rank is solved in the vector's third lane (`USE_GFNI_RANK`). The
+table and the lookup pointer compile out there.
 
 `DualMagic::both_attacks_bb` returns the bishop and rook attack sets for one square in a single
-call. `DualMagic` is `alignas(32)` because the body loads `*this` as one aligned 256-bit vector:
-the four masks are the first 32 bytes of the struct, so reordering a member above them or
-dropping the alignment turns a legal aligned load into a fault.
+call. `DualMagic` is `alignas(32)` because the AVX2 path loads `*this` as one aligned 256-bit
+vector: the four masks are the first 32 bytes of the struct, so reordering a member above them or
+dropping the alignment turns a legal aligned load into a fault. **The order of the four is a
+contract too.** The wasm path loads `maskDiag` and `maskAntidiag` as one 128-bit pair, so without
+GFNI those two are adjacent and the rank mask comes last; under `USE_GFNI_RANK` the rank sits
+third, so that one 128-bit OR folds the rook lanes (0 and 2) and the bishop lanes (1 and 3).
 
 Five call sites in `position.cpp` want both sets and get them without touching two structures --
 `set_extra_bitboards`, `attackers_to`, `gives_check`, `update_piece_threats` and `see_ge`:
@@ -169,22 +172,16 @@ Five call sites in `position.cpp` want both sets and get them without touching t
 grep -n 'both_attacks_bb' src/engine/position.cpp
 ```
 
-The non-dual path has no fused form; `Attacks::both_attacks_bb` there is two calls, which is why
-the free function exists at all rather than callers reaching for `dual_magic`.
-
-**The two non-dual layouts have two names.** `HyperbolaMagic` holds two masks; `BitboardMagic`
-holds a mask, a table pointer, a multiplier and a shift. Each branch aliases the one it selected
-to `Magic`, so callers are unchanged -- but a grep for `Magic` finds an alias per branch rather
-than one struct, and which one a debugger shows you depends on the build.
-`BitboardMagic::attacks_bb` takes a `Square` it does not use, `[[maybe_unused]]`, to match
-`HyperbolaMagic::attacks_bb`: an interface shaped by a macro, and the comment beside it says so.
+`Attacks::attacks_bb(pt, s, occupied)` makes the same call and keeps one half. The half it drops
+is dead code only where the call is inlined -- an out-of-line copy computes both -- which is why
+`both_attacks_bb` is `sf_always_inline`.
 
 **Which implementation is compiled changes the code but not the answer.** Every tier must produce
 the same attack sets, and what holds that is the compile matrix benching one signature after every
 architecture build it does ([10-tooling-ci.md](10-tooling-ci.md)).
 
-`Attacks::init` fills `LineBB`, `BetweenBB`, `inverse_RayPassBB`, `DiagBB` and `AntiDiagBB` on every
-tier, and the slider tables only on the two that need them. `between_bb(s1, s2)` **includes `s2`** -- the last line of the
+`Attacks::init` fills `LineBB`, `BetweenBB`, `inverse_RayPassBB`, `DiagBB` and `AntiDiagBB`; no
+slider table is built at run time. `between_bb(s1, s2)` **includes `s2`** -- the last line of the
 loop is `BetweenBB[s1][s2] |= s2` -- which is what lets the evasion generator use it as a target
 mask and thereby include capturing the checker.
 
@@ -192,8 +189,10 @@ mask and thereby include capturing the checker.
 
 `Position` holds the piece array, the by-type and by-colour bitboards, per-piece counts, the
 castling rights mask, rook squares and paths, the side to move, the game ply, the Chess960 flag,
-one scratch `Dirties`, and a pointer to the current `StateInfo`. Everything else about the
-position lives in the state chain.
+one scratch `Dirties`, and its own state history: `stateInfos[MAX_HIST]`, a ring indexed by
+`stateIdx`, with `st` pointing at the current entry. Everything else about the position lives in
+that ring, which makes a `Position` large -- the engine puts the ones it makes in passing on the
+heap.
 
 ### `StateInfo` and the copy boundary
 
@@ -201,27 +200,33 @@ State that cannot be recomputed cheaply is copied per move; state that can be is
 member order in `StateInfo` is what implements that split**, because `do_move` copies with
 
 ```cpp
-std::memcpy(&newSt, st, offsetof(StateInfo, key));
+std::memcpy(st, previousSt, offsetof(StateInfo, key));
 ```
 
 `key` is the first member below the `// Not copied when making a move` comment, so it is the
 boundary itself. Add a member above `key` and it is copied; add it below and it must be written
 unconditionally by `do_move` before anything reads it, or a node inherits the parent's value.
 Neither mistake is a compile error and neither is a fault -- the first costs a copy per node, the
-second is a wrong search. `do_null_move` copies `sizeof(StateInfo)` instead, because it recomputes
-less.
+second is a wrong search. `do_null_move` copies further, up to `blockersForKing`, because it
+recomputes less.
 
 ```sh
 sed -n '/^struct StateInfo/,/^};/p' src/engine/position.h
 ```
 
-`previous` chains the states backwards; the chain is what repetition and fifty-move detection
-walk. The states live in a `std::deque` (`StateListPtr`) rather than a `vector` **because
-pointers into it must survive a resize**.
+Repetition and fifty-move detection walk the ring backwards by index,
+`(stateIdx - i) & (MAX_HIST - 1)`, and every such walk is bounded by `MAX_HIST - 1` as well as by
+the counters: a walk longer than the ring reads entries the game has already overwritten.
+`types.h` asserts that `MAX_HIST` is a power of two covering the search's depth plus the
+fifty-move window, which is what makes the bound harmless.
+
+A position is copied whole or not at all. `copy_from` takes the board and the ring together and
+repoints `st` into the copy's own ring; the memberwise copy it uses is private, because a plain
+copy would leave both objects writing one history. `copy_state_infos` copies the ring alone.
 
 ### `do_move` and `undo_move`
 
-Two overloads. The short one -- `do_move(m, newSt)` -- is for perft and for the shell
+Two overloads. The short one -- `do_move(m)` -- is for perft and for the shell
 replaying a game. The search takes the long one, which additionally carries `givesCheck` (already
 computed by the caller), the `Dirties&` NNUE record, and a `const SharedHistories*` for the
 prefetches.
@@ -237,20 +242,26 @@ prefetch has no observable effect, so the compiler may delete the call, and four
 silently missing score as an *improvement* on the instruction axis
 ([10-tooling-ci.md](10-tooling-ci.md)).
 
-`undo_move` restores by walking `st = st->previous` and reversing the placement; it does not
+`undo_move` restores by stepping `stateIdx` back one and reversing the placement; it does not
 restore the non-copied half, which the next `do_move` recomputes.
 
-### Repetition, and why it is a cuckoo table
+### Repetition, and why it is a hash table
 
 `upcoming_repetition` answers a harder question than "have we seen this position": it asks whether
 the side to move *can force* a repetition, which lets the search cut off before playing it. It
-still walks the state chain, two plies at a time, but at each candidate distance the question
+still walks the state ring, two plies at a time, but at each candidate distance the question
 "is the difference between these two keys a single reversible move, and which one" is answered by
-two table probes rather than by generating moves. That is Marcel van Kervinck's cuckoo algorithm:
-`cuckoo` and `cuckooMove` in `position.cpp`, 8192 entries, indexed by `H1` and `H2`.
+a table probe rather than by generating moves -- Marcel van Kervinck's upcoming-repetition
+algorithm. The table is `repetitionTable` in `position.cpp`, `REPETITION_TABLE_SIZE` slots indexed
+by `repetition_hash`, laid out by Robin Hood hashing: each slot records how far its key sits from
+its home slot, so a probe stops at the first slot whose distance is smaller than its own.
 
-The table is a pure function of the Zobrist psq and side keys, and is built in `Position::init`
-where those keys are drawn -- after `Attacks::init`, which it reads through `attacks_bb`.
+**A key match is verified, not trusted.** The move's path must be empty, and swapping its two
+squares in the current `piecePlacement` must give the earlier state's, so a Zobrist collision
+cannot report a repetition that is not one.
+
+The table is a pure function of the Zobrist keys and `PseudoAttacks`, both `constexpr`, so it is
+generated and `static_assert`ed at compile time, with no startup order to get wrong.
 
 ### `see_ge` -- static exchange evaluation
 
@@ -273,7 +284,7 @@ each `GenType` is one instantiation of them rather than two.
 
 **Legal by construction.** Every list the generator returns is legal, so no generated move is
 tested again. `Position::legal` is for a move that did not come from the generator -- the
-transposition move, which a 16-bit key collision or a racing write can make unplayable:
+transposition move, which a 21-bit key collision or a racing write can make unplayable:
 
 ```sh
 grep -rn 'pos.legal(' src/engine/

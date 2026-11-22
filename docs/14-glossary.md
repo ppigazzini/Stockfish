@@ -32,9 +32,8 @@ Audience: all contributors.
 | **the optimum and the maximum** | the two numbers `src/engine/timeman.cpp` produces. The optimum is the point past which a new iteration is not started; the maximum is the point past which the search stops wherever it is |
 | **nodestime** | the mode in which the whole clock model is denominated in nodes rather than milliseconds. The `time` reported to the GUI stays real milliseconds |
 | **the accumulator** | the NNUE first layer's output for the current position, updated per move rather than recomputed. `src/engine/nnue/nnue_accumulator.cpp` |
-| **refresh** | recomputing an accumulator rather than updating it, forced by a king move under a king-bucketed feature set. The refresh cache diffs against the last accumulator computed in that bucket |
+| **refresh** | recomputing an accumulator rather than updating it, forced by a king move under a king-bucketed feature set, or by a move that changes the piece-square block. The refresh cache diffs against the last accumulator computed in that bucket and block |
 | **dirty piece / dirty threats** | the record `Position::do_move` leaves of exactly what changed, so the accumulator update knows which features to subtract and add. `DirtyPiece` and `DirtyThreats` in `src/engine/types.h` |
-| **optimism** | the per-worker search disposition blended into the evaluation, one of the three reasons Lazy SMP threads diverge. Set per root move in `Search::Worker::iterative_deepening` and read by `Search::Worker::evaluate`, both `src/engine/search.cpp`; `scale_evaluation` (`src/engine/evaluate.cpp`) weights it by the alignment between the network and the material balance |
 | **Lazy SMP** | the threading model: N workers on one root, sharing the transposition table, with no work queue and no split points |
 | **the principal variation** | `PVMoves` in `src/engine/search.h`: a fixed `Move` array plus a length, not a `vector`, so a node's PV costs no allocation. `PVMoves::Capacity` is the one spelling of the bound and the array and the `push_back` assert both read it |
 | **the bestmove pair** | `BestMove` in `src/engine/search.h`: the best move and its ponder move as one value on the `onBestmove` callback. Two adjacent `std::string_view`s in a parameter list transpose silently and print a legal-looking `bestmove` line |
@@ -95,7 +94,7 @@ None of this is chess-programming vocabulary.
 | **history** | an ordering table (`src/engine/history.h`), or git history |
 | **cluster** | the 32-byte transposition unit, or a machine cluster running fishtest |
 | **check** | the king being attacked, or a gate assertion |
-| **magic** | the multiplier in magic bitboards, and three struct names in `src/engine/attacks.h` that reach a slider attack set three different ways: `BitboardMagic` multiplies and shifts, while `HyperbolaMagic` and `DualMagic` use hyperbola quintessence despite the name. A macro picks one -- `USE_HYPERBOLA_QUINT`, `USE_DUAL_HYPERBOLA_QUINT`, or neither. Only two of the three alias to `Magic`; the dual layout has no alias and is reached as `dual_magic(Square)`, so a `Magic` in prose never means it. `git grep -n 'using Magic' -- src` is what says which |
+| **magic** | the multiplier in magic bitboards, which this tree does not use, and the name it kept for the one slider struct that replaced them: `DualMagic` in `src/engine/attacks.h`, reached as `dual_magic(Square)`, computes both slider attack sets by hyperbola quintessence despite the name |
 
 ## 4. The testing field's vocabulary
 

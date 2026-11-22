@@ -54,7 +54,7 @@ the only description of it in the set.
 |---|---|---|
 | `engine/types.h` | the value domain: `Color`, `Square`, `Piece`, `Move`, `Value`, `Key`, `Bitboard`, `Depth` | [01](01-engine-board.md), [09](09-type-design.md) |
 | `engine/basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, `TypedKey<KeySpace>`, `RelaxedAtomic`, `mul_hi64` | [09](09-type-design.md) |
-| `engine/prng.h` | `PRNG`: the xorshift the Zobrist keys and the magic bitboards are seeded from | here |
+| `engine/prng.h` | `PRNG`: the xorshift `Skill::pick_best` draws from, seeded from the clock. The Zobrist keys use a `constexpr` copy of the same generator in `position.cpp` | here |
 | `engine/bitboard.h/.cpp`, `engine/attacks.h/.cpp` | square sets and the slider/leaper attack tables | [01](01-engine-board.md) |
 | `engine/position.h/.cpp` | the board, `StateInfo`, `do_move`/`undo_move`, Zobrist keys, `see_ge` | [01](01-engine-board.md) |
 | `engine/movegen.h/.cpp`, `engine/movepick.h/.cpp` | move generation and the staged picker | [01](01-engine-board.md), [02](02-engine-search.md) |
@@ -93,8 +93,7 @@ is a merge gate rather than something to re-derive by hand.
 `main` (`src/shell/main.cpp`) starts the engine in an order that is load-bearing:
 
 ```cpp
-Attacks::init();      // slider and leaper tables
-Position::init();     // Zobrist keys, from PRNG rng(1070372)
+Attacks::init();      // the line tables: LineBB, BetweenBB and the rays
 
 auto cli = CommandLine(argc, argv);
 auto uci = std::make_unique<UCIEngine>(std::move(cli));
@@ -103,12 +102,12 @@ Tune::init(uci->engine_options());
 uci->loop();
 ```
 
-`Position::init()` must follow `Attacks::init()`, and two readers depend on it:
-`Position::init` calls `attacks_bb` to enumerate the reversible one-piece moves the cuckoo table
-is built from, and every later `Position::set` calls `set_extra_bitboards`, which calls
-`both_attacks_bb`. Neither crashes on zeroed tables. The cuckoo table simply comes out empty, so
-`upcoming_repetition` never fires, and a `Position` built too early finds no checkers and
-generates no piece moves -- both present as a search bug rather than a startup bug.
+`Attacks::init()` must come before the first `Position`. The leaper and slider tables, the
+Zobrist keys and the repetition table are `constexpr` and exist before `main`, but the line
+tables are filled here, and every `Position::set` reads them through `set_extra_bitboards` to
+find the pinned pieces, as the evasion generator does to find the squares that block or capture
+a checker. Nothing crashes on zeroed line tables: a `Position` built too early finds no pin and
+no evasion but a king move, which presents as a search bug rather than a startup bug.
 
 **The network is loaded inside the `make_unique<UCIEngine>` line**, and no call in the block
 says so. `Engine`'s member initialiser list runs `get_default_network()`, which is
@@ -587,8 +586,8 @@ The include lane, and the only supported way to run it.
 ```
 
 **Three tiers by default**, because the include set of a file holding `#if` is a property of
-the tier and not of the file. `attacks.cpp` needs `prng.h` in the generic build and not in the
-vector ones; a lane running one tier would have missed it, and a lane running `ARCH=native`
+the tier and not of the file. `k32h3.cpp` needs `bitboard.h` in the AVX-512 build and not in the
+other two; a lane running one tier would have missed it, and a lane running `ARCH=native`
 would give a different answer on every runner.
 
 **It reports which of two modes produced its answer, and they do not prove the same thing.**

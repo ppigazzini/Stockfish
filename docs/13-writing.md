@@ -35,7 +35,7 @@ and **what breaks otherwise**. Two of the three is where the defects live.
 | incomplete | complete |
 |---|---|
 | "the cluster is 32 bytes" | "`sizeof(Cluster) == 32` is asserted so a cluster divides a cache line: probing one position must touch one line" |
-| "the states are in a deque" | "`StateListPtr` is a `deque` because the search holds pointers into it and a `vector` would invalidate them on resize" |
+| "the states are in a ring" | "`stateInfos` is a power-of-two ring, and every walk back through it is bounded by `MAX_HIST - 1`, because an entry further back has been overwritten" |
 | "evaluation is clamped" | "the evaluation is clamped strictly inside the tablebase band, so an estimate can never be read as a proven verdict" |
 
 Of the three, the failure clause is the one that turns a description into a reason not to
@@ -53,7 +53,7 @@ The claims that survive review and fail verification are always the same shapes:
 - **a real symbol under a wrong name** -- `TBCursedWin` for `WDLCursedWin`;
 - **a case list that omits a case** -- `legal()` described without castling;
 - **a paraphrase that inverts a condition** -- "an own-king move forces a refresh only across a
-  bucket boundary", when `K32Q2::requires_refresh` tests `diff.pc == make_piece(perspective,
+  bucket boundary", when `K32H3::requires_refresh` tests `diff.pc == make_piece(perspective,
   KING)` and every one of them does.
 
 Three of the four are catchable only by opening the file. **The wrong count is the exception,

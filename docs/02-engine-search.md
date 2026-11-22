@@ -20,8 +20,8 @@ Audience: search.
 | how deep does a late move get searched | `search.cpp` | `Worker::reduction(improving, depth, moveCount)` |
 | what the root loop does between iterations | `search.cpp` | `Worker::iterative_deepening` |
 | when does the search stop | `search.cpp` | `SearchManager::check_time`, and the time block in `iterative_deepening` |
-| how a position becomes a table slot | `tt.cpp` | `TranspositionTable::first_entry`, `probe` |
-| why an entry survived a write | `tt.cpp` | `TTEntry::save`, `TTEntry::relative_age` |
+| how a position becomes a table slot | `tt.cpp` | `TranspositionTable::get_cluster`, `probe` |
+| why an entry survived a write | `tt.cpp` | `TTWriter::write`, `TTEntry::relative_age` |
 | in what order are moves tried | `movepick.cpp` | `MovePicker::next_move`, `Stages` |
 | which table scored this move | `movepick.cpp` | `MovePicker::score<GenType>` |
 | where a history table lives and how wide | `history.h` | the `using` block, `StatsEntry<T, D, Shared>` |
@@ -33,8 +33,8 @@ Audience: search.
 
 ## `tt.cpp` -- the transposition table
 
-A flat array of 32-byte `Cluster`s, three `TTEntry` of ten bytes each plus two bytes of padding.
-The size is asserted:
+A flat array of 32-byte `Cluster`s: one 64-bit word holding the three entries' key fragments,
+then three `TTEntry` of eight bytes each. The size is asserted:
 
 ```cpp
 static constexpr int ClusterSize = 3;
@@ -45,18 +45,25 @@ static_assert(sizeof(Cluster) == 32, "Suboptimal Cluster size");
 cluster count is `mbSize * 1024 * 1024 / sizeof(Cluster)`, and it decides which positions collide
 -- two engines with the same table size and different cluster arithmetic search different trees.
 
-**The two halves of the key do not overlap.** `first_entry` picks the cluster with
+**The two halves of the key do not overlap.** `get_cluster` picks the cluster with
 `mul_hi64(key, clusterCount)`, which is the *high* end of the key scaled into range; `probe` then
-matches `u16(key)`, the low sixteen bits, inside the cluster. Making the cluster index a mask of
-the low bits instead would leave the in-cluster tag correlated with it and the three ways nearly
-useless.
+matches the low 21 bits inside the cluster. Making the cluster index a mask of the low bits instead
+would leave the in-cluster tag correlated with it and the three ways nearly useless. The lowest of
+the 21 is the side to move, which is where `Position` keeps it, so the two sides of one placement
+never share an entry.
 
-An entry packs a 16-bit key fragment, a depth offset from `DEPTH_NONE`, a byte holding the
-generation (5 bits), the bound (2) and the PV flag (1), then the move, the value and the static
-eval -- **in the order `probe` reads them**, which is why the field order is not free. Sixteen bits
-of key is not a full check: **collisions are accepted**. A wrong entry costs a wrong move ordering
-and is caught by the search, and paying eight bytes per entry to avoid it would cost more in cache
-than it saves in accuracy.
+**The three fragments are compared at once.** `Cluster::keys` packs them into 63 bits, 21 per
+entry, and `probe` XORs the word with the probing fragment repeated three times: a matching entry
+leaves a zero field, and the borrow trick `(x - lsb) & ~x & msb` marks the first such field, whose
+bit position gives the entry index. The trick is exact for the first match only, which is all
+`probe` reads. `KeyBits` is asserted to be 21 where that index is computed, because the shift that
+turns a bit position into an entry assumes it.
+
+An entry packs a depth offset from `DEPTH_NONE`, a byte holding the generation (5 bits), the bound
+(2) and the PV flag (1), then the move, the value and the static eval. Twenty-one bits of key is
+not a full check: **collisions are accepted**. A wrong entry costs a wrong move ordering and is
+caught by the search, and paying more bytes per entry to avoid it would cost more in cache than it
+saves in accuracy.
 
 `is_occupied()` reads `depth8`, which is why `DEPTH_UNSEARCHED` and `DEPTH_NONE` are negative and
 distinct -- `depth8` is stored as `d - DEPTH_NONE`, so an entry that stored no search lands on 1
@@ -233,7 +240,7 @@ The stage is entered by arithmetic rather than a branch:
 stage = EVASION_TT + !(ttm && pos.legal(ttm));
 ```
 
-A transposition move that is not legal in this position -- which a 16-bit key collision can
+A transposition move that is not legal in this position -- which a 21-bit key collision can
 produce -- skips the stage rather than being played.
 
 **Every generating stage sorts, and they do not sort alike.** `partial_insertion_sort` orders

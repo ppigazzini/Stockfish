@@ -114,25 +114,25 @@ flowchart TD
     B -->|no| S["evaluate_side, per perspective"]
     S --> C{"last usable accumulator<br/>computed for this side?"}
     C -->|yes| F["forward_update_incremental<br/>walk forward from it"]
-    C -->|no| H{"own king moved, not onto the opponent's queen,<br/>prev ply computed, enough pieces,<br/>same board half, add_sq == SQ_NONE?"}
+    C -->|no| H{"own king moved, piece-square block unchanged,<br/>prev ply computed, enough pieces,<br/>same board half, add_sq == SQ_NONE?"}
     H -->|yes| HY["update_accumulator_hybrid"]
     H -->|no| R["update_accumulator_refresh_cache<br/>then backward_update_incremental"]
 ```
 
 **Any move of the perspective's own king ends the incremental chain, whatever square it moves to,
-and so does the opponent's queen leaving or entering the board.** The refresh predicate is the
-whole condition, and it tests nothing else:
+and so does any move that changes that perspective's piece-square block.** The refresh predicate is
+the whole condition, and it tests nothing else:
 
 ```sh
-sed -n '/^bool K32Q2::requires_refresh/,/^}/p' src/engine/nnue/features/k32q2.cpp
+sed -n '/^bool K32H3::requires_refresh/,/^}/p' src/engine/nnue/features/k32h3.cpp
 ```
 
-It returns true for `diff.pc == make_piece(perspective, KING)`, and for a `remove_pc` or an
-`add_pc` that is the opponent's queen -- a capture of it, or a promotion to it. Every feature in
-all three sets is indexed relative to that king's square -- `make_index` takes `ksq` in `k32q2`,
+It returns true for `diff.pc == make_piece(perspective, KING)`, and when the block the
+accumulator was computed under differs from the block after the move. Every feature in all three
+sets is indexed relative to that king's square -- `make_index` takes `ksq` in `k32h3`,
 `full_threats` and `pp_3wide` alike -- so a king move renumbers the entire input space for that
-side, and the piece-square set is indexed by the opponent's queen presence as well, so a change in
-it renumbers that set. Do not read `KingBuckets` as the boundary: `SQ_E1` and `SQ_E2` sit in
+side. The piece-square set also selects its weights by block, so a change of block swaps the whole
+set's weight rows. Do not read `KingBuckets` as the boundary: `SQ_E1` and `SQ_E2` sit in
 different buckets and both are refreshes, because the bucket is not what the predicate looks at.
 
 **The mirror is what the hybrid guard tests, and it is a different question.** The guard is
@@ -145,11 +145,12 @@ the wrong orientation. Inside one half those deltas stay valid, so the path is a
 **What the hybrid path actually does** (`update_accumulator_hybrid`) is start from
 `accumulators[size - 2]` -- the **previous ply**, not two back -- subtract the refresh-cache entry
 for the old king square, add the entry for the new one, apply the threat and pawn-pair deltas
-incrementally, and refresh both cache entries on the way through. Its three remaining guards:
+incrementally, and refresh both cache entries on the way through. Its four remaining guards:
 
-- `dirtyPiece.remove_pc != make_piece(~perspective, QUEEN)` -- a king that captures the
-  opponent's queen changes the queen state every piece-square feature is indexed by, and both
-  cache entries the path reads were computed under the other one;
+- the block the previous ply was computed under equals the block now -- a king that captures the
+  opponent's queen, or its last heavy piece, changes the block every piece-square weight row is
+  chosen by, and both cache entries the path reads were computed under the other one;
+- `accumulators[size - 2].computed[perspective]`, the previous ply it starts from;
 - `pos.count<ALL_PIECES>() >= MIN_PC_COUNT_HYBRID`, a function-local `constexpr` in
   `evaluate_side` -- below that piece count a plain refresh is cheap enough that the extra
   bookkeeping does not pay, which makes this an opening and middlegame optimisation;
@@ -158,10 +159,10 @@ incrementally, and refresh both cache entries on the way through. Its three rema
   *castling uses add_sq and remove_sq to remove and add the rook*.
 
 **The refresh cache** (`AccumulatorCaches`) is what makes the last branch affordable. It is
-per-Worker and indexed `[opponent has a queen][square][colour]`, so 256 entries. Each `Entry` holds an accumulation and
-the `pieces` array and `pieceBB` it was computed from, so a refresh diffs against that cached
-board rather than starting from the biases -- usually a handful of features rather than all of
-them. The idea is Luecx's, from Koivisto, and the header calls it by its usual
+per-Worker and indexed `[block][square][colour]`, so 384 entries. Each `Entry` holds an
+accumulation and the `pieces` array and `pieceBB` it was computed from, so a refresh diffs against
+that cached board rather than starting from the biases -- usually a handful of features rather
+than all of them. The idea is Luecx's, from Koivisto, and the header calls it by its usual
 name, Finny tables.
 
 **An unseeded cache is indeterminate memory, not an empty one.** `AccumulatorCaches()` is the
@@ -177,20 +178,22 @@ Three, under `src/engine/nnue/features/`, all feeding **one** accumulator:
 
 | Set | Alias in `nnue_architecture.h` | What it encodes | `Dimensions` |
 |---|---|---|---|
-| `K32Q2` | `PSQFeatureSet` | (king square, opponent queen present, piece, piece square) | `SQUARE_NB * PS_NB` |
+| `K32H3` | `PSQFeatureSet` | (block, king square, piece, piece square) | `NumBlocks * BlockDimensions` |
 | `FullThreats` | `ThreatFeatureSet` | which piece attacks which | a literal in `full_threats.h` |
 | `PP_3Wide` | `PairFeatureSet` | pawn-pair structure | `PawnIds * (PawnIds - 1) / 2` |
 
 The accumulator is computed twice, once from each side's point of view, and `transform` reads
 the side to move's half first. "K32" is the king's square in 32 buckets: the header states the
 convention as *position mirrored such that king is always on e..h files*, so `KingBuckets` folds
-the a-d files onto e-h and `OrientTBL` mirrors every square with it. "Q2" is the opponent's
-queen, present or not, and it is the second half of `B(v)` in the header -- each king bucket
-holds two `PS_NB` blocks, one per queen state -- which is why `Dimensions` is the whole
-`SQUARE_NB * PS_NB` rather than half of it.
+the a-d files onto e-h and `OrientTBL` mirrors every square with it. "H3" is the heavy material,
+in three blocks: no rook or queen on the board, some rook or queen but none of the opponent's
+queens, and an opponent queen. `K32H3::block` computes it per perspective, and each block is a
+`BlockDimensions`-wide slice of the set -- 32 king buckets of `PS_NB` -- so `Dimensions` is three
+of them. A feature's index is relative to its block: `make_index` knows nothing of the block, and
+`FeatureTransformer::psq_weights(block)` picks the block's weight rows.
 
 The threat and pair weights share one array. `FeatureTransformer` keeps `weights` for the
-`K32Q2` half and `threatAndPpWeights` for the other two concatenated, reached through
+`K32H3` half and `threatAndPpWeights` for the other two concatenated, reached through
 `threatWeightData()` and `pawnPairWeightData()`. The concatenation is load-bearing and is asserted
 where it can be seen:
 
@@ -275,19 +278,16 @@ What survives tuning is the shape, and each step is doing something specific:
   network agrees with the material and negative where it sees compensation the material does not.
   Agreement moves the evaluation away from zero and disagreement pulls it towards zero: a
   straightforward position is trusted beyond its nominal score, a compensated one short of it.
-  **Optimism**, the per-thread search disposition, enters only through the same product -- applied
-  as it stands where the two agree, reversed where they disagree. It is what makes different
-  threads explore differently in Lazy SMP.
-- **The material scale** multiplies the blended value, optimism included, by a factor that grows
-  with the material on the board, both sides' pawns and pieces alike.
+- **The material scale** multiplies the blended value by a factor that grows with the material on
+  the board, both sides' pawns and pieces alike.
 - **The fifty-move damping** scales the value down by `pos.rule50_count()`: an advantage that cannot
   be converted before the rule draws the game is not worth its nominal value.
 - **The clamp** is `std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1)`, which
   keeps the evaluation **strictly** inside the tablebase band, so an estimate can never be read as a
   proven verdict or a mate. [05-tablebases.md](05-tablebases.md) shows the other side of that band.
 
-`Eval::trace` calls `scale_evaluation` with zero optimism, so the final figure `eval` prints is the
-one a thread with no disposition would search with.
+`scale_evaluation` reads the position and nothing else, so the final figure `eval` prints is the one
+every thread searches with.
 
 `assert(!pos.checkers())` -- **the evaluation is never called in check.** The network is not trained
 on positions in check, and the search always resolves the check first. `Eval::trace` returns

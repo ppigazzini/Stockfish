@@ -27,14 +27,14 @@ Audience: the UCI surface and options.
 | `sync_cout` and the `dbg_*` counters | `shell/console.cpp` | `operator<<(ostream&, SyncCout)`, `dbg_print` |
 | turning a constant into an option | `shell/tune.cpp` | `Tune::make_option` |
 
-`main` does five things in order: print `engine_info()`, `Attacks::init()`, `Position::init()`,
-construct a `UCIEngine` (which constructs the `Engine`, which registers the seams and builds the
+`main` does five things in order: print `engine_info()`, `Attacks::init()`, construct a
+`UCIEngine` (which constructs the `Engine`, which registers the seams and builds the
 pool), `Tune::init(uci->engine_options())`, then `loop()`. `Tune::init` is last because it adds
 options to a map the `Engine` has already filled.
 
 ## The split that matters
 
-`engine.cpp` owns the **session**: the current position and its `StateInfo` chain, the option
+`engine.cpp` owns the **session**: the current position and its `StateInfo` ring, the option
 table and its on-change callbacks, the resident network, the thread pool and the
 transposition table. `uci.cpp` is the **transport** over it and holds no engine state.
 
@@ -186,9 +186,10 @@ neither and no way to tell which. The cost is that such an option ends the ponde
 the join, `std::exit` runs static destructors, `~TBTables` munmaps every tablebase, and workers
 still inside `decompress_pairs` read the unmapped pages.
 
-`position` takes `startpos` or `fen`, then optional `moves`, and rebuilds the state chain from
-scratch in `Engine::set_position` -- which is why `StateListPtr` is a `deque`: the search holds
-pointers into it and a `vector` would invalidate them on resize. **A `position` line whose first
+`position` takes `startpos` or `fen`, then optional `moves`, and rebuilds the position from
+scratch in `Engine::set_position`. The search never reads that position in place: `go` copies it,
+ring and all, into each worker's root, so no worker holds a pointer into the session's history.
+**A `position` line whose first
 token is neither `startpos` nor `fen` is dropped silently**: the handler returns without setting a
 position and without printing anything, so the engine keeps the previous one and a GUI has no way
 to notice.

@@ -93,7 +93,7 @@ Four properties, each deliberate:
   the libc as much as of the code, so it cannot be reproduced by a reviewer and it drifts
   upward until it gates nothing. Only the delta is reported, and it is reproducible by
   re-running.
-- **Startup is subtracted by measurement**, per binary. Net load plus magic-table
+- **Startup is subtracted by measurement**, per binary. Net load plus line-table
   construction is a large share of the whole-process count at the depth the gate uses, so an
   unsubtracted ratio describes the network loader as much as the engine.
 - **A node count that moved makes the comparison VOID**, not expensive. That is a behaviour
@@ -596,7 +596,7 @@ depth defaults to 14 with `--syzygy`, matching the other two axes.
 **Three tables, because the whole-process figure cannot be read as a search figure.** Every
 counter here covers the whole process, and the largest single mispredict mover on this tree is
 the network reader, which runs once. So each tier prints the whole process, then startup alone
--- a probe that loads the net, builds the magic tables, maps any tablebases and quits without
+-- a probe that loads the net, builds the line tables, maps any tablebases and quits without
 searching -- then the difference, paired within each round. The split is not cosmetic: on the
 bench list the whole process reads 0.86 on branch misses and the search alone reads 1.0044, so
 the entire apparent win is the loader and the search is fractionally worse.
@@ -904,8 +904,8 @@ four separate times here, every time on an index- or hash-addressed lookup -- fe
 rows, continuation rows, the transposition table -- which is the case the manual does not cover,
 and twice with the miss counter moving the *wrong* way. Treat "add a prefetch" as refuted unless
 the mechanism is one none of those four had. The rule says nothing about removing a prefetch
-already in the tree, such as `do_move`'s `tt.first_entry` one: all four were measured with it in
-place.
+already in the tree, such as `Worker::do_move`'s `tt.get_cluster` one: all four were measured
+with it in place.
 
 Which manual answers what: *Optimizing software in C++* for the source-level rules, *The
 microarchitecture of Intel, AMD and VIA CPUs* for store forwarding, branch prediction and cache
