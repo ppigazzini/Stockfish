@@ -22,7 +22,7 @@ readyok
    a   b   c   d   e   f   g   h
 
 Fen: 4k3/8/8/8/8/8/8/3QK3 w - - 0 1
-Key: 11BB9B30D6A74D85
+Key: 23773661AD4E9B0A
 Checkers: 
 Tablebases WDL:    2 (1)
 Tablebases DTZ:   15 (1)
@@ -47,7 +47,7 @@ Tablebases DTZ:   15 (1)
    a   b   c   d   e   f   g   h
 
 Fen: 8/8/8/4k3/8/8/4P3/4K3 w - - 0 1
-Key: 2DD778C90D8781BE
+Key: 5BAEF1921B0F037C
 Checkers: 
 Tablebases WDL:    0 (1)
 Tablebases DTZ:    0 (1)
@@ -72,7 +72,7 @@ Tablebases DTZ:    0 (1)
    a   b   c   d   e   f   g   h
 
 Fen: 8/8/8/4k3/8/8/4r3/R3K3 w - - 0 1
-Key: CF58D5D8CEFC07FD
+Key: 9EB1ABB19DF80FFA
 Checkers: e2 
 Tablebases WDL:    2 (2)
 Tablebases DTZ:    1 (2)
@@ -97,7 +97,7 @@ Tablebases DTZ:    1 (2)
    a   b   c   d   e   f   g   h
 
 Fen: 8/8/6K1/3P4/8/8/8/2k5 w - - 0 1
-Key: CF43A4ECDC39D138
+Key: 9E8749D9B873A270
 Checkers: 
 Tablebases WDL:    2 (1)
 Tablebases DTZ:    1 (2)
@@ -122,7 +122,7 @@ Tablebases DTZ:    1 (2)
    a   b   c   d   e   f   g   h
 
 Fen: 7R/8/8/8/8/8/5K1k/8 b - - 0 1
-Key: 733AD11F6FAB48E8
+Key: A79FE3774CA22649
 Checkers: h8 
 Tablebases WDL:   -2 (1)
 Tablebases DTZ:   -1 (-1)
@@ -147,5 +147,5 @@ Tablebases DTZ:   -1 (-1)
    a   b   c   d   e   f   g   h
 
 Fen: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
-Key: 8F8F01D4562F59FB
+Key: 1F1E03A8AC5EB3F6
 Checkers: 
