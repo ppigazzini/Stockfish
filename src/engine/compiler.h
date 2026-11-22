@@ -148,8 +148,7 @@ void prefetch(const void* addr) {
 // straight-line code; the caller decides which of its arms is rare, so only the
 // spelling lives here.
 //
-// An empty fallback costs a layout hint and nothing else, which is why this one
-// is allowed to be empty where SF_NO_STACK_PROTECTOR's is not.
+// An empty fallback costs a layout hint and nothing else.
 #if defined(__GNUC__)
     #define sf_cold_path __attribute__((noinline, cold))
 #elif defined(_MSC_VER)

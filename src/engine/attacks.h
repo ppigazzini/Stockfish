@@ -155,7 +155,7 @@ struct alignas(32) DualMagic {
         // Lane 3 is empty here -- maskRank is zero without USE_GFNI_RANK -- so the
         // rook's file attacks are already in result's low lane, and reading them
         // there rather than out of rookBishop drops the OR from the dependency
-        // chain. Upstream 82d73d0a9.
+        // chain.
         return {_mm_extract_epi64(_mm256_castsi256_si128(rookBishop), 1),
                 _mm_cvtsi128_si64(_mm256_castsi256_si128(result)) + rankAttacks};
     #endif

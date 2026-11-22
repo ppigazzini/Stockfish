@@ -166,9 +166,9 @@ constexpr Value WDL_to_value[] = {-VALUE_MATE + MAX_PLY + 1, VALUE_DRAW - 2, VAL
 // The previous spelling swapped IN PLACE through `u8* c = (u8*) &x`, and taking
 // a local's address is three costs at once in decompress_pairs' refill: gcc
 // vectorises the two-iteration u32 case into vmovd/vpshufb/vmovd and pins the
-// shuffle mask in a register for the loop, leaves the four-iteration u64 case a
-// byte-at-a-time loop over a stack slot, and turns the stack protector on for
-// the hottest function a probing search has.
+// shuffle mask in a register for the loop, and leaves the four-iteration u64
+// case a byte-at-a-time loop over a stack slot, in the hottest function a
+// probing search has.
 template<typename T>
 constexpr T byteswap(T v) {
     static_assert(std::is_unsigned_v<T>, "Argument of byteswap not unsigned");

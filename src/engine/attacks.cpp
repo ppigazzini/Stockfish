@@ -100,14 +100,14 @@ void init() {
 
                 // The line above is outside the alignment guard, so it runs
                 // for every ordered pair and s2 is in between_bb(s1, s2)
-                // unconditionally. Position::has_repeated() is the consumer
-                // that depends on it, 1400 lines away in another file: it
-                // reads `between_bb(s1, s2) ^ s2` and needs that to be a set
-                // REMOVAL. Moved inside the guard -- which reads like a
-                // tidy-up, the endpoint being meaningless for a non-aligned
-                // pair -- the same `^` starts ADDING s2 to a mask it then
-                // tests against pieces(), and repetitions along unobstructed
-                // lines stop being found.
+                // unconditionally. Position::upcoming_repetition() is the
+                // consumer that depends on it, in another file: it reads
+                // `between_bb(s1, s2) ^ s2` and needs that to be a set REMOVAL.
+                // Moved inside the guard -- which reads like a tidy-up, the
+                // endpoint being meaningless for a non-aligned pair -- the same
+                // `^` starts ADDING s2 to a mask it then tests against
+                // pieces(), and repetitions along unobstructed lines stop
+                // being found.
                 assert(BetweenBB[s1][s2] & s2);
             }
 

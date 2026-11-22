@@ -543,14 +543,9 @@ ExtMove* MovePicker::score([[maybe_unused]] const Move* const src, const isize n
         {
             // histories -- summed in a local and stored once. m.value is a
             // location the see_ge() call below can reach, so every `+=` on it
-            // is a load, an add and a store rather than an accumulator.
-            //
-            // The low-ply term below keeps its `+=` deliberately. Carrying the
-            // local past it makes the low-ply arm the loop's tail, and gcc then
-            // duplicates the exit test into both paths -- 237 K more mispredicts
-            // AND 476 K more instructions on a depth-9 search, so it is not even
-            // a trade. Stopping the accumulator at the store leaves the tail
-            // where it was, and the mispredicts fall with the instruction count.
+            // is a load, an add and a store rather than an accumulator. The
+            // low-ply term is not in this sum: it is the second pass after the
+            // loop, and the comment there says why.
             const int hi = int(pc) * SQUARE_NB + int(to);
 
             int value = 2 * mainHist[m.raw()];

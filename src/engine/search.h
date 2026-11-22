@@ -415,8 +415,7 @@ class SearchManager {
 // referents and the thread pointer is 40 bytes, so each worker's setup job
 // became an operator new and a matching free -- one pair per thread per `go`,
 // on the move-latency path, before any thread starts searching. Capturing one
-// pointer to this plus the thread pointer is 16 bytes and fits. See `0ec0cc2f`
-// "perf(platform): keep the root-setup job out of the heap".
+// pointer to this plus the thread pointer is 16 bytes and fits.
 //
 // The bundle lives on the caller's frame and every job reading it has finished
 // by the wait that follows, which is the same lifetime the references had.
