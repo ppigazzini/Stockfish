@@ -31,7 +31,6 @@
 #include "../engine/history.h"
 #include "memory.h"
 #include "../engine/movegen.h"
-#include "../engine/position.h"
 #include "../engine/search.h"
 #include "syzygy/tbprobe.h"
 #include "../engine/timeman.h"
