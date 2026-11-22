@@ -39,7 +39,6 @@
 #include "../engine/searchoptions.h"
 #include "numa_shared.h"
 #include "../engine/tb_source.h"
-#include "../engine/position.h"
 #include "../engine/nnue/network.h"
 #include "../engine/basetypes.h"
 
