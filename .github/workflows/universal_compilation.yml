@@ -27,7 +27,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -43,7 +43,7 @@ jobs:
       # cc/gcc/c++/g++ linked in /usr/local/bin, as setup-gcc linked them.
       - name: Restore the GCC 15 packages
         id: gcc15
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@v6.1.0
         with:
           path: gcc15-debs
           key: gcc15-debs-ubuntu-22.04-${{ runner.arch }}-v1
@@ -80,13 +80,13 @@ jobs:
 
       - name: Keep the GCC 15 packages
         if: steps.gcc15.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/save@v6.1.0
         with:
           path: gcc15-debs
           key: gcc15-debs-ubuntu-22.04-${{ runner.arch }}-v1
 
       - name: Download SDE package
-        uses: petarpetrovt/setup-sde@6d2773bc0ef3005fd52e0ae0bb91782321793aec # v6.0
+        uses: petarpetrovt/setup-sde@v6.0
         with:
           environmentVariableName: SDE_DIR
           sdeVersion: 9.58.0
@@ -122,7 +122,7 @@ jobs:
 
       - name: Upload artifact for (pre)-release
         if: inputs.publish
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: linux x86-64-universal
           path: |
@@ -138,19 +138,19 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Setup msys and install required packages
-        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        uses: msys2/setup-msys2@v2.33.0
         with:
           msystem: mingw64
           install: mingw-w64-x86_64-gcc make git zip
 
       - name: Download SDE package
-        uses: petarpetrovt/setup-sde@6d2773bc0ef3005fd52e0ae0bb91782321793aec # v6.0
+        uses: petarpetrovt/setup-sde@v6.0
         with:
           environmentVariableName: SDE_DIR
           sdeVersion: 9.58.0
@@ -188,7 +188,7 @@ jobs:
 
       - name: Upload artifact for (pre)-release
         if: inputs.publish
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: windows x86-64-universal
           path: |
@@ -204,7 +204,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -220,7 +220,7 @@ jobs:
       # cc/gcc/c++/g++ linked in /usr/local/bin, as setup-gcc linked them.
       - name: Restore the GCC 15 packages
         id: gcc15
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@v6.1.0
         with:
           path: gcc15-debs
           key: gcc15-debs-ubuntu-22.04-${{ runner.arch }}-v1
@@ -257,7 +257,7 @@ jobs:
 
       - name: Keep the GCC 15 packages
         if: steps.gcc15.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/save@v6.1.0
         with:
           path: gcc15-debs
           key: gcc15-debs-ubuntu-22.04-${{ runner.arch }}-v1
@@ -298,7 +298,7 @@ jobs:
 
       - name: Upload artifact for (pre)-release
         if: inputs.publish
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: linux arm64-universal
           path: |
@@ -314,13 +314,13 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Setup msys and install required packages
-        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        uses: msys2/setup-msys2@v2.33.0
         with:
           msystem: clangarm64
           install: mingw-w64-clang-aarch64-clang make git zip
@@ -359,7 +359,7 @@ jobs:
 
       - name: Upload artifact for (pre)-release
         if: inputs.publish
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: windows arm64-universal
           path: |
@@ -377,7 +377,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -401,7 +401,7 @@ jobs:
 
       - name: Upload artifact for (pre)-release
         if: inputs.publish
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: macos universal
           path: |
@@ -419,7 +419,7 @@ jobs:
     env:
       QEMU_DEB: https://launchpad.net/ubuntu/+archive/primary/+files/qemu-user_9.2.1+ds-1ubuntu5_amd64.deb
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -433,7 +433,7 @@ jobs:
           echo "/usr/lib/llvm-20/bin" >> "$GITHUB_PATH"
       - name: Cache qemu-user deb
         id: cache-qemu
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: /tmp/qemu.deb
           key: qemu-user-9.2.1+ds-1ubuntu5_amd64
@@ -483,7 +483,7 @@ jobs:
 
       - name: Upload artifact for (pre)-release
         if: inputs.publish
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: linux riscv64-universal
           path: |

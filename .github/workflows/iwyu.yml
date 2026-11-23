@@ -19,7 +19,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout Stockfish
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           path: Stockfish
           persist-credentials: false
@@ -63,7 +63,7 @@ jobs:
       # cannot call a helper that lives only in it.
       - name: Cache the IWYU toolchain
         id: iwyu-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: Stockfish/resources/iwyu
           key: iwyu-ubuntu-22.04-llvm-17.0.6-f25caa280dc3277c4086ec345ad279a2463fea0f

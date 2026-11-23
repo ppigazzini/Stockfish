@@ -517,30 +517,34 @@ if selected lanecheck-stale-workflow-excuse; then
     restore
 fi
 
-# golden.yml pins actions/cache twice, once per tablebase corpus, and mutate()
-# refuses an anchor that is not unique. The rows below that touch the cache pin
-# name the 3-4-man step by the path line that follows its pin.
+# golden.yml names actions/cache twice, once per tablebase corpus, and mutate()
+# refuses an anchor that is not unique. The row below that touches the cache
+# names the 3-4-man step by the path line that follows its `uses:`.
 PATH34=$'\n        with:\n          path: tests/syzygy-34man'
 
-row actionpins-pin static
-if selected actionpins-pin; then
-    # A CACHE THAT HIDES A FINDING IS WORSE THAN THE FLAKINESS IT CURED. The
-    # network half now answers from resources/actionpins-cache.tsv when it can,
-    # so this row runs with that cache WARM and requires the gate to still catch
-    # a pin whose SHA is not the tag it claims -- which is the point of the
-    # cache: it stores what the tag resolves to, and the comparison against the
-    # pin is unchanged.
-    echo "negative-control: actionpins  -- a pin whose SHA is not its claimed tag"
-    ./tests/actionpins.sh >/dev/null 2>&1 || true   # warm the cache first
-    mutate .github/workflows/golden.yml \
-        "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0$PATH34" \
-        "actions/cache@0000000000000000000000000000000000000000 # v6.1.0$PATH34"
-    if ./tests/actionpins.sh >/dev/null 2>&1; then
-        echo "  NOT DETECTED -- a pin that lies about its tag passed"; FAIL=$((FAIL+1))
+row actionslock static
+if selected actionslock; then
+    # The network half the pin gate used to carry, now `gh actions-lock
+    # --verify`'s: a locked commit that is not the commit its tag names. The
+    # lockfile entry is rewritten to actions/cache v4.2.0's commit under the
+    # v6.1.0 tag, so the file still parses and every `uses:` still has an entry;
+    # only the question to GitHub can see it.
+    echo "negative-control: actionslock -- a locked commit that is not its tag"
+    if command -v gh >/dev/null && gh auth status >/dev/null 2>&1 \
+       && gh actions-lock --version >/dev/null 2>&1; then
+        mutate .github/workflows/actions.lock \
+            "commit: 'sha1-55cc8345863c7cc4c66a329aec7e433d2d1c52a9'" \
+            "commit: 'sha1-1bd1e32a3bdc45362d1e726936510720a7c30a57'"
+        if gh actions-lock --verify >/dev/null 2>&1; then
+            echo "  NOT DETECTED -- a locked commit off its tag passed"; FAIL=$((FAIL+1))
+        else
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        fi
+        restore
     else
-        echo "  ok, red (1)"; PASS=$((PASS+1))
+        echo "  SKIPPED -- no authenticated gh with the actions-lock extension"
+        SKIP=$((SKIP+1))
     fi
-    restore
 fi
 
 row actionpins-guards static
@@ -567,39 +571,6 @@ if selected actionpins-guards; then
         echo "  ok, red (2)"; PASS=$((PASS+1))
     fi
     restore
-fi
-
-row actionpins-unresolved static
-if selected actionpins-unresolved; then
-    echo "negative-control: actionpins  -- an unanswered API must not read as a verdict"
-    # An INVERSE row, like optiondefaults-rig: the property is not that the gate
-    # goes red, it is that a check which did not run cannot be reported as one
-    # that did. The gate used to run `gh api ... 2>/dev/null` and treat the empty
-    # result as "upstream has no such tag", so a rate limit produced a screenful
-    # of findings and the gate flipped without the tree changing.
-    if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
-        fake=$(mktemp -d)
-        printf '#!/bin/bash\ncase "$1" in\n  auth) exit 0 ;;\n  api) echo "gh: API rate limit exceeded (HTTP 403)" >&2; exit 1 ;;\nesac\n' \
-            > "$fake/gh"
-        chmod +x "$fake/gh"
-        # An EMPTY cache, so the gate actually reaches the API it is being
-        # asked about. With the real one warm it makes no calls at all, nothing
-        # goes unresolved, and this row reports the gate broken when it is the
-        # row that cannot see.
-        out=$(PATH="$fake:$PATH" ACTIONPINS_CACHE="$fake/cache.tsv" ./tests/actionpins.sh 2>&1)
-        if printf '%s' "$out" | grep -q 'unresolved: [1-9]'; then
-            if printf '%s' "$out" | grep -q 'no such tag upstream'; then
-                echo "  NOT DETECTED -- a 403 was reported as a missing tag"; FAIL=$((FAIL+1))
-            else
-                echo "  ok, red (1)"; PASS=$((PASS+1))
-            fi
-        else
-            echo "  NOT DETECTED -- the gate did not count the unanswered calls"; FAIL=$((FAIL+1))
-        fi
-        rm -rf "$fake"
-    else
-        echo "  SKIPPED -- no authenticated gh, so the network half does not run"
-    fi
 fi
 
 row depcheck-friend static
@@ -1310,8 +1281,8 @@ if selected actionpins; then
     # No network needed for this row. The split is visible in the files.
     echo "negative-control: actionpins  -- one action pinned at two versions"
     mutate .github/workflows/golden.yml \
-        "uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0$PATH34" \
-        "uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0$PATH34"
+        "uses: actions/cache@v6.1.0$PATH34" \
+        "uses: actions/cache@v4.2.0$PATH34"
     if ./tests/actionpins.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- a split pin passed"; FAIL=$((FAIL+1))
     else
@@ -1322,17 +1293,27 @@ fi
 
 row actionpins-mutable static
 if selected actionpins-mutable; then
-    # A tag rather than a commit. `@v7` is "run whatever they publish next" on a
-    # runner holding this repository's token, so this is the supply-chain half
-    # rather than the freshness half.
-    echo "negative-control: actionpins  -- an action pinned to a mutable tag"
+    # A ref that names no release. `@v7` moves with the action's next release,
+    # so the commit locked for it falls off it and the lock check reddens on
+    # someone else's schedule; a bare SHA is unreadable, so a stale one is
+    # invisible. Both are the gate's first property, so both must redden it.
+    echo "negative-control: actionpins  -- an action that names no release"
     mutate .github/workflows/golden.yml \
-        'uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' \
+        'uses: actions/checkout@v7.0.1' \
         'uses: actions/checkout@v7'
     if ./tests/actionpins.sh >/dev/null 2>&1; then
-        echo "  NOT DETECTED -- a tag pin passed"; FAIL=$((FAIL+1))
+        echo "  NOT DETECTED -- a major tag passed"; FAIL=$((FAIL+1))
     else
         echo "  ok, red (1)"; PASS=$((PASS+1))
+    fi
+    restore
+    mutate .github/workflows/golden.yml \
+        'uses: actions/checkout@v7.0.1' \
+        'uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
+    if ./tests/actionpins.sh >/dev/null 2>&1; then
+        echo "  NOT DETECTED -- a bare SHA passed"; FAIL=$((FAIL+1))
+    else
+        echo "  ok, red (2)"; PASS=$((PASS+1))
     fi
     restore
 fi

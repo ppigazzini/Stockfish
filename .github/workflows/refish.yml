@@ -48,7 +48,7 @@ jobs:
       arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}
       universal_matrix: ${{ steps.set-universal-matrix.outputs.universal_matrix }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - id: set-arm-matrix
@@ -128,18 +128,25 @@ jobs:
   #
   # A SKIP IS NOT A PASS. The script's own header says a skipped row leaves the
   # status at 0, so the step reads the skipped count and fails on any skip it did
-  # not expect. Every static row runs on a hosted runner with no extra tools, so
+  # not expect. Every static row runs on a hosted runner with no extra tools but
+  # the lockfile checker the `actionslock` row drives, which the job installs, so
   # the expected count is zero.
   NegativeControl:
     name: Negative control (static rows)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Install the lockfile checker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh extension install github/gh-actions-lock --pin v0.5.1
       - name: Break each static gate on purpose and require it to notice
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           # `|| rc=$?`, not `rc=$?` on the next line. The step runs under `bash

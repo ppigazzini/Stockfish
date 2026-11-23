@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Build
@@ -43,7 +43,7 @@ jobs:
       # lets the case pin a 4-man probe (KRvKR) beside the 3-man ones -- and a
       # 4-man probe reaches a different ProbeState than a 3-man one does.
       - name: Cache the 3-4-man tablebases
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: tests/syzygy-34man
           key: syzygy-34man-${{ hashFiles('tests/tbfetch.sh') }}
@@ -61,7 +61,7 @@ jobs:
       # case rather than failing the lane, and the comparison step below says so in
       # a warning, because a lane that skipped the case did not cover it.
       - name: Cache the KNNvKP corpus
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: resources/syzygy-5man
           key: syzygy-5man-${{ hashFiles('tests/tbfetch.sh') }}

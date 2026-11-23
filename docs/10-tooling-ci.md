@@ -48,7 +48,7 @@ subject it holds.
 | "every gate runs somewhere" | `tests/lanecheck.sh` | whether the gate asserts anything once it runs | this page |
 | "the docs are not rotten" | `tests/docslint.sh` | whether a sentence is false | [13-writing.md](13-writing.md) |
 | "the citations resolve" | `tests/devcite.sh` | whether the SHA names the commit the sentence means | [13-writing.md](13-writing.md) |
-| "the actions are pinned" | `tests/actionpins.sh` | whether a pin is the latest release -- reported by `--latest`, never gated | this page |
+| "the actions are pinned" | `tests/actionpins.sh`, `gh actions-lock --verify` | whether a pin is the latest release -- Dependabot proposes it, never gated | this page |
 | "the commit record is readable by a lane" | `tests/anchor.sh` | bodies a shallow clone did not fetch | [13-writing.md](13-writing.md) |
 | "the gate scripts are sound shell" | `tests/shellcheck.sh` | whether a gate checks the thing it claims to | this page |
 
@@ -122,37 +122,42 @@ It runs when someone remembers it.
 
 ## `tests/actionpins.sh`
 
-Holds every third-party GitHub Action to a commit, a stated version, and one version.
+Holds every third-party GitHub Action to a full release, and to one release across the tree.
 
 ```sh
-./tests/actionpins.sh            # the three gated properties
-./tests/actionpins.sh --latest   # and report which pins are behind a release
+./tests/actionpins.sh        # the gated properties, offline
+gh actions-lock --verify     # the commit each release runs, against GitHub
+gh actions-lock              # after a change to a `uses:`: write its lock entry
 ```
 
-Three properties, and only the last needs the network:
+**The commit an action runs is the lockfile's.** Every `uses:` names a release tag, and
+[`.github/workflows/actions.lock`](../.github/workflows/actions.lock), which `gh actions-lock`
+writes, names the commit each tag resolved to when it was locked and the repository behind it,
+an action another action calls included. The runner runs that commit and refuses one only a
+fork carries. `docs.yml` runs `gh actions-lock --verify` beside this gate, so a `uses:` with no
+entry, or a tag moved off its commit, fails there. Nobody edits the file by hand. That check is
+the network half this gate used to carry -- a SHA pin against the tag its comment claimed, with
+a cache of resolved tags and a count of unanswered API calls so a rate limit could not read as
+a verdict -- now asked by GitHub's own checker.
 
-- **pinned to a SHA**, not a tag or a branch. A tag is mutable by whoever owns the action, so
-  `@v4` means "run whatever they publish next" on a runner holding this repository's token;
-- **carrying its version** in a trailing comment. A bare 40-hex string is unreadable, so nobody
-  can see a pin has gone stale;
-- **one action, one version** across the tree. This is the one that needs no network and no
-  release feed, and it is the one that was missing: `actions/cache` sat at v4.2.0 in one workflow
-  and v6.1.0 in two others, and the tree said nothing. It surfaced as a Node 20 deprecation
-  warning on a runner -- a message from GitHub about their schedule rather than a check of ours.
+What the gate keeps needs no network:
 
-Dispatched by `docs.yml`, which caches the resolved pins so the network half does not refetch
-every run.
+- **a full release named**, `vN.N` or `vN.N.N`. A bare SHA is unreadable, so nobody can see a
+  pin has gone stale. A major tag like `@v7`, or a branch, moves with the action's next
+  release, so the commit locked for it falls off it and the lock check reddens on someone
+  else's schedule;
+- **one action, one version** across the tree. This is the one that was missing: `actions/cache`
+  sat at v4.2.0 in one workflow and v6.1.0 in two others, and the tree said nothing. It
+  surfaced as a Node 20 deprecation warning on a runner -- a message from GitHub about their
+  schedule rather than a check of ours;
+- **a deadline on every job** that can carry one, and **a permission floor on every workflow**.
 
 **Being the latest release is deliberately not gated.** It is true until the action's next
 release and false afterwards through no change here, so gating it reddens the lane on someone
-else's schedule. `--latest` reports it for a human to act on, and
-[`.github/dependabot.yml`](../.github/dependabot.yml) proposes the bump: weekly, grouped into one
-pull request so every use of an action moves together and "one action, one version" holds, and
-seven days after a release, so a version pulled or compromised in its first week never reaches
-one.
-
-The network half -- that a pin's SHA really is the release its comment claims -- skips loudly
-without an authenticated `gh`, and says so rather than folding into the pass.
+else's schedule. [`.github/dependabot.yml`](../.github/dependabot.yml) proposes the bump and
+writes the lock entry in the same pull request: weekly, grouped into one pull request so every
+use of an action moves together and "one action, one version" holds, and seven days after a
+release, so a version pulled or compromised in its first week never reaches one.
 
 ## `tests/negative_control.sh`
 
@@ -436,13 +441,14 @@ entry for the six that build or publish rather than check.
 | `official_release.yml` | the tagged release, on a manual dispatch only; it builds through the same reusable lanes and runs no gate of its own |
 | `perfbudget.yml` | `perfbudget.sh` at two tiers, base against head, then `textequal.sh` as `continue-on-error` -- the codegen comparison informs, it does not block |
 | `golden.yml` | `optiondefaults.sh`, then `golden.sh` against the corpora `tbfetch.sh --men 4` and `--men 5` fetch, the second best effort, then `liveness.sh` |
-| `docs.yml` | `docslint.sh`, `lanecheck.sh`, `shellcheck.sh`, `buildcoverage.sh`, `depcheck.sh`, `actionpins.sh`, `anchor.sh`, then `linkcheck.sh` and `enginelink.sh` |
+| `docs.yml` | `docslint.sh`, `lanecheck.sh`, `shellcheck.sh`, `buildcoverage.sh`, `depcheck.sh`, `actionpins.sh` and `gh actions-lock --verify`, `anchor.sh`, then `linkcheck.sh` and `enginelink.sh` |
 | `fuzz.yml` | nightly: all four `fuzz.py` harnesses -- `uci`, `tb`, `net`, `shm` -- one job each, then `fuzzsearch.sh`, over the corpus `tbfetch.sh` writes |
 | `platformbattery.yml` | the functional battery on Linux arm64 and Windows arm64: `signature.sh` on both, `uci_driver.py`, `instrumented.py` and `malformed.sh` on Linux only, over the corpus `tbfetch.sh` writes |
 
 **`docs.yml` also audits the workflows themselves** with `uvx zizmor==1.33.0 .github/`: template
 injection, persisted credentials, over-broad permissions, unpinned actions and dangerous
-triggers, with the job token so the online audits check each pinned SHA against its tag. No
+triggers, reading the lockfile so a tag it locks counts as pinned, with the job token for the
+online audits. No
 `${{ }}` expression is spliced into a `run:` script -- a dispatch input, a matrix value or a step
 output reaches its command through `env:` -- and every reusable lane is called as
 `$/.github/workflows/<name>.yml`, the self-repository form. [`.github/zizmor.yml`](../.github/zizmor.yml)

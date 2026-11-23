@@ -24,7 +24,7 @@ jobs:
       universal_matrix: ${{ steps.set-universal-matrix.outputs.universal_matrix }}
       arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - id: set-universal-matrix
@@ -46,7 +46,7 @@ jobs:
     permissions:
       contents: write # For creating the official release tag and draft
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0

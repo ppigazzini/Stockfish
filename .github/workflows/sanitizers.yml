@@ -54,13 +54,13 @@ jobs:
         working-directory: src
         shell: ${{ matrix.config.shell }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Cache syzygy test data
         id: cache-syzygy-test
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: tests/syzygy
           key: syzygy-test-9b9aa13
@@ -110,7 +110,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -130,7 +130,7 @@ jobs:
       # failed this job ("tbfetch: SKIPPED -- no table could be fetched"), every
       # fixture that could run having passed.
       - name: Cache the 3-man tablebases
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: tests/syzygy-3man
           key: syzygy-3man-${{ hashFiles('tests/tbfetch.sh') }}
@@ -158,7 +158,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -167,7 +167,7 @@ jobs:
         run: make -j build ARCH=x86-64-avx2
 
       - name: Cache the KNNvKP corpus
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: resources/syzygy-5man
           key: syzygy-5man-${{ hashFiles('tests/tbfetch.sh') }}

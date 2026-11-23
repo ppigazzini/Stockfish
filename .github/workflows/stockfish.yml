@@ -33,7 +33,7 @@ jobs:
     permissions:
       contents: write # For managing the dev prerelease
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -96,7 +96,7 @@ jobs:
 
       - name: Create Draft Prerelease
         if: steps.prerelease_metadata.outputs.release_tag != ''
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@v3.0.3
         with:
           name: ${{ steps.prerelease_metadata.outputs.release_name }}
           tag_name: ${{ steps.prerelease_metadata.outputs.release_tag }}
@@ -127,7 +127,7 @@ jobs:
       arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}
       universal_matrix: ${{ steps.set-universal-matrix.outputs.universal_matrix }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - id: set-arm-matrix
