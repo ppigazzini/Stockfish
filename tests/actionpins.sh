@@ -19,8 +19,9 @@
 # no change of ours, so gating it reddens the lane on someone else's schedule.
 # `--latest` reports it, for a human to act on.
 #
-# Local workflow calls (`./.github/workflows/x.yml`) are not actions and are not
-# pinned: they are this repository's own files at this repository's own commit.
+# Local workflow calls (`$/.github/workflows/x.yml`, the self-repository form
+# zizmor asks for, or the older `./.github/workflows/x.yml`) are not actions and
+# are not pinned: they are this repository's own files at its own commit.
 #
 # Exit codes:  0 clean   1 findings   2 skipped
 
@@ -54,7 +55,7 @@ while IFS= read -r line; do
     ver=$(printf '%s' "$spec" | sed -n 's/.*#[[:space:]]*\(.*\)$/\1/p')
 
     # This repository's own reusable workflows are not actions.
-    case "$ref" in ./*) continue ;; esac
+    case "$ref" in ./* | '$/'*) continue ;; esac
     count=$((count + 1))
 
     action=${ref%@*}
