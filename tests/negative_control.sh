@@ -415,14 +415,14 @@ if selected lanecheck-reach; then
         '  PerfBudget:
     name: Perf budget
     if: ${{ always() }}
-    uses: ./.github/workflows/perfbudget.yml
+    uses: $/.github/workflows/perfbudget.yml
 ' \
         ''
     mutate .github/workflows/refish.yml \
         '  PerfBudget:
     name: Perf budget
     if: ${{ always() }}
-    uses: ./.github/workflows/perfbudget.yml
+    uses: $/.github/workflows/perfbudget.yml
 ' \
         ''
     if ./tests/lanecheck.sh >/dev/null 2>&1; then

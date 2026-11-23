@@ -140,12 +140,15 @@ jobs:
           set -o pipefail
           rc=0
           ./tests/perfbudget.sh --arch x86-64-avx2 \
-            "${{ steps.revs.outputs.base }}" "${{ steps.revs.outputs.head }}" \
+            "${STEPS_REVS_OUTPUTS_BASE}" "${STEPS_REVS_OUTPUTS_HEAD}" \
             2>&1 | tee budget-avx2.log || rc=$?
           if [ "$rc" = "2" ]; then
             echo "::error::perfbudget SKIPPED -- it proved nothing"
           fi
           exit "$rc"
+        env:
+          STEPS_REVS_OUTPUTS_BASE: ${{ steps.revs.outputs.base }}
+          STEPS_REVS_OUTPUTS_HEAD: ${{ steps.revs.outputs.head }}
 
       - name: Instruction budget, x86-64-sse41-popcnt
         if: always()
@@ -153,12 +156,15 @@ jobs:
           set -o pipefail
           rc=0
           ./tests/perfbudget.sh --arch x86-64-sse41-popcnt \
-            "${{ steps.revs.outputs.base }}" "${{ steps.revs.outputs.head }}" \
+            "${STEPS_REVS_OUTPUTS_BASE}" "${STEPS_REVS_OUTPUTS_HEAD}" \
             2>&1 | tee budget-sse41.log || rc=$?
           if [ "$rc" = "2" ]; then
             echo "::error::perfbudget SKIPPED -- it proved nothing"
           fi
           exit "$rc"
+        env:
+          STEPS_REVS_OUTPUTS_BASE: ${{ steps.revs.outputs.base }}
+          STEPS_REVS_OUTPUTS_HEAD: ${{ steps.revs.outputs.head }}
 
       # textequal is deterministic, so it gets a lane. Do not add npsab beside
       # it: a hosted runner is not an idle box, and a wall-clock ratio measured
@@ -170,8 +176,11 @@ jobs:
         run: |
           set -o pipefail
           ./tests/textequal.sh \
-            "${{ steps.revs.outputs.base }}" "${{ steps.revs.outputs.head }}" \
+            "${STEPS_REVS_OUTPUTS_BASE}" "${STEPS_REVS_OUTPUTS_HEAD}" \
             2>&1 | tee textequal.log
+        env:
+          STEPS_REVS_OUTPUTS_BASE: ${{ steps.revs.outputs.base }}
+          STEPS_REVS_OUTPUTS_HEAD: ${{ steps.revs.outputs.head }}
 
       - name: Summary
         if: always()

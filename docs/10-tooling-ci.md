@@ -145,9 +145,11 @@ every run.
 
 **Being the latest release is deliberately not gated.** It is true until the action's next
 release and false afterwards through no change here, so gating it reddens the lane on someone
-else's schedule. `--latest` reports it for a human to act on. Nothing in this repository keeps
-pins current automatically; there is no dependabot configuration, and adding one is a decision
-about repository-wide automation rather than about a gate.
+else's schedule. `--latest` reports it for a human to act on, and
+[`.github/dependabot.yml`](../.github/dependabot.yml) proposes the bump: weekly, grouped into one
+pull request so every use of an action moves together and "one action, one version" holds, and
+seven days after a release, so a version pulled or compromised in its first week never reaches
+one.
 
 The network half -- that a pin's SHA really is the release its comment claims -- skips loudly
 without an authenticated `gh`, and says so rather than folding into the pass.
@@ -436,6 +438,18 @@ entry for the six that build or publish rather than check.
 | `docs.yml` | `docslint.sh`, `lanecheck.sh`, `shellcheck.sh`, `buildcoverage.sh`, `depcheck.sh`, `actionpins.sh`, `anchor.sh`, then `linkcheck.sh` and `enginelink.sh` |
 | `fuzz.yml` | nightly: all four `fuzz.py` harnesses -- `uci`, `tb`, `net`, `shm` -- one job each, then `fuzzsearch.sh`, over the corpus `tbfetch.sh` writes |
 | `platformbattery.yml` | the functional battery on Linux arm64 and Windows arm64: `signature.sh` on both, `uci_driver.py`, `instrumented.py` and `malformed.sh` on Linux only, over the corpus `tbfetch.sh` writes |
+
+**`docs.yml` also audits the workflows themselves** with `uvx zizmor==1.33.0 .github/`: template
+injection, persisted credentials, over-broad permissions, unpinned actions and dangerous
+triggers, with the job token so the online audits check each pinned SHA against its tag. No
+`${{ }}` expression is spliced into a `run:` script -- a dispatch input, a matrix value or a step
+output reaches its command through `env:` -- and every reusable lane is called as
+`$/.github/workflows/<name>.yml`, the self-repository form. [`.github/zizmor.yml`](../.github/zizmor.yml)
+names the findings this tree keeps, each with its reason: upstream's `pull_request_target`
+formatter, which runs no shell and no `make` on the pull request's code, and the two
+`softprops/action-gh-release` steps of the release plumbing, which run only on
+official-stockfish and so could not be exercised here if rewritten. The version is pinned so a
+zizmor release cannot redden an unchanged tree; run the same command locally.
 
 **`arm_compilation.yml` and `universal_compilation.yml` take a `publish` input, and `refish.yml`
 passes false.** Both end by uploading a (pre)-release artifact, and this branch calls no release

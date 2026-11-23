@@ -95,6 +95,20 @@ jobs:
       # so the lane is deterministic; the release feed half skips without gh.
       - name: Action pins
         run: ./tests/actionpins.sh
+      # The workflows themselves, statically: template injection, persisted
+      # credentials, over-broad permissions, unpinned actions and dangerous
+      # triggers. The token lets zizmor resolve each pinned SHA against its tag
+      # comment (the online audits) beside the static ones; .github/zizmor.yml
+      # names the findings this tree keeps and why. The version is pinned, as
+      # ../valgebra pins it, so a zizmor release cannot redden an unchanged tree.
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: "0.13.9"
+          enable-cache: false
+      - name: Workflow audit (zizmor)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uvx zizmor==1.33.0 .github/
 
       # Reads the commit record, so it needs the full history the checkout above
       # already fetches. It is what says the anchor the architecture lanes read is

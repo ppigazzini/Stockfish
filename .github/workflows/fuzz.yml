@@ -79,8 +79,13 @@ jobs:
         if: matrix.harness == 'tb'
         continue-on-error: true     # a mirror outage must not fail the job
         run: ./tests/tbfetch.sh
+      # The seed is a dispatch input, so it reaches the command through the
+      # environment: spliced into `run:` it would execute as shell.
       - name: Fuzz
-        run: ./tests/fuzz.py --seconds 600 --harness ${{ matrix.harness }} ${{ github.event.inputs.seed && format('--seed {0}', github.event.inputs.seed) || '' }}
+        env:
+          HARNESS: ${{ matrix.harness }}
+          SEED: ${{ github.event.inputs.seed }}
+        run: ./tests/fuzz.py --seconds 600 --harness "$HARNESS" ${SEED:+--seed "$SEED"}
 
   # The in-process search fuzzer. A different instrument from the harnesses
   # above, not a fourth one of them: those drive the shipped binary's stdin, so a

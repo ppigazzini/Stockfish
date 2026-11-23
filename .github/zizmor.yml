@@ -1,0 +1,19 @@
+# Findings zizmor reports that this tree keeps, each with the reason. A rule is
+# ignored per FILE, not per line, because a line number moves with every edit
+# above it; each file named here has exactly one occurrence of its rule.
+rules:
+  # Upstream's formatter comment needs a write token on pull requests from
+  # forks, which only pull_request_target carries. The workflow checks out the
+  # PR head but runs no shell step and no make: clang-format reads the sources
+  # as data, and the two comment actions read only the step outcome. See the
+  # pwn-request note at the top of the file before editing it.
+  dangerous-triggers:
+    ignore:
+      - clang-format.yml
+  # softprops/action-gh-release in upstream's release plumbing. Both steps run
+  # only on official-stockfish/Stockfish (`github.repository ==` guards), so a
+  # rewrite onto the gh CLI could not be exercised by any run on this fork.
+  superfluous-actions:
+    ignore:
+      - stockfish.yml
+      - upload_binaries.yml

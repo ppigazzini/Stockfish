@@ -58,47 +58,47 @@ jobs:
 
   IWYU:
     name: IWYU
-    uses: ./.github/workflows/iwyu.yml
+    uses: $/.github/workflows/iwyu.yml
   Sanitizers:
     name: Sanitizers
     if: ${{ always() }}
-    uses: ./.github/workflows/sanitizers.yml
+    uses: $/.github/workflows/sanitizers.yml
   Tests:
     name: Tests
     if: ${{ always() }}
-    uses: ./.github/workflows/tests.yml
+    uses: $/.github/workflows/tests.yml
   Matetrack:
     name: Matetrack
     if: ${{ always() }}
-    uses: ./.github/workflows/matetrack.yml
+    uses: $/.github/workflows/matetrack.yml
   Games:
     name: Games
     if: ${{ always() }}
-    uses: ./.github/workflows/games.yml
+    uses: $/.github/workflows/games.yml
   CompilerCheck:
     name: Compiler check
     if: ${{ always() }}
-    uses: ./.github/workflows/avx2_compilers.yml
+    uses: $/.github/workflows/avx2_compilers.yml
   PerfBudget:
     name: Perf budget
     if: ${{ always() }}
-    uses: ./.github/workflows/perfbudget.yml
+    uses: $/.github/workflows/perfbudget.yml
   Docs:
     name: Docs
     if: ${{ always() }}
-    uses: ./.github/workflows/docs.yml
+    uses: $/.github/workflows/docs.yml
   Golden:
     name: Golden
     if: ${{ always() }}
-    uses: ./.github/workflows/golden.yml
+    uses: $/.github/workflows/golden.yml
   WASMCompilation:
     name: WASM compilation
     if: ${{ always() }}
-    uses: ./.github/workflows/wasm_compilation.yml
+    uses: $/.github/workflows/wasm_compilation.yml
   PlatformBattery:
     name: Platform battery
     if: ${{ always() }}
-    uses: ./.github/workflows/platformbattery.yml
+    uses: $/.github/workflows/platformbattery.yml
   # publish: false on both. This branch calls no release job and downloads no
   # artifact, so every upload here was produced by a lane and consumed by
   # nothing. What the two lanes PROVE is unchanged: each still compiles its
@@ -106,14 +106,14 @@ jobs:
   ARMCompilation:
     name: Android builds
     needs: [Matrix]
-    uses: ./.github/workflows/arm_compilation.yml
+    uses: $/.github/workflows/arm_compilation.yml
     with:
       matrix: ${{ needs.Matrix.outputs.arm_matrix }}
       publish: false
   UniversalCompilation:
     name: Universal builds
     needs: [Matrix]
-    uses: ./.github/workflows/universal_compilation.yml
+    uses: $/.github/workflows/universal_compilation.yml
     with:
       publish: false
 
