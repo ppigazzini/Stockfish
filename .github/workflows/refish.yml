@@ -42,7 +42,7 @@ permissions:
 jobs:
   Matrix:
     name: Prepare matrices
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:
       arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}

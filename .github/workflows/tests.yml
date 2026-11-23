@@ -67,8 +67,12 @@ jobs:
             comp: clang
             run_64bit_tests: true
             shell: bash
-          - name: macOS 15 Apple Clang M1
-            os: macos-15
+          # macos-26, not upstream's macos-15: on one day the macos-15 arm64 pool
+          # placed one of ten jobs, while macos-26 placed every sibling port's
+          # macOS lane, in the same hours. rerun.yml retries a job either pool
+          # leaves unacquired. The two Intel rows keep macos-15-intel.
+          - name: macOS 26 Apple Clang M1
+            os: macos-26
             compiler: clang++
             comp: clang
             run_64bit_tests: false
@@ -128,6 +132,10 @@ jobs:
           sudo apt update
           sudo apt install expect valgrind g++-multilib qemu-user-static
 
+      # sdkmanager downloads the NDK from Google and does not retry: one corrupt
+      # download ("Archive is not a ZIP archive") failed an Android job while the
+      # others fetched the same NDK fine. The install counts only once the NDK's
+      # clang is there, and is retried after a growing pause.
       - name: Install NDK
         if: runner.os == 'Linux'
         run: |
@@ -136,8 +144,18 @@ jobs:
             ANDROID_ROOT=/usr/local/lib/android
             ANDROID_SDK_ROOT=$ANDROID_ROOT/sdk
             SDKMANAGER=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager
-            echo "y" | $SDKMANAGER "ndk;$NDKV"
             ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/$NDKV
+            for attempt in 1 2 3 4; do
+              if echo "y" | $SDKMANAGER "ndk;$NDKV" \
+                 && [ -x "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ]; then
+                break
+              fi
+              if [ "$attempt" = 4 ]; then
+                echo "::error::NDK $NDKV did not install in 4 attempts"
+                exit 1
+              fi
+              sleep $((attempt * 20))
+            done
             ANDROID_NDK_BIN=$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin
             echo "ANDROID_NDK_BIN=$ANDROID_NDK_BIN" >> $GITHUB_ENV
           fi

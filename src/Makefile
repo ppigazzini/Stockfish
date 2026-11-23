@@ -1618,9 +1618,10 @@ $(TEMP_DIR)/%/stockfish.o: $(TEMP_DIR)/%/.setup $(NNUE_EMBED_OBJ) $(NET_SENTINEL
 		        ARCH=$* CXX="$(CXX)" COMP=$(COMP) UNIVERSAL_SLICE=true \
 	        NNUE_EMBED_OBJ=../nnue_embed.o
 ifeq ($(TARGET_KERNEL),Darwin)
-# Rename the initializer section
+# Rename the initializer section, and retype it to plain data so dyld does not run it
 	ld -r -rename_section __DATA __mod_init_func __DATA $(call arch-mac-section,$*) $@ -o $@.tmp
 	mv $@.tmp $@
+	"$(SHELL)" universal/retype_init_section.sh $@ $(call arch-mac-section,$*)
 else
 # Drop COMDAT groups; clang LTO leaves them around internalized LOCAL
 # template instantiations which causes problems at the final link

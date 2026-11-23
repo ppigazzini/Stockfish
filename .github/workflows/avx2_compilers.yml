@@ -11,7 +11,7 @@ permissions:
 jobs:
   avx2-compiler-matrix:
     name: avx2 (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     container:
       image: ${{ matrix.image }}

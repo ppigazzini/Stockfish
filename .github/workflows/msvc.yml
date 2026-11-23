@@ -11,7 +11,7 @@ permissions:
 jobs:
   msvc:
     name: ${{ matrix.name }} (msvc)
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 20
 
     strategy:

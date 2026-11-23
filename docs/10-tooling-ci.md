@@ -431,6 +431,7 @@ entry for the six that build or publish rather than check.
 | `arm_compilation.yml`, `universal_compilation.yml`, `wasm_compilation.yml` | the remaining targets, each benching `signature.sh` |
 | `iwyu.yml` | `iwyu.sh` in native mode, which is the only mode with an absolute verdict |
 | `clang-format.yml`, `codeql.yml` | formatting and static analysis; neither runs a gate under `tests/` |
+| `rerun.yml` | no gate: when a Refish run fails and every failed job ended "not acquired" by a runner, it re-runs them, at most five times |
 | `upload_binaries.yml` | release artifacts |
 | `official_release.yml` | the tagged release, on a manual dispatch only; it builds through the same reusable lanes and runs no gate of its own |
 | `perfbudget.yml` | `perfbudget.sh` at two tiers, base against head, then `textequal.sh` as `continue-on-error` -- the codegen comparison informs, it does not block |
@@ -450,6 +451,25 @@ formatter, which runs no shell and no `make` on the pull request's code, and the
 `softprops/action-gh-release` steps of the release plumbing, which run only on
 official-stockfish and so could not be exercised here if rewritten. The version is pinned so a
 zizmor release cannot redden an unchanged tree; run the same command locally.
+
+**Every job names its runner image**, never a `-latest` alias, so no image moves under a lane:
+the five that used one -- `refish.yml`'s matrix step, `avx2_compilers.yml`, `wasm_compilation.yml`,
+`codeql.yml` and `msvc.yml` -- name `ubuntu-26.04` and `windows-2025`, the images those aliases
+boot today. The `ubuntu-22.04` rows elsewhere are upstream's own pins and stay. The two
+Apple-silicon jobs, the `macOS 26 Apple Clang M1` test row and the macOS universal build, name
+`macos-26` rather than upstream's `macos-15`: on one day the `macos-15` arm64 pool placed one of
+ten jobs while `macos-26` placed every sibling port's macOS lane in the same hours, and a job either
+pool leaves unacquired is retried by `rerun.yml`, which re-runs a failed Refish run only when every
+failure was a job no runner picked up. The Linux
+universal builds keep upstream's `ubuntu-22.04`, so the binaries keep its glibc floor, and take
+GCC 15 from the toolchain PPA -- but from the Actions cache once one run has fetched it, since the
+PPA answers 503 for long stretches, with a cold cache retrying apt and the whole install.
+`egor-tensin/setup-gcc` made one `apt` attempt it did not check, so a PPA 503 failed the job one
+step later. `sanitizers.yml`'s malformed-table job caches its 3-man corpus under the key
+`platformbattery.yml` uses, so the tablebase mirror is needed only on a cold cache: nine of
+`malformed.sh`'s fixtures are bytes of real tables, and the gate fails when they cannot run.
+The Android jobs retry `sdkmanager`'s NDK install, which downloads from Google once and does
+not retry, and count it done only when the NDK's `clang` is there.
 
 **`arm_compilation.yml` and `universal_compilation.yml` take a `publish` input, and `refish.yml`
 passes false.** Both end by uploading a (pre)-release artifact, and this branch calls no release

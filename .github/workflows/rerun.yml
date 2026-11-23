@@ -1,0 +1,93 @@
+name: Re-run unacquired jobs
+
+# GitHub's hosted macOS arm64 pool runs short of capacity, and a job it cannot
+# place in about fifteen minutes is cancelled "not acquired by Runner of type
+# hosted even after multiple attempts" -- the job never started, so it says
+# nothing about the tree. On one day that took the two arm64 macOS jobs of
+# every Refish run while every other job passed. When a Refish run fails, this
+# reads why each failed or cancelled job ended, and re-runs them only if EVERY
+# one ended unacquired: a job that ran and failed keeps the run red, and is
+# never retried away. At most five re-runs, so a pool that stays empty leaves
+# the run red rather than retrying forever: two were not enough on a day the
+# pool placed three of twenty-six arm64 jobs here.
+#
+# It checks out nothing and runs no code from the run it reads: it reads job
+# conclusions and annotations through the API and asks for a re-run.
+on:
+  workflow_run:
+    workflows: [Refish]
+    types: [completed]
+    branches: [refish, github_ci]
+
+permissions:
+  contents: read
+
+jobs:
+  rerun:
+    name: Re-run the jobs no runner picked up
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      actions: write
+      checks: read
+    steps:
+      - name: Re-run when every failure is an unacquired job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          # The API answers 502 now and then, and it answered 502 to every
+          # 100-job page of a re-run attempt's job list while 30-job pages
+          # came back: read in small pages, and retry each call whole.
+          api() {
+            local try out
+            for try in 1 2 3 4 5; do
+              if out=$(gh api "$@"); then
+                printf '%s\n' "$out"
+                return 0
+              fi
+              echo "gh api: try $try of 5 failed" >&2
+              sleep $((try * 10))
+            done
+            return 1
+          }
+          if [ "$ATTEMPT" -ge 6 ]; then
+            echo "attempt $ATTEMPT: five re-runs spent, leaving the run as it is"
+            exit 0
+          fi
+          jobs=$(api --paginate \
+            "repos/$REPO/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs?per_page=30" \
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled"
+                                   or .conclusion == "timed_out") | "\(.id)\t\(.name)"')
+          if [ -z "$jobs" ]; then
+            echo "no failed or cancelled job in attempt $ATTEMPT"
+            exit 0
+          fi
+          while IFS=$'\t' read -r id name; do
+            why=$(api "repos/$REPO/check-runs/$id/annotations" --jq '.[].message')
+            if ! grep -q 'not acquired by Runner' <<< "$why"; then
+              echo "\"$name\" ran and ended $id's way on its own: not re-running"
+              exit 0
+            fi
+            echo "\"$name\" was never acquired by a runner"
+          done <<< "$jobs"
+          # A re-run the API reports failed may still have started: a newer
+          # attempt on the run settles it, so a retry never asks twice.
+          for try in 1 2 3 4 5; do
+            if gh run rerun "$RUN_ID" --failed -R "$REPO"; then
+              echo "re-ran attempt $ATTEMPT's unacquired jobs"
+              exit 0
+            fi
+            now=$(api "repos/$REPO/actions/runs/$RUN_ID" --jq .run_attempt)
+            if [ "$now" -gt "$ATTEMPT" ]; then
+              echo "attempt $now started though the request reported an error"
+              exit 0
+            fi
+            sleep $((try * 10))
+          done
+          echo "::error::could not re-run attempt $ATTEMPT"
+          exit 1

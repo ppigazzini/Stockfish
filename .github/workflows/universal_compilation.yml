@@ -32,10 +32,58 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Install GCC 15
-        uses: egor-tensin/setup-gcc@e06c44b6df51fa631dbc917dfb0ebcc5cec0aa5b # v2.0.3
+      # GCC 15 comes from the toolchain PPA, which answers 503 for long stretches --
+      # half of a run of probes on one afternoon -- and egor-tensin/setup-gcc made
+      # one apt attempt it did not check: apt failed, the step passed, and the job
+      # died at the link naming gcc-15 (refish run 45172214197, both Linux
+      # universal builds). So the packages a successful install fetched are kept in
+      # the cache and installed from there, and only a cold cache goes to the PPA,
+      # with apt retrying each fetch and the whole install retried after a growing
+      # pause. Same install either way: g++-15 without recommends, then
+      # cc/gcc/c++/g++ linked in /usr/local/bin, as setup-gcc linked them.
+      - name: Restore the GCC 15 packages
+        id: gcc15
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          version: 15
+          path: gcc15-debs
+          key: gcc15-debs-ubuntu-22.04-${{ runner.arch }}-v1
+
+      - name: Install GCC 15
+        run: |
+          if compgen -G 'gcc15-debs/*.deb' > /dev/null \
+             && sudo DEBIAN_FRONTEND=noninteractive \
+                  apt-get install -yq --no-install-recommends ./gcc15-debs/*.deb; then
+            echo "GCC 15 installed from the cached packages"
+          else
+            rm -rf gcc15-debs
+            for attempt in 1 2 3 4 5 6; do
+              if sudo add-apt-repository --yes --no-update ppa:ubuntu-toolchain-r/test \
+                 && sudo apt-get -o Acquire::Retries=10 update \
+                 && sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=10 \
+                      -o APT::Keep-Downloaded-Packages=true \
+                      install -yq --no-install-recommends g++-15; then
+                break
+              fi
+              if [ "$attempt" = 6 ]; then
+                echo "::error::GCC 15 did not install from the toolchain PPA in 6 attempts"
+                exit 1
+              fi
+              sleep $((attempt * 45))
+            done
+            mkdir -p gcc15-debs
+            cp /var/cache/apt/archives/*.deb gcc15-debs/
+          fi
+          for link in cc:gcc-15 gcc:gcc-15 c++:g++-15 g++:g++-15; do
+            sudo ln -sf "$(command -v "${link#*:}")" "/usr/local/bin/${link%%:*}"
+          done
+          g++ --version | head -1
+
+      - name: Keep the GCC 15 packages
+        if: steps.gcc15.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: gcc15-debs
+          key: gcc15-debs-ubuntu-22.04-${{ runner.arch }}-v1
 
       - name: Download SDE package
         uses: petarpetrovt/setup-sde@6d2773bc0ef3005fd52e0ae0bb91782321793aec # v6.0
@@ -161,10 +209,58 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Install GCC 15
-        uses: egor-tensin/setup-gcc@e06c44b6df51fa631dbc917dfb0ebcc5cec0aa5b # v2.0.3
+      # GCC 15 comes from the toolchain PPA, which answers 503 for long stretches --
+      # half of a run of probes on one afternoon -- and egor-tensin/setup-gcc made
+      # one apt attempt it did not check: apt failed, the step passed, and the job
+      # died at the link naming gcc-15 (refish run 45172214197, both Linux
+      # universal builds). So the packages a successful install fetched are kept in
+      # the cache and installed from there, and only a cold cache goes to the PPA,
+      # with apt retrying each fetch and the whole install retried after a growing
+      # pause. Same install either way: g++-15 without recommends, then
+      # cc/gcc/c++/g++ linked in /usr/local/bin, as setup-gcc linked them.
+      - name: Restore the GCC 15 packages
+        id: gcc15
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          version: 15
+          path: gcc15-debs
+          key: gcc15-debs-ubuntu-22.04-${{ runner.arch }}-v1
+
+      - name: Install GCC 15
+        run: |
+          if compgen -G 'gcc15-debs/*.deb' > /dev/null \
+             && sudo DEBIAN_FRONTEND=noninteractive \
+                  apt-get install -yq --no-install-recommends ./gcc15-debs/*.deb; then
+            echo "GCC 15 installed from the cached packages"
+          else
+            rm -rf gcc15-debs
+            for attempt in 1 2 3 4 5 6; do
+              if sudo add-apt-repository --yes --no-update ppa:ubuntu-toolchain-r/test \
+                 && sudo apt-get -o Acquire::Retries=10 update \
+                 && sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=10 \
+                      -o APT::Keep-Downloaded-Packages=true \
+                      install -yq --no-install-recommends g++-15; then
+                break
+              fi
+              if [ "$attempt" = 6 ]; then
+                echo "::error::GCC 15 did not install from the toolchain PPA in 6 attempts"
+                exit 1
+              fi
+              sleep $((attempt * 45))
+            done
+            mkdir -p gcc15-debs
+            cp /var/cache/apt/archives/*.deb gcc15-debs/
+          fi
+          for link in cc:gcc-15 gcc:gcc-15 c++:g++-15 g++:g++-15; do
+            sudo ln -sf "$(command -v "${link#*:}")" "/usr/local/bin/${link%%:*}"
+          done
+          g++ --version | head -1
+
+      - name: Keep the GCC 15 packages
+        if: steps.gcc15.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: gcc15-debs
+          key: gcc15-debs-ubuntu-22.04-${{ runner.arch }}-v1
 
       - name: Install qemu-user
         run: |
@@ -273,7 +369,9 @@ jobs:
 
   UniversalMacOS:
     name: macOS
-    runs-on: macos-15
+    # macos-26, not upstream's macos-15, as tests.yml's M1 row and for the same
+    # reason: the macos-15 arm64 pool placed one of ten jobs on one day.
+    runs-on: macos-26
     timeout-minutes: 40
     defaults:
       run:
@@ -284,7 +382,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      # macos-15 is Apple silicon; Rosetta 2 is needed to exercise the x86-64 slice
+      # macos-26 is Apple silicon; Rosetta 2 is needed to exercise the x86-64 slice
       - name: Install Rosetta 2
         run: softwareupdate --install-rosetta --agree-to-license
 

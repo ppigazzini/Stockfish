@@ -342,7 +342,12 @@ awk '/^static int dispatch/,/^}/' src/universal/entry_x86.cpp
 
 Each tier's objects are compiled into a distinct namespace, so several copies of the whole
 engine coexist in one image. `Makefile`'s `arch-namespace` and `arch-mac-section` functions
-generate the names, and on Mach-O each tier gets its own initializer section.
+generate the names. On Mach-O each tier's initializers move to a `__DATA` section of their own,
+and `src/universal/retype_init_section.sh` retypes it from `S_MOD_INIT_FUNC_POINTERS` to plain
+data, so dyld leaves it for `entry_x86.cpp` to find with `getsectiondata()` and call only for the
+selected tier. A linker that collects initializers by section type, as Xcode 26's does, otherwise
+folds every tier's into the one list dyld runs at load, and the AVX-512 tiers' kill the slice
+with SIGILL before `main` on any CPU without AVX-512.
 `src/universal/rewrite_asm_sections.awk` does the same job for clang on Windows, and
 `src/universal/patch_x86_slice.sh` rewrites `gUniversalNNUEOffset` and `gUniversalNNUESize` in
 the x86 slice so they address the embedded net inside the full executable rather than inside

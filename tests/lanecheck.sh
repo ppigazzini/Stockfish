@@ -156,8 +156,9 @@ dispatched() {
 # `schedule:`. Judging the workflow on its push filter alone calls it unreachable
 # here and invents a hole; the schedule has no branch filter and fires regardless.
 #
-#   push, pull_request, pull_request_target -- admit a branch their `branches:`
-#       list matches, or every branch when they carry no list.
+#   push, pull_request, pull_request_target, workflow_run -- admit a branch
+#       their `branches:` list matches, or every branch when they carry no list.
+#       workflow_run's list filters the branch of the run it follows.
 #   schedule, release -- carry no branch filter. They fire on the repository's
 #       DEFAULT branch, which this gate cannot determine locally: origin/HEAD is
 #       a cached ref and this repository's is stale (it says master while the
@@ -197,7 +198,7 @@ branch_admits() {
         /^on:/            { inon = 1; next }
         /^[^[:space:]]/   { inon = 0 }
         !inon             { next }
-        /^  (push|pull_request|pull_request_target|schedule|release):/ {
+        /^  (push|pull_request|pull_request_target|schedule|release|workflow_run):/ {
             if (trig != "") { print trig "\t" branches }
             trig = $1; sub(/:.*/, "", trig); branches = ""; next
         }
@@ -229,7 +230,7 @@ for w in .github/workflows/*.yml; do
     # in a lane. Counting it as reachable lets a lane report as wired while
     # nothing on a push or a pull request can start it.
     auto=$(sed 's/[[:space:]]*#.*$//' "$w" \
-           | grep -cE '^[[:space:]]*(push|pull_request|pull_request_target|schedule|release):')
+           | grep -cE '^[[:space:]]*(push|pull_request|pull_request_target|schedule|release|workflow_run):')
     manual=$(sed 's/[[:space:]]*#.*$//' "$w" | grep -cE '^[[:space:]]*workflow_dispatch:')
     # shellcheck disable=SC2126
     # grep -c exits 1 on a zero count; the COUNT is wanted here, not the status.

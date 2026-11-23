@@ -123,9 +123,17 @@ jobs:
       - name: Lower ALSR entropy
         run: sudo sysctl -w vm.mmap_rnd_bits=28
 
-      # The gate's last fixture is one byte of a REAL table, which needs the
-      # corpus. A mirror outage must not fail the job -- the fixture then SKIPS
-      # loudly inside the gate and the other five still run.
+      # Nine of the gate's fixtures are bytes of REAL tables, and the gate fails
+      # rather than passes when they cannot run, so the corpus is cached on the
+      # script that decides it -- the key platformbattery.yml caches it under.
+      # The mirror is then needed only on a cold cache: an outage there once
+      # failed this job ("tbfetch: SKIPPED -- no table could be fetched"), every
+      # fixture that could run having passed.
+      - name: Cache the 3-man tablebases
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/syzygy-3man
+          key: syzygy-3man-${{ hashFiles('tests/tbfetch.sh') }}
       - name: Fetch the 3-man tablebases
         continue-on-error: true
         run: ./tests/tbfetch.sh
