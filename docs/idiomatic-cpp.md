@@ -7,7 +7,7 @@ several of the shapes below crossed from one of them.
 Audience: hot-path and build contributors.
 
 A pattern without a command is a hunch, so each one here carries its detector. What the detector
-finds is a candidate and nothing more; the measurement is [11-performance.md](11-performance.md)'s
+finds is a candidate and nothing more; the measurement is [performance.md](performance.md)'s
 and the rule the programme runs under is absolute:
 
 > Every refactor must keep or improve performance. Even a very small regression is forbidden.
@@ -57,7 +57,7 @@ twice with `--comp gcc` and `--comp clang` is the smallest honest sweep.
 ## Moving a body out of a header is not free
 
 The single most expensive assumption available when restructuring this tree, and it is measured
-rather than argued: [11-performance.md](11-performance.md) carries the figures and the grid that
+rather than argued: [performance.md](performance.md) carries the figures and the grid that
 produced them.
 
 The rule that falls out of it:
@@ -156,7 +156,7 @@ objdump -d --demangle --no-show-raw-insn src/stockfish | awk '
   END{for(k in c) if(c[k]>=8) print c[k], k}' | sort -rn
 ```
 
-**The census is a candidate list, not a work list**, and [09-type-design.md](09-type-design.md)
+**The census is a candidate list, not a work list**, and [type-design.md](type-design.md)
 is why: a type is free while a value is CARRIED and costs when many are live at once in one large
 function, because that is a register-allocation problem. The functions at the top of that census
 are exactly the large ones. Widening an index there removes a sign extension per use and adds a
@@ -206,7 +206,7 @@ loop, not once at the top.** Folding a parameter used once at the top of a funct
 address computation and duplicates the whole body to do it.
 
 `Worker::search(..., const bool cutNode)` is the position this pattern points at and the one to
-leave alone without an instruction-cache measurement. [09-type-design.md](09-type-design.md)
+leave alone without an instruction-cache measurement. [type-design.md](type-design.md)
 states why a template argument occupies no register, which is what makes `NodeType` free on the
 hottest function in the engine -- and templating a second flag there doubles the instantiations
 of the largest function in the tree. `tests/perfcounters.sh` is the instrument for that, not
@@ -232,15 +232,15 @@ elsewhere. The profile says where the work is; it does not say that removing it 
 
 One `-O3` lane is not evidence. A reading that changes sign or vanishes when the compiler or the
 tier changes is not an instruction-count change at all, and `make profile-build` is what ships.
-[11-performance.md](11-performance.md) owns the grid, which lane binds, and what each axis cannot
+[performance.md](performance.md) owns the grid, which lane binds, and what each axis cannot
 see.
 
 ## The gates
 
 | gate | what it proves here | owned by |
 |---|---|---|
-| `tests/textequal.sh` | a spelling change emitted the same instructions, which is the only proof of pure code motion that has no noise floor | [11-performance.md](11-performance.md) |
-| `tests/perfbudget.sh` | a spelling that claims to cost nothing retires no more instructions | [11-performance.md](11-performance.md) |
-| `tests/perfcounters.sh` | a spelling whose claim is locality or instruction-cache pressure, which the instruction axis reports with the wrong sign | [11-performance.md](11-performance.md) |
-| `tests/iwyu.sh` | a header moved or split still carries the includes its own uses need, at every tier | [00-architecture.md](00-architecture.md) |
-| `tests/negative_control.sh` | a type introduced so that a wrong spelling stops compiling actually refuses it | [10-tooling-ci.md](10-tooling-ci.md) |
+| `tests/textequal.sh` | a spelling change emitted the same instructions, which is the only proof of pure code motion that has no noise floor | [performance.md](performance.md) |
+| `tests/perfbudget.sh` | a spelling that claims to cost nothing retires no more instructions | [performance.md](performance.md) |
+| `tests/perfcounters.sh` | a spelling whose claim is locality or instruction-cache pressure, which the instruction axis reports with the wrong sign | [performance.md](performance.md) |
+| `tests/iwyu.sh` | a header moved or split still carries the includes its own uses need, at every tier | [architecture.md](architecture.md) |
+| `tests/negative_control.sh` | a type introduced so that a wrong spelling stops compiling actually refuses it | [tooling-ci.md](tooling-ci.md) |

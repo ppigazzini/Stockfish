@@ -443,7 +443,7 @@ constexpr CastlingRights operator&(Color c, CastlingRights cr) {
 // The enum is u32 rather than u8, and that is measured too. u8 makes the mask
 // array one cache line instead of four and reads 0.05 to 0.07 percentage points
 // WORSE under PGO on both compilers, because every load of a right then carries
-// a movzx that the wider type does not.  See docs/09-type-design.md.
+// a movzx that the wider type does not.  See docs/type-design.md.
 constexpr CastlingRights operator|(CastlingRights a, CastlingRights b) {
     return CastlingRights(u32(a) | u32(b));
 }

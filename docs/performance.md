@@ -2,7 +2,7 @@
 
 The seven axes that decide what a change costs, and `tests/fingerprint.sh` beside them.
 
-`tests/signature.sh` proves the engine searched the same tree ([10-tooling-ci.md](10-tooling-ci.md));
+`tests/signature.sh` proves the engine searched the same tree ([tooling-ci.md](tooling-ci.md));
 it says nothing about what that tree cost. These do, and they are not interchangeable.
 
 Audience: anyone measuring a refactor or an optimisation.
@@ -642,7 +642,7 @@ depth -- 1.42 at depth 10, 1.26 at depth 20. The cold search also slows with dep
 count a function of the position and the table alone. Two revisions that search the same tree
 MUST report the same node total, and that equality is a stronger fidelity check than the bench
 anchor: the anchor only ever visits its own fixed position list from a cold table, and
-[10-tooling-ci.md](10-tooling-ci.md) records that a divergence off those positions is invisible
+[tooling-ci.md](tooling-ci.md) records that a divergence off those positions is invisible
 to it. A run whose totals differ is VOID, not slow.
 
 `--counters` adds retired instructions, cache misses and branch misses per node, each binary's
@@ -1059,4 +1059,4 @@ below it -- the file is first-match-wins.
 | `tests/ltcab.sh` | the same paired A/B in the WARM, deep regime a played long-clock move reaches | this page |
 | `tests/ltcreplay.py` | the driver under `ltcab.sh`, and the node clock that prices a speed advantage per time control | this page |
 | `tests/fingerprint.sh` | the engine still reaches its answer by calling what it called, as often | this page |
-| `tests/signature.sh` | both sides searched the same tree, without which every figure above is void | [10-tooling-ci.md](10-tooling-ci.md) |
+| `tests/signature.sh` | both sides searched the same tree, without which every figure above is void | [tooling-ci.md](tooling-ci.md) |

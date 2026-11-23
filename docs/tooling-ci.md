@@ -3,7 +3,7 @@
 `tests/`, `scripts/`, `.github/workflows/`.
 
 Every gate in the tree, what it proves, and -- the half that matters more -- what it cannot
-see. For the source layout see [00-architecture.md](00-architecture.md).
+see. For the source layout see [architecture.md](architecture.md).
 
 Audience: anyone adding or running a gate.
 
@@ -28,28 +28,28 @@ subject it holds.
 | the claim | the gate | what it cannot see | described in |
 |---|---|---|---|
 | "it searches the same tree" | `tests/signature.sh` | cost; and anything off the bench position list | this page |
-| "move generation is right" | `tests/perft.sh` | a key that desyncs and resyncs -- perft counts leaves | [01-engine-board.md](01-engine-board.md) |
-| "`ucinewgame` resets what a search reads" | `tests/reprosearch.sh` | whether those node counts are the right ones; a second thread | [02-engine-search.md](02-engine-search.md) |
-| "it still SAYS the same thing" | `tests/golden.sh` | a command no `.uci` case sends; every field the filter drops | [07-shell.md](07-shell.md) |
-| "the CLI still works" | `tests/instrumented.py` | the full text of a session -- it asserts substrings | [07-shell.md](07-shell.md) |
-| "it still answers mid-search" | `tests/liveness.sh` | the move, the score, the node count. It is blind to everything a hang is not | [07-shell.md](07-shell.md) |
-| "the unhosted search runs on the same parameters" | `tests/optiondefaults.sh` | an option the engine has no field for | [07-shell.md](07-shell.md) |
-| "the call graph is unchanged" | `tests/fingerprint.sh` | a callee inlined INTO its caller; and any code the workload never reaches | [11-performance.md](11-performance.md) |
-| "no host dependency leaked into `engine/`" | `tests/depcheck.sh`, then `tests/linkcheck.sh`, then `tests/enginelink.sh` | each is blind where the next sees: includes miss a template edge, symbols miss an inline header body, the link misses what nothing calls | [00-architecture.md](00-architecture.md) |
-| "every source is built" | `tests/buildcoverage.sh` | a header no unit includes; whether the object reaches the binary at a given `ARCH` | [00-architecture.md](00-architecture.md) |
-| "the include set is minimal" | `tests/iwyu.sh` | a use behind another host's `#ifdef`; and in shim mode, any absolute verdict | [00-architecture.md](00-architecture.md) |
-| "a known-bad table is still refused" | `tests/malformed.sh` | a field nobody has broken yet | [05-tablebases.md](05-tablebases.md) |
-| "the PV extension respects its array" | `tests/tbpv.py` | anything but the one seeded sequence over the one corpus | [05-tablebases.md](05-tablebases.md) |
+| "move generation is right" | `tests/perft.sh` | a key that desyncs and resyncs -- perft counts leaves | [engine-board.md](engine-board.md) |
+| "`ucinewgame` resets what a search reads" | `tests/reprosearch.sh` | whether those node counts are the right ones; a second thread | [engine-search.md](engine-search.md) |
+| "it still SAYS the same thing" | `tests/golden.sh` | a command no `.uci` case sends; every field the filter drops | [shell.md](shell.md) |
+| "the CLI still works" | `tests/instrumented.py` | the full text of a session -- it asserts substrings | [shell.md](shell.md) |
+| "it still answers mid-search" | `tests/liveness.sh` | the move, the score, the node count. It is blind to everything a hang is not | [shell.md](shell.md) |
+| "the unhosted search runs on the same parameters" | `tests/optiondefaults.sh` | an option the engine has no field for | [shell.md](shell.md) |
+| "the call graph is unchanged" | `tests/fingerprint.sh` | a callee inlined INTO its caller; and any code the workload never reaches | [performance.md](performance.md) |
+| "no host dependency leaked into `engine/`" | `tests/depcheck.sh`, then `tests/linkcheck.sh`, then `tests/enginelink.sh` | each is blind where the next sees: includes miss a template edge, symbols miss an inline header body, the link misses what nothing calls | [architecture.md](architecture.md) |
+| "every source is built" | `tests/buildcoverage.sh` | a header no unit includes; whether the object reaches the binary at a given `ARCH` | [architecture.md](architecture.md) |
+| "the include set is minimal" | `tests/iwyu.sh` | a use behind another host's `#ifdef`; and in shim mode, any absolute verdict | [architecture.md](architecture.md) |
+| "a known-bad table is still refused" | `tests/malformed.sh` | a field nobody has broken yet | [tablebases.md](tablebases.md) |
+| "the PV extension respects its array" | `tests/tbpv.py` | anything but the one seeded sequence over the one corpus | [tablebases.md](tablebases.md) |
 | "nothing NEW breaks it, at the stdin surface" | `tests/fuzz.py` | a correctly-read corrupt table; and the run's own budget bounds the claim | this page |
-| "nothing NEW breaks it, in the node body" | `tests/fuzzsearch.sh` | the same, and it registers no seam, so nothing a host would have supplied | [02-engine-search.md](02-engine-search.md) |
+| "nothing NEW breaks it, in the node body" | `tests/fuzzsearch.sh` | the same, and it registers no seam, so nothing a host would have supplied | [engine-search.md](engine-search.md) |
 | "the engine plays" | `tests/match.sh` | strength; and any defect both binaries share | this page |
-| "it costs the same" / "it is faster" / "it scales" / "it pays at a long clock" | the seven axes in [11-performance.md](11-performance.md) | each other -- see that page's selector | [11-performance.md](11-performance.md) |
+| "it costs the same" / "it is faster" / "it scales" / "it pays at a long clock" | the seven axes in [performance.md](performance.md) | each other -- see that page's selector | [performance.md](performance.md) |
 | "this gate can still fail" | `tests/negative_control.sh` | a gate with no row, which is simply absent from it | this page |
 | "every gate runs somewhere" | `tests/lanecheck.sh` | whether the gate asserts anything once it runs | this page |
-| "the docs are not rotten" | `tests/docslint.sh` | whether a sentence is false | [13-writing.md](13-writing.md) |
-| "the citations resolve" | `tests/devcite.sh` | whether the SHA names the commit the sentence means | [13-writing.md](13-writing.md) |
+| "the docs are not rotten" | `tests/docslint.sh` | whether a sentence is false | [writing.md](writing.md) |
+| "the citations resolve" | `tests/devcite.sh` | whether the SHA names the commit the sentence means | [writing.md](writing.md) |
 | "the actions are pinned" | `tests/actionpins.sh`, `gh actions-lock --verify` | whether a pin is the latest release -- Dependabot proposes it, never gated | this page |
-| "the commit record is readable by a lane" | `tests/anchor.sh` | bodies a shallow clone did not fetch | [13-writing.md](13-writing.md) |
+| "the commit record is readable by a lane" | `tests/anchor.sh` | bodies a shallow clone did not fetch | [writing.md](writing.md) |
 | "the gate scripts are sound shell" | `tests/shellcheck.sh` | whether a gate checks the thing it claims to | this page |
 
 Most of these can SKIP -- for a missing tool, a missing corpus, a missing PMU -- and a skip
@@ -485,7 +485,7 @@ lane proves is unchanged: the target still compiles and `signature.sh` still run
 anchor. The default is true, so `stockfish.yml` passes nothing and is unaffected.
 
 **`universal_compilation.yml` is the only lane that compiles `src/universal/`**, which is the
-runtime dispatch `06-platform.md` owns -- `grep -rlE 'ARCH=[a-z0-9-]*universal' .github/workflows`
+runtime dispatch `platform.md` owns -- `grep -rlE 'ARCH=[a-z0-9-]*universal' .github/workflows`
 returns it alone -- and the only one running `scripts/check_universal.sh`, which asks whether the
 binary selects the right architecture at run time rather than whether it built. Dropping it to
 save CI would leave the dispatch layer with no coverage of either kind.

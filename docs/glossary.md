@@ -19,7 +19,7 @@ Audience: all contributors.
 | **ply** | one half-move. `ss->ply` counts from the root of the current search; `Position::game_ply()` counts from the start of the game. They are both `int` and they measure from different origins |
 | **depth** | `using Depth = int`, deliberately. A depth-scaled product feeds a history bonus, two score margins, a move count, a history magnitude and a reduction denominator, so a type carrying it would need six output types |
 | **`Value`** | the search's score domain, `using Value = int`. The band above `VALUE_TB_WIN_IN_MAX_PLY` is reserved for tablebase verdicts and mates, which is why `evaluate.cpp` clamps into it |
-| **key** | a `u64` Zobrist hash, in one of several spaces. The pawn, minor-piece, material and non-pawn accessors return `TypedKey<KeySpace>` values that cannot substitute for one another; the raw position key and the transposition key (`Position::adjust_key50` mixes the halfmove clock in) both stay a bare `Key`, and nothing separates those two. See [09-type-design.md](09-type-design.md) |
+| **key** | a `u64` Zobrist hash, in one of several spaces. The pawn, minor-piece, material and non-pawn accessors return `TypedKey<KeySpace>` values that cannot substitute for one another; the raw position key and the transposition key (`Position::adjust_key50` mixes the halfmove clock in) both stay a bare `Key`, and nothing separates those two. See [type-design.md](type-design.md) |
 | **the transposition table** | `src/engine/tt.cpp`: clusters of three `TTEntry` in 32 bytes, shared across threads without a lock. `depth8` is the occupancy test, which is why `DEPTH_UNSEARCHED` and `DEPTH_NONE` are negative and distinct |
 | **cluster** | the 32-byte unit the table is an array of, sized to divide a cache line so one probe touches one line |
 | **the history tables** | `src/engine/history.h`. Every one is a gravity table: `operator<<` moves the stored value toward the bonus in proportion to its distance from the clamp `D`, which is a template parameter, one per table |
@@ -50,7 +50,7 @@ None of this is chess-programming vocabulary.
 
 | term | what carries it here |
 |---|---|
-| **gate** | a script under `tests/` that answers one question and exits 0, 1 or 2. Listed in [10-tooling-ci.md](10-tooling-ci.md) |
+| **gate** | a script under `tests/` that answers one question and exits 0, 1 or 2. Listed in [tooling-ci.md](tooling-ci.md) |
 | **lane** | a workflow job that runs a gate. `tests/lanecheck.sh` holds every gate to having one, or to carrying an excuse that says what runs it |
 | **reachable** | of a workflow: something can start it -- a push, a pull request, a schedule, a release, or a `uses:` from another reachable workflow. `workflow_dispatch` alone is not reachable, because a lane only a human can click does not gate a change |
 | **excuse** | a recorded reason a gate has no lane, in `tests/lanecheck.sh`. It expires in both directions: an excused gate that *is* dispatched is a stale excuse, and an excuse naming a script the tree no longer has fails |
@@ -70,9 +70,9 @@ None of this is chess-programming vocabulary.
 | **paired ratio** | head over base within ONE round, then the median across rounds -- not the ratio of the medians. A round is the only comparison in which both sides saw the same machine state |
 | **the spread** | the min and max of those per-round ratios. A ratio whose spread straddles 1.000 has established no direction, whatever its median reads |
 | **multiplexing** | the kernel time-slicing more events than the PMU has slots, so a counter covers only part of the run. The read format carries enabled/running to scale it; an unscaled reading under-reports silently |
-| **hot / cold** | of a page: whether it describes code that moves. [13-writing.md](13-writing.md) |
+| **hot / cold** | of a page: whether it describes code that moves. [writing.md](writing.md) |
 | **zone** | one of `src/engine/`, `src/platform/`, `src/shell/`. A file's zone is its directory, so a new file joins one by where it is put, and a file in a directory the mapping does not name resolves to `unassigned` rather than being skipped. `tests/zones.sh` is the single mapping, sourced rather than restated: `grep -rl zones.sh tests` names every gate that reads it |
-| **seam** | a struct of function pointers the engine declares, reads through a getter, and the host fills once before the first search. The engine names no host type; the host names the engine's. Catalogued in [00-architecture.md](00-architecture.md) |
+| **seam** | a struct of function pointers the engine declares, reads through a getter, and the host fills once before the first search. The engine names no host type; the host names the engine's. Catalogued in [architecture.md](architecture.md) |
 | **the host snapshot** | `Host` (`src/engine/host.h`), a by-value copy of all seven seam registrations. `current_host()` reads whatever is registered when it runs, so `Engine::host` must be assigned after the registrations and before any `Worker` is built -- a snapshot taken early holds the fallback arena and the refusing worker set, which is a working engine giving a different answer |
 | **the composition root** | `src/shell/engine.cpp`: the one file that calls a seam's setter. Nothing else does |
 | **the arena** | `src/engine/arena.h`, the allocation seam. Unregistered it falls back to plain aligned allocation, which is why a block must never be taken from one allocator and released by the other |
@@ -85,7 +85,7 @@ None of this is chess-programming vocabulary.
 
 | word | the two meanings |
 |---|---|
-| **node** | a search node (`Worker::search`), or a **NUMA node** (`src/platform/numa.h`). Both appear on the same page in [04-multithreading.md](04-multithreading.md) |
+| **node** | a search node (`Worker::search`), or a **NUMA node** (`src/platform/numa.h`). Both appear on the same page in [multithreading.md](multithreading.md) |
 | **depth** | the search depth of a node, or the `--depth` argument to the perf gates, which is a bench depth |
 | **key** | a Zobrist hash, or the 16-bit fragment of one stored in a `TTEntry` |
 | **generation** | the transposition table's age counter, or the act of producing moves (`movegen`) |
@@ -99,7 +99,7 @@ None of this is chess-programming vocabulary.
 ## 4. The testing field's vocabulary
 
 Neither this repository nor Stockfish owns these; the literature does, and
-[12-references.md](12-references.md) links it.
+[references.md](references.md) links it.
 
 | term | as used here |
 |---|---|

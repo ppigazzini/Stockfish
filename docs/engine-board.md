@@ -55,7 +55,7 @@ grep -n '^enum' src/engine/types.h        # the ten, in declaration order
 `Key` is the transposition key, and `Position::key()` and `Position::prefetch_key()` are the only
 public accessors returning one. The pawn, minor-piece, material and non-pawn keys are stored raw in
 `StateInfo` but reached only through accessors returning `TypedKey<KeySpace>`, so outside
-`position.cpp` they cannot substitute for one another; see [09-type-design.md](09-type-design.md).
+`position.cpp` they cannot substitute for one another; see [type-design.md](type-design.md).
 
 The encodings are load-bearing rather than arbitrary:
 
@@ -178,7 +178,7 @@ is dead code only where the call is inlined -- an out-of-line copy computes both
 
 **Which implementation is compiled changes the code but not the answer.** Every tier must produce
 the same attack sets, and what holds that is the compile matrix benching one signature after every
-architecture build it does ([10-tooling-ci.md](10-tooling-ci.md)).
+architecture build it does ([tooling-ci.md](tooling-ci.md)).
 
 `Attacks::init` fills `LineBB`, `BetweenBB`, `inverse_RayPassBB`, `DiagBB` and `AntiDiagBB`; no
 slider table is built at run time. `between_bb(s1, s2)` **includes `s2`** -- the last line of the
@@ -240,7 +240,7 @@ move alone and so starts the load earlier still. The four correction-history pre
 written out at the call site rather than wrapped in a helper: a function whose only effect is a
 prefetch has no observable effect, so the compiler may delete the call, and four prefetches
 silently missing score as an *improvement* on the instruction axis
-([10-tooling-ci.md](10-tooling-ci.md)).
+([tooling-ci.md](tooling-ci.md)).
 
 `undo_move` restores by stepping `stateIdx` back one and reversing the placement; it does not
 restore the non-copied half, which the next `do_move` recomputes.
@@ -406,7 +406,7 @@ an update candidate.
 **It cannot see a key that desyncs and resyncs**, because perft counts leaves -- a position whose
 Zobrist key goes wrong and comes back right generates the same moves and reaches the same total.
 Neither can the anchor, which is a fixed position list. Nothing in the tree proves the key
-faithful ([10-tooling-ci.md](10-tooling-ci.md)).
+faithful ([tooling-ci.md](tooling-ci.md)).
 
 `tests/uci_driver.py perft` reads the same positions and the same expected counts out of this
 script rather than a copy, and speaks UCI directly for a host with no `expect`. It is not the

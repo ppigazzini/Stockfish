@@ -202,9 +202,9 @@ fi
 row docslint static
 if selected docslint; then
     echo "negative-control: docslint    -- a dead link in the index"
-    mutate docs/README.md \
-        '| [00-architecture.md](00-architecture.md) |' \
-        '| [00-architecture.md](99-nonexistent.md) |'
+    mutate docs/index.md \
+        '| [architecture.md](architecture.md) |' \
+        '| [architecture.md](nonexistent.md) |'
     if ./tests/docslint.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- the lint reported clean"; FAIL=$((FAIL+1))
     else
@@ -251,7 +251,7 @@ fi
 row docslint-path static
 if selected docslint-path; then
     echo "negative-control: docslint    -- a named path that is not in the tree"
-    mutate docs/00-architecture.md \
+    mutate docs/architecture.md \
         '## Startup' \
         'The scheduler lives in `src/scheduler.cpp`.
 
@@ -272,7 +272,7 @@ if selected docslint-bench; then
         SKIP=$((SKIP+1))
     else
         echo "negative-control: docslint    -- a page quoting the current bench signature"
-        mutate docs/10-tooling-ci.md \
+        mutate docs/tooling-ci.md \
             '## Check the exit code, never a piped fragment' \
             "The reference is $REF today.
 
@@ -310,7 +310,7 @@ if selected docslint-lanes; then
     # would also change what CI runs, and a row that alters the lanes it is
     # checking is testing two things at once.
     echo "negative-control: docslint [lanes] -- a CI row a gate behind must be caught"
-    mutate docs/10-tooling-ci.md \
+    mutate docs/tooling-ci.md \
         '| `iwyu.yml` | `iwyu.sh` in native mode, which is the only mode with an absolute verdict |' \
         '| `iwyu.yml` | include hygiene |'
     if ./tests/docslint.sh >/dev/null 2>&1; then
@@ -350,7 +350,7 @@ if selected docslint-selector; then
     # defect actually took: the six axes were added to AGENTS.md and the page's
     # copy kept five, under a sentence saying there were five because there were
     # five questions.
-    mutate docs/11-performance.md \
+    mutate docs/performance.md \
         '| "this scales" | `tests/npsthreads.sh` | every other axis runs one thread, so a contention change is invisible to all five |
 ' \
         ''
@@ -369,7 +369,7 @@ if selected docslint-gates; then
     # convention decays in: a page is rewritten, the section goes with the
     # rewrite, and every other page still points at it -- so the check has to
     # notice from the far end as well as from the page itself.
-    mutate docs/01-engine-board.md '## The gates' '## Gates and things'
+    mutate docs/engine-board.md '## The gates' '## Gates and things'
     if ./tests/docslint.sh >/dev/null 2>&1; then
         echo "  NOT DETECTED -- a page with no gates section passed"; FAIL=$((FAIL+1))
     else

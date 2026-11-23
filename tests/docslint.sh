@@ -138,7 +138,7 @@ head_check "5. no tracked file references the untracked working area"
 # THE DIRECTORY STRING IS NOT THE ONLY WAY TO NAME THE AREA. A citation written
 # as a bare basename -- `PERFORMANCE.md` -- sends a reader to a file no clone
 # carries and matches no grep for __DEV, so this check read clean over one in
-# docs/10-tooling-ci.md. The basenames are therefore searched too, and because
+# docs/tooling-ci.md. The basenames are therefore searched too, and because
 # a clone has no directory to read them out of, the mode is reported with the
 # result the way tests/iwyu.sh reports native against shim.
 needles=("$INTERNAL")
@@ -213,14 +213,14 @@ selector_gates() {
 }
 
 sel_agents=$(selector_gates AGENTS.md)
-sel_page=$(selector_gates docs/11-performance.md)
+sel_page=$(selector_gates docs/performance.md)
 
 if [ -z "$sel_agents" ] || [ -z "$sel_page" ]; then
     note "one of the two selector tables was not found -- its header row moved"
 elif [ "$sel_agents" != "$sel_page" ]; then
     echo "  only in AGENTS.md:"
     comm -23 <(echo "$sel_agents") <(echo "$sel_page") | sed 's/^/    /'
-    echo "  only in docs/11-performance.md:"
+    echo "  only in docs/performance.md:"
     comm -13 <(echo "$sel_agents") <(echo "$sel_page") | sed 's/^/    /'
     note "the selector tables disagree -- and the sentence above each states a count"
 else
@@ -254,7 +254,7 @@ lane_pairs_documented() {
                 if (!seen) print wtok[i] "\t"
             }
         }
-    ' docs/10-tooling-ci.md | sort -u
+    ' docs/tooling-ci.md | sort -u
 }
 
 lane_pairs_actual() {
@@ -303,7 +303,7 @@ head_check "8. every page carries the gates that hold it"
 # Two pages hold no gates and say so rather than carrying an empty table. The
 # list expires in both directions: an exempt page that grows a section is a
 # stale exemption, and an exemption naming a page the tree no longer has fails.
-GATELESS_PAGES=(docs/12-references.md docs/14-glossary.md)
+GATELESS_PAGES=(docs/references.md docs/glossary.md)
 
 # Four scripts are not gates. Each reason is the one negative_control.sh gives
 # for the same script, because it is the same fact.
@@ -329,8 +329,10 @@ gates_rows() {
             while (match(s, /[A-Za-z0-9_]+\.(sh|py)/)) {
                 g[++ng] = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
             }
+            # A page is a lower-case name, so the shipped files beside docs/ --
+            # AGENTS.md, CONTRIBUTING.md -- never read as one.
             s = row
-            while (match(s, /[0-9][0-9]-[a-z0-9-]+\.md/)) {
+            while (match(s, /[a-z0-9-]+\.md/)) {
                 pp[++np] = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
             }
             for (i = 1; i <= ng; i++)
@@ -349,8 +351,10 @@ gateless() {
 
 all_rows=$(mktemp) || exit 2
 have_section=$(mktemp) || exit 2
-for pg in docs/[0-9]*.md; do
+for pg in docs/*.md; do
     [ -f "$pg" ] || continue
+    # The index routes to the pages and owns no subject, so it holds no gates.
+    [ "$pg" = docs/index.md ] && continue
     n=$(grep -c '^## The gates[[:space:]]*$' "$pg")
     if gateless "$pg"; then
         [ "$n" = "0" ] || note "$pg is on the gateless list and has a gates section -- stale exemption"

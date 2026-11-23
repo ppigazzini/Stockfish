@@ -85,7 +85,7 @@ Every clause is load-bearing:
 A WDL hit scores as `VALUE_TB - ss->ply` -- above any evaluation, below any mate -- so the
 search can tell a proven result from an estimate. `VALUE_TB` and the
 `VALUE_TB_WIN_IN_MAX_PLY` band in `types.h` reserve that range, and
-[03-engine-eval.md](03-engine-eval.md) shows the evaluation clamped to stay out of it.
+[engine-eval.md](engine-eval.md) shows the evaluation clamped to stay out of it.
 `tbConfig.useRule50` decides the threshold the verdict is compared against: set, `WDLCursedWin`
 falls in the draw arm and scores `VALUE_DRAW + 2`; clear, it clears the threshold and scores as a
 proven win.
@@ -115,7 +115,7 @@ and a pair of plain `bool`s in that position would let a transposition compile.
 Unregistered the source answers **no tablebases loaded**, which is exactly true of an engine
 with none: the search's `tbConfig.cardinality != 0` guard short-circuits before the call. That
 is why `bench` cannot measure this seam -- with `SyzygyPath` empty it measures the guard. See
-[00-architecture.md](00-architecture.md).
+[architecture.md](architecture.md).
 
 ## The files
 
@@ -308,7 +308,7 @@ alone, so nothing in the shipped build would catch a relaxation of it.
 This is where the prober meets the clock. The whole function budgets itself against
 `Move Overhead` over twice the PV count, a fraction of a millisecond at the bottom of the
 option's range, so it compares in microseconds through the `clock.h` seam. See
-[00-architecture.md](00-architecture.md). The budget is armed only when
+[architecture.md](architecture.md). The budget is armed only when
 `limits.use_time_management()` holds and `nodestime` is off, so under `go infinite`, `go depth`,
 `go movetime` and a nodes-denominated clock it never fires and the only bounds are the tables
 running out and `MAX_PLY`. It is also tested once before the first `do_move`, so a caller already
@@ -319,7 +319,7 @@ past the budget extends nothing.
 `SyzygyPath` sets the search path, `SyzygyProbeLimit` caps the piece count,
 `SyzygyProbeDepth` sets the `probeDepth` the Step 6 guard compares against, and
 `Syzygy50MoveRule` reaches Step 6 as `tbConfig.useRule50` and `root_probe` as `Rule50`. All four are
-registered in `Engine::Engine` ([07-shell.md](07-shell.md)).
+registered in `Engine::Engine` ([shell.md](shell.md)).
 
 `Tablebases::init` runs on the `SyzygyPath` option's `OnChange` callback and again from
 `Engine::search_clear`, and it is what discovers which tables actually exist. **The option is
@@ -340,7 +340,7 @@ without the feature.
 | `tests/tbfetch.sh` | the corpus every other row needs, verified by magic rather than by HTTP status | this page |
 | `tests/malformed.sh` | a known-bad table is still refused | this page |
 | `tests/tbpv.py` | the PV extension respects the array that has to hold it | this page |
-| `tests/fuzz.py --harness tb` | mutated bytes reach the decoder, and one table's corruption does not reach another's verdict | [10-tooling-ci.md](10-tooling-ci.md) |
+| `tests/fuzz.py --harness tb` | mutated bytes reach the decoder, and one table's corruption does not reach another's verdict | [tooling-ci.md](tooling-ci.md) |
 
 ### `tests/tbfetch.sh`
 

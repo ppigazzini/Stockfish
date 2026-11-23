@@ -64,7 +64,7 @@ rows behind the YAML, in the same page that tells the reader a list drifting by 
 exactly like one that has not.
 
 **Two lists remain prose, and prose rots.** The tier table in
-[09-type-design.md](09-type-design.md) and the option table in [07-shell.md](07-shell.md) are
+[type-design.md](type-design.md) and the option table in [shell.md](shell.md) are
 both derivable and neither is welded; the rule below still applies to them with nothing behind
 it. Gating a list means the page and the tree read from one source, and until that is written the
 list is a claim.
@@ -145,7 +145,7 @@ asked for.
 
 **No padding.** Length is not thoroughness; it is where rot hides. Cut anything that does not
 help a reader implement or verify. Background available from the wiki belongs in
-[12-references.md](12-references.md) as a link.
+[references.md](references.md) as a link.
 
 **Pair every prohibition with an alternative.** "Do not call X" leaves a reader stuck; "do not
 call X, use Y, which holds the lock" does not.
@@ -159,8 +159,10 @@ life.
 
 ### Pages
 
-Numbered by reading order; a contributor works down from the architecture into a zone. Each
-owns one part of `src/`, names it in the opening lines, and names its audience.
+`index.md` is the index, the page a reader lands on. Every other page is named for what it
+holds, and the order a reader meets them in is the index table's alone: a contributor works
+down from the architecture into a zone. Each owns one part of `src/`, names it in the opening
+lines, and names its audience.
 
 A page is **hot** when it describes code that moves and **cold** when what it describes barely
 does. The index table carries the temperature, and the temperature is a prediction of where to
@@ -304,8 +306,8 @@ runs eight checks, and `grep -n 'head_check "' tests/docslint.sh` is the list in
 internal link, a `src/`/`tests/`/`scripts/`/`docs/`/`.github/` path named in prose that is not in the
 tree, a bench signature quoted in a page, a script in `tests/` or `scripts/` that no page
 names, a tracked file pointing into the untracked working area, the two copies of the
-performance-gate selector table -- `AGENTS.md`'s and [11-performance.md](11-performance.md)'s --
-naming different gates, [10-tooling-ci.md](10-tooling-ci.md)'s CI table naming, per workflow, the
+performance-gate selector table -- `AGENTS.md`'s and [performance.md](performance.md)'s --
+naming different gates, [tooling-ci.md](tooling-ci.md)'s CI table naming, per workflow, the
 gates the workflow actually invokes, and every page's `## The gates` section against the scripts
 in the tree and against each other. A path `.gitignore` names is exempt from the path check, because prose
 legitimately describes the tool that writes an ignored artifact.

@@ -3,7 +3,7 @@
 Background for the rest of the set. Owns no source.
 
 Links only. Anything a reader could learn from one of these does not belong in the rest of
-this set -- see [13-writing.md](13-writing.md).
+this set -- see [writing.md](writing.md).
 
 Audience: all developers.
 
@@ -21,7 +21,7 @@ Audience: all developers.
 
 - [Chess Programming Wiki][cpw] -- the domain reference.
   - [Bitboards][cpw-bb] | [Magic bitboards][cpw-magic] | [Hyperbola quintessence][cpw-hq] --
-    the background for the four slider paths [01-engine-board.md](01-engine-board.md) selects
+    the background for the four slider paths [engine-board.md](engine-board.md) selects
     between: two hyperbola-quintessence variants, PEXT, and magic bitboards.
   - [Perft results][cpw-perft] -- the counts `tests/perft.sh` asserts.
   - [Alpha-beta][cpw-ab] | [Quiescence search][cpw-qs] | [Iterative deepening][cpw-id]
@@ -30,7 +30,7 @@ Audience: all developers.
     [Singular extensions][cpw-singular]
   - [Transposition table][cpw-tt] | [Zobrist hashing][cpw-zobrist] |
     [Static exchange evaluation][cpw-see]
-  - [Lazy SMP][cpw-lazysmp] -- the threading model, [04-multithreading.md](04-multithreading.md).
+  - [Lazy SMP][cpw-lazysmp] -- the threading model, [multithreading.md](multithreading.md).
   - [Chess960][cpw-960] -- the castling encoding `Move` carries.
 - [UCI protocol specification][uci] -- the wire protocol `src/shell/uci.cpp` implements.
 - [Cuckoo hashing for repetition detection][cuckoo] -- van Kervinck's algorithm,
@@ -80,7 +80,7 @@ standard that matches the translation unit.
 
 ### Build, Makefile and toolchain
 
-Background for the build described in [10-tooling-ci.md](10-tooling-ci.md) and for any change
+Background for the build described in [tooling-ci.md](tooling-ci.md) and for any change
 to `src/Makefile`.
 
 - [GNU Make manual][gnu-make] -- the reference. `src/Makefile` uses conditional assignment,
@@ -99,7 +99,7 @@ to `src/Makefile`.
 
 ## Type design
 
-Background for [09-type-design.md](09-type-design.md).
+Background for [type-design.md](type-design.md).
 
 - [Harper, *Practical Foundations for Programming Languages*][pfpl] -- a type is a set of
   values and membership is construction, which is the frame that page assumes.
@@ -120,7 +120,7 @@ Background for [09-type-design.md](09-type-design.md).
 
 ## Codegen, LTO and measurement
 
-Background for [10-tooling-ci.md](10-tooling-ci.md) and for any change measured with the
+Background for [tooling-ci.md](tooling-ci.md) and for any change measured with the
 perf gates.
 
 - [LLVM link-time optimization][llvm-lto] | [ThinLTO][thinlto] -- what LTO does across a
@@ -141,11 +141,11 @@ perf gates.
   travels in -- six integer registers on x86-64 Linux, so a seventh argument costs a stack
   slot -- and its table 6 says which objects travel in registers at all: one with a
   non-trivial copy constructor or destructor goes as a pointer to a temporary copy, so a
-  wrapper is free to pass, as [09-type-design.md](09-type-design.md) assumes, only while both
+  wrapper is free to pass, as [type-design.md](type-design.md) assumes, only while both
   stay trivial. *Optimizing subroutines in assembly language* tunes hand-written kernels; every
   `asm` statement in this tree is one instruction or an empty optimisation barrier, apart from
   the directives `src/incbin/incbin.h` embeds the net with. The general results this tree uses
-  are in [11-performance.md](11-performance.md); the per-generation tables are not copied
+  are in [performance.md](performance.md); the per-generation tables are not copied
   anywhere, because they change every generation.
 - [What every programmer should know about memory][drepper] -- cache lines and data layout,
   the background for the 32-byte transposition cluster.
@@ -170,7 +170,7 @@ perf gates.
 
 ## Gates, lanes and testing
 
-Background for the gates in [10-tooling-ci.md](10-tooling-ci.md).
+Background for the gates in [tooling-ci.md](tooling-ci.md).
 
 - [libFuzzer][libfuzzer] -- the in-process, coverage-guided engine behind
   `tests/fuzzsearch.sh`. The flag reference is where `-print_funcs`, `-max_total_time` and the

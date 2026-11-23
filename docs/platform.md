@@ -9,7 +9,7 @@ topology and thread binding, cross-process shared memory, native threads with a 
 size, and runtime ISA dispatch.
 
 Why a `Search::Worker` takes a `HistoryBankIndex` rather than a topology handle, and what the
-search sees of any of it, is [04-multithreading.md](04-multithreading.md)'s.
+search sees of any of it, is [multithreading.md](multithreading.md)'s.
 
 Audience: anyone porting to a new OS, or changing threading, allocation or the build's
 dispatch.
@@ -354,7 +354,7 @@ the x86 slice so they address the embedded net inside the full executable rather
 the slice.
 
 `universal/nnue_embed.cpp` holds the embedded network for these builds; see
-[03-engine-eval.md](03-engine-eval.md) for the three embedding mechanisms and why this
+[engine-eval.md](engine-eval.md) for the three embedding mechanisms and why this
 translation unit compiles at a different standard from the rest of the engine.
 
 ## What the gates reach
@@ -379,7 +379,7 @@ A change here is therefore a change whose correctness the gates largely do not e
 | `scripts/check_universal_riscv.sh` | the same for riscv64 | this page |
 | `scripts/get_native_properties.sh` | the host ISA is detected and named as an enumerated `ARCH` | this page |
 | `scripts/net.sh` | the network the build expects is downloaded and verified | this page |
-| `tests/fuzz.py --harness shm` | a process that dies because a *peer* died is the defect; one killed on purpose is the stimulus | [10-tooling-ci.md](10-tooling-ci.md) |
+| `tests/fuzz.py --harness shm` | a process that dies because a *peer* died is the defect; one killed on purpose is the stimulus | [tooling-ci.md](tooling-ci.md) |
 
 `universal_compilation.yml` is the only lane that compiles `src/universal/` and the only one
 running `scripts/check_universal.sh`, so dropping it would leave the dispatch layer with no

@@ -6,7 +6,7 @@ shared state they hand to `Search::Worker`.
 Audience: threading and NUMA.
 
 The mechanism that replicates -- `NumaConfig`, the policy parser, the shared mapping -- is
-[06-platform.md](06-platform.md)'s.
+[platform.md](platform.md)'s.
 
 ## Where to look
 
@@ -33,7 +33,7 @@ The threads diverge for three reasons, all of them in the code:
   cutoff to another;
 - each opens its aspiration window at a width derived from `threadIdx`, so the same root move
   fails high or low on different threads at different iterations
-  ([02-engine-search.md](02-engine-search.md));
+  ([engine-search.md](engine-search.md));
 - odd-numbered threads reduce a null move one ply less, so they prune a different tree.
 
 ```sh
@@ -68,7 +68,7 @@ grep -rn 'HistoryBankIndex(' src/platform/thread.cpp src/engine/search_go.cpp
 
 An alias would make the two interchangeable and the separation would hold in this paragraph
 alone. Scoped, each of those sites has to write the conversion out. See
-[09-type-design.md](09-type-design.md) for what that caught.
+[type-design.md](type-design.md) for what that caught.
 
 **A bank's size is a `PowerOfTwo`, not a count.** `SharedHistories` sizes its correction and
 pawn tables as a multiple of the worker count and indexes them by masking a key with
@@ -118,7 +118,7 @@ makes the program's meaning well defined.
 
 `bench` is single-threaded, so **every value gate in this tree stays green while a data race
 is present**. The sanitizer lanes are the only thing that covers this -- see
-[10-tooling-ci.md](10-tooling-ci.md).
+[tooling-ci.md](tooling-ci.md).
 
 ## The pool
 
@@ -251,7 +251,7 @@ would play a move on an unproven mate.
 
 `src/platform/numa.h` and `src/platform/numa.cpp` carry the topology detection, the thread
 binding and the network replication. Which half a function lives in is decided by where it is
-instantiated, not by how hot it is; [06-platform.md](06-platform.md) states that rule.
+instantiated, not by how hot it is; [platform.md](platform.md) states that rule.
 
 On a multi-socket machine, a thread reading a network resident on another socket pays
 cross-node memory latency on every evaluation, which is most of what the engine does.
@@ -287,9 +287,9 @@ is live and while contention is getting worse. These are the ones that do not.
 
 | gate | what it proves here | owned by |
 |---|---|---|
-| `tests/npsthreads.sh` | the two revisions scale the same across thread counts -- the only axis that measures contention on the shared last level, the transposition table and the counters | [11-performance.md](11-performance.md) |
-| `tests/enginelink.sh` | a search asked for two workers actually dispatches two, and the host's worker set is restored afterwards; the only place the concurrent search runs under a sanitizer with no host pool | [00-architecture.md](00-architecture.md) |
-| `tests/instrumented.py` | the shipped engine under ThreadSanitizer, with the pool the host owns | [07-shell.md](07-shell.md) |
+| `tests/npsthreads.sh` | the two revisions scale the same across thread counts -- the only axis that measures contention on the shared last level, the transposition table and the counters | [performance.md](performance.md) |
+| `tests/enginelink.sh` | a search asked for two workers actually dispatches two, and the host's worker set is restored afterwards; the only place the concurrent search runs under a sanitizer with no host pool | [architecture.md](architecture.md) |
+| `tests/instrumented.py` | the shipped engine under ThreadSanitizer, with the pool the host owns | [shell.md](shell.md) |
 
 A change to anything more than one thread reads or writes needs the sanitizer lanes as well as
 the value gates:

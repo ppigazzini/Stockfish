@@ -148,7 +148,7 @@ void AccumulatorStack::evaluate(const Position&           pos,
     // translation unit gains one null statement where the assert used to be, and
     // the neutrality of this file has to be argued; with it, `-E -P` under
     // `-DNDEBUG` is BYTE-IDENTICAL to the file before the law, which is a proof
-    // and needs no grid. docs/11-performance.md step 5 is the rule this follows.
+    // and needs no grid. docs/performance.md step 5 is the rule this follows.
 #ifndef NDEBUG
     assert(accumulator_law_holds(pos, featureTransformer, latest(), cache));
 #endif

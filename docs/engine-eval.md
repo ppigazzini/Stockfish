@@ -284,7 +284,7 @@ What survives tuning is the shape, and each step is doing something specific:
   be converted before the rule draws the game is not worth its nominal value.
 - **The clamp** is `std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1)`, which
   keeps the evaluation **strictly** inside the tablebase band, so an estimate can never be read as a
-  proven verdict or a mate. [05-tablebases.md](05-tablebases.md) shows the other side of that band.
+  proven verdict or a mate. [tablebases.md](tablebases.md) shows the other side of that band.
 
 `scale_evaluation` reads the position and nothing else, so the final figure `eval` prints is the one
 every thread searches with.
@@ -392,4 +392,4 @@ ls -l src/stockfish src/*.nnue
 
 | gate | what it proves here | owned by |
 |---|---|---|
-| `tests/fuzz.py --harness net` | a corrupt network is refused rather than loaded and reported as an opinion | [10-tooling-ci.md](10-tooling-ci.md) |
+| `tests/fuzz.py --harness net` | a corrupt network is refused rather than loaded and reported as an opinion | [tooling-ci.md](tooling-ci.md) |

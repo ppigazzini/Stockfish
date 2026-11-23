@@ -9,7 +9,7 @@ with an SPRT result behind it, and the commit body carries the new `Bench:`.
 only what an agent gets wrong before it has read either.
 
 This branch also carries a refactoring programme. Its analysis and roadmap are kept out of
-the distribution; what ships is [docs/](docs/README.md) and the gates. The rule that
+the distribution; what ships is [docs/](docs/index.md) and the gates. The rule that
 programme runs under is absolute:
 
 > **Every refactor must keep or improve performance. Even a very small regression is
@@ -120,13 +120,13 @@ count how often the code runs; predict the taken-rate of any branch you add and 
 a regression; measure instructions on both compilers; diff symbol sizes when a small change
 moves the number a lot; prove neutrality with a preprocessor hash where a guard makes it
 possible; and only then reach for cycles.
-[docs/11-performance.md](docs/11-performance.md) carries each step with its command.
+[docs/performance.md](docs/performance.md) carries each step with its command.
 
 A sign that **flips between gcc and clang** means the change is not an instruction-count change
 at all -- it is one compiler's layout. A header change on this tree reads as a regression under
 gcc `-O3` and an improvement under clang, on identical source with an identical node count.
 Measure the grid -- two tiers, two compilers, both build modes -- rather than one cell of it;
-[docs/11-performance.md](docs/11-performance.md) carries the loop that does it.
+[docs/performance.md](docs/performance.md) carries the loop that does it.
 
 `make profile-build` is what ships and what fishtest measures, so PGO is the binding lane: a
 refactor free under PGO and costly under plain `-O3` on one compiler has cost no player
@@ -159,8 +159,8 @@ is not merely blind to a locality win -- it reports it with the wrong sign. Neve
 `perfbudget.sh` alone veto a change whose claim is locality, prefetch, or latency hiding.
 
 What each axis proves and what it cannot see is in
-[docs/11-performance.md](docs/11-performance.md); every other gate is in
-[docs/10-tooling-ci.md](docs/10-tooling-ci.md) or on the page whose subject it holds.
+[docs/performance.md](docs/performance.md); every other gate is in
+[docs/tooling-ci.md](docs/tooling-ci.md) or on the page whose subject it holds.
 
 **Check the gate's EXIT CODE, never a piped fragment.** `cmd | tail -1` reads 0 from `tail`
 while the gate is red. A gate that SKIPPED for a missing tool proves nothing -- never report
@@ -184,7 +184,7 @@ it as a pass.
 | **A default `perfcounters.sh` run may never execute the tier a player builds.** `x86-64-avx512icl` is a separate ARCH from `x86-64-vnni512` -- GFNI, VBMI, VBMI2, BITALG, VPOPCNTDQ -- and code guarded on those compiles out below it. Read the default before trusting it, and name the tier beside any match. | `grep -m1 '^TIERS=' tests/perfcounters.sh` |
 | **`perft.sh` counts are facts about chess**, not a golden. A mismatch is always a movegen bug, never an update candidate. | `tests/perft.sh` |
 | **`tune.h` requires tunable constants to be non-`const`**, and `types.h` includes it after its own `#endif`, outside the guard, for global visibility. No committed file uses `TUNE(...)`, so a grep for consumers finds none -- and removing the include on that evidence taxes every future SPSA run. | `src/engine/types.h` |
-| **A type is free while a value is CARRIED** -- produced, stored, passed, indexed with -- and can cost when many are LIVE AT ONCE in one large function, because that is a register-allocation problem. Type an index space whose swap would not fault; do not type a quantity that is computed with. `using Depth = int` is correct and deliberate. | `docs/09-type-design.md` |
+| **A type is free while a value is CARRIED** -- produced, stored, passed, indexed with -- and can cost when many are LIVE AT ONCE in one large function, because that is a register-allocation problem. Type an index space whose swap would not fault; do not type a quantity that is computed with. `using Depth = int` is correct and deliberate. | `docs/type-design.md` |
 | **The bench is a fixed position list.** A divergence off those positions is invisible to the anchor, and perft cannot see a key that desyncs and resyncs. | neither gate is a faithfulness proof |
 
 ## Fleets and subagents
@@ -252,7 +252,7 @@ change is not confined to one. A breaking change to a UCI option or an exported 
 Body wrapped at 80, carrying the evidence: gate output and exit code, not "should work". A
 change that moves the bench signature must say what moved it and carry the new `Bench:`.
 
-**Write the body to the rules in [docs/13-writing.md](docs/13-writing.md).** A commit message is
+**Write the body to the rules in [docs/writing.md](docs/writing.md).** A commit message is
 the one surface where history is the subject rather than the contamination, and that licence
 covers the change -- not the prose. No capitalised shouting to mark a section, no paragraph
 describing what the commit does or does not establish, no summary of the body above it. State
@@ -260,7 +260,7 @@ the fact and stop.
 
 **No footer names a non-author.** The footers this branch writes are `Bench:` and
 `BREAKING CHANGE:`; `closes` and a human `Co-authored-by:` follow
-[docs/13-writing.md](docs/13-writing.md). Never a `Co-Authored-By:` for a tool or an assistant,
+[docs/writing.md](docs/writing.md). Never a `Co-Authored-By:` for a tool or an assistant,
 and never a generated-by advertisement of any kind: a footer naming a non-author is a false
 claim about who wrote the change, and every blame view repeats it forever. Configure tooling
 that appends one by default not to, rather than stripping it in a later rewrite.

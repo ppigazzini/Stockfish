@@ -6,7 +6,7 @@ them it cannot.
 `src/engine/types.h` owns most of it; `src/engine/basetypes.h` owns `TypedKey` and the
 `KeySpace` enumerators, `src/engine/history.h` the history clamps, and
 `src/engine/position.h` the key accessors. The theory each family rests on is linked in
-[12-references.md](12-references.md).
+[references.md](references.md).
 
 Audience: anyone adding a type or changing an encoding.
 
@@ -363,7 +363,7 @@ A hypothetical `Depth::operator*` returning one type leaves the other five needi
 escape, and the choice that serves all six -- depth times an int giving an int -- turns any
 depth into any integer.
 **A type that needs six output types needs none.** Units-of-measure systems solve this with
-unit polymorphism, which C++ cannot express; see [12-references.md](12-references.md).
+unit polymorphism, which C++ cannot express; see [references.md](references.md).
 
 ## The cost of a type here
 
@@ -374,7 +374,7 @@ A wrapper is not free, and the direction is not predictable from the source.
 > function**, because that is a register-allocation problem and the wrapper perturbs it.
 
 `Search::Worker::search` is the largest function in the tree and holds many live values, which
-is exactly the shape the rule warns about -- [02-engine-search.md](02-engine-search.md) carries
+is exactly the shape the rule warns about -- [engine-search.md](engine-search.md) carries
 the command that measures it. The rule is about what a function *holds*, not what it is
 *parameterised by*: a template argument occupies no register, which is why `NodeType` costs
 nothing on the hottest function in the engine while a runtime flag in the same position would
@@ -463,7 +463,7 @@ it.**
 
 | gate | what it proves here | owned by |
 |---|---|---|
-| `tests/negative_control.sh` | a type introduced so that a wrong spelling stops compiling actually refuses it -- and every legal spelling still compiles | [10-tooling-ci.md](10-tooling-ci.md) |
+| `tests/negative_control.sh` | a type introduced so that a wrong spelling stops compiling actually refuses it -- and every legal spelling still compiles | [tooling-ci.md](tooling-ci.md) |
 
 **One class of row mutates nothing, and it is where a new type's row goes.** A type introduced
 so that a wrong spelling stops compiling has no gate to redden -- the compiler is the gate. Such

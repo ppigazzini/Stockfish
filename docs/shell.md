@@ -129,7 +129,7 @@ first then dispatches onto the second's pool. `Engine::search_clear` carries a `
 same thing about `Tablebases::init`. Fixing it means giving the seams an owner, not a `ctx`.
 
 The full catalogue, with each default and what it costs, is in
-[00-architecture.md](00-architecture.md).
+[architecture.md](architecture.md).
 
 ## The command loop
 
@@ -221,7 +221,7 @@ grep -n 'options.add' src/shell/engine.cpp
 | `UCI_LimitStrength` | check | -- | switches `Skill Level` for `UCI_Elo` |
 | `UCI_Elo` | spin | -- | bounded by `Search::Skill::LowestElo`/`HighestElo` |
 | `UCI_ShowWDL` | check | -- | read per `info` line |
-| `SyzygyPath` | string | `Tablebases::init` | rescans and remaps ([05-tablebases.md](05-tablebases.md)) |
+| `SyzygyPath` | string | `Tablebases::init` | rescans and remaps ([tablebases.md](tablebases.md)) |
 | `SyzygyProbeDepth` | spin | -- | Step 6's `probeDepth` |
 | `Syzygy50MoveRule` | check | -- | `Rule50` and `tbConfig.useRule50` |
 | `SyzygyProbeLimit` | spin | -- | a **ceiling**, clamped down to what is on disk |
@@ -356,15 +356,15 @@ changes the number without changing the engine. That is why the position list is
 **A line in the fen file containing `setoption` is passed through rather than treated as a
 position.** That is how a caller configures the engine inside the measured region --
 `tests/perfbudget.sh --syzygy` writes a `SyzygyPath` line at the top of its generated file, which is
-why the table load lands inside the profile ([05-tablebases.md](05-tablebases.md)).
+why the table load lands inside the profile ([tablebases.md](tablebases.md)).
 
 **It is single-threaded by default on purpose.** A multi-threaded search is non-deterministic
-by design ([04-multithreading.md](04-multithreading.md)), so a multi-threaded bench could not
+by design ([multithreading.md](multithreading.md)), so a multi-threaded bench could not
 be a signature.
 
 Every commit that changes the search must carry the new `Bench:` in its message. That is what
 makes the number a permanent record rather than a local check --
-[10-tooling-ci.md](10-tooling-ci.md) shows the gates reading it back out of `git log`.
+[tooling-ci.md](tooling-ci.md) shows the gates reading it back out of `git log`.
 
 `speedtest` is the other benchmark and it is not a signature: `setup_benchmark` derives threads,
 hash and duration from what the host has and clamps every one of them, reporting each clamp. The
@@ -376,7 +376,7 @@ histories and accumulator caches.
 
 `go perft N` counts leaf nodes at depth N -- no evaluation, no transposition table, no
 pruning. It is the move generator alone, which makes it the one measurement that isolates
-[the board zone](01-engine-board.md). `UCIEngine::perft` runs it through `Engine::perft`, which
+[the board zone](engine-board.md). `UCIEngine::perft` runs it through `Engine::perft`, which
 takes the FEN and the `UCI_Chess960` flag rather than sharing the live position.
 
 Its counts are **facts about chess**, not a golden. A mismatch is always a movegen bug.

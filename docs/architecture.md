@@ -1,7 +1,7 @@
 # Architecture
 
 What is in `src/`, how one search flows through it, and what depends on what. For the gates
-see [10-tooling-ci.md](10-tooling-ci.md); for building and usage see the
+see [tooling-ci.md](tooling-ci.md); for building and usage see the
 [wiki](https://github.com/official-stockfish/Stockfish/wiki).
 
 Audience: anyone changing more than one file.
@@ -52,35 +52,35 @@ the only description of it in the set.
 
 | File | Owns | Page |
 |---|---|---|
-| `engine/types.h` | the value domain: `Color`, `Square`, `Piece`, `Move`, `Value`, `Key`, `Bitboard`, `Depth` | [01](01-engine-board.md), [09](09-type-design.md) |
-| `engine/basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, `TypedKey<KeySpace>`, `RelaxedAtomic`, `mul_hi64` | [09](09-type-design.md) |
+| `engine/types.h` | the value domain: `Color`, `Square`, `Piece`, `Move`, `Value`, `Key`, `Bitboard`, `Depth` | [01](engine-board.md), [09](type-design.md) |
+| `engine/basetypes.h` | the type vocabulary: the integer aliases, `ValueList`, `MultiArray`, `TypedKey<KeySpace>`, `RelaxedAtomic`, `mul_hi64` | [09](type-design.md) |
 | `engine/prng.h` | `PRNG`: the xorshift `Skill::pick_best` draws from, seeded from the clock. The Zobrist keys use a `constexpr` copy of the same generator in `position.cpp` | here |
-| `engine/bitboard.h/.cpp`, `engine/attacks.h/.cpp` | square sets and the slider/leaper attack tables | [01](01-engine-board.md) |
-| `engine/position.h/.cpp` | the board, `StateInfo`, `do_move`/`undo_move`, Zobrist keys, `see_ge` | [01](01-engine-board.md) |
-| `engine/movegen.h/.cpp`, `engine/movepick.h/.cpp` | move generation and the staged picker | [01](01-engine-board.md), [02](02-engine-search.md) |
-| `engine/search.h/.cpp` | `Search::Worker`, iterative deepening, alpha-beta, quiescence | [02](02-engine-search.md) |
-| `engine/search_go.h/.cpp` | a depth-limited search from a FEN with no host registered, on one worker or on several | [02](02-engine-search.md) |
+| `engine/bitboard.h/.cpp`, `engine/attacks.h/.cpp` | square sets and the slider/leaper attack tables | [01](engine-board.md) |
+| `engine/position.h/.cpp` | the board, `StateInfo`, `do_move`/`undo_move`, Zobrist keys, `see_ge` | [01](engine-board.md) |
+| `engine/movegen.h/.cpp`, `engine/movepick.h/.cpp` | move generation and the staged picker | [01](engine-board.md), [02](engine-search.md) |
+| `engine/search.h/.cpp` | `Search::Worker`, iterative deepening, alpha-beta, quiescence | [02](engine-search.md) |
+| `engine/search_go.h/.cpp` | a depth-limited search from a FEN with no host registered, on one worker or on several | [02](engine-search.md) |
 | `engine/searchoptions.h` | the option snapshot a worker is built from | here |
-| `engine/history.h` | the history tables and their update rule | [02](02-engine-search.md) |
-| `engine/tt.h/.cpp` | the transposition table | [02](02-engine-search.md) |
-| `engine/timeman.h/.cpp` | the time budget | [02](02-engine-search.md) |
-| `engine/evaluate.h/.cpp` | the evaluation entry point and its trace | [03](03-engine-eval.md) |
-| `engine/nnue/` | the network: feature transformer, accumulator, layers, feature sets | [03](03-engine-eval.md) |
-| `engine/score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from | [02](02-engine-search.md) |
+| `engine/history.h` | the history tables and their update rule | [02](engine-search.md) |
+| `engine/tt.h/.cpp` | the transposition table | [02](engine-search.md) |
+| `engine/timeman.h/.cpp` | the time budget | [02](engine-search.md) |
+| `engine/evaluate.h/.cpp` | the evaluation entry point and its trace | [03](engine-eval.md) |
+| `engine/nnue/` | the network: feature transformer, accumulator, layers, feature sets | [03](engine-eval.md) |
+| `engine/score.h/.cpp` | the reported score, and the win-rate model (`win_rate_model`, `to_cp`) it is built from | [02](engine-search.md) |
 | `engine/hashing.h` | `hash_bytes`, arithmetic over bytes with no OS in it, so both zones can call it: the net's content hash from `engine/`, the shared-memory segment name from `platform/` | here |
 | `engine/arena.h`, `output_sink.h`, `tb_source.h`, `clock.h`, `parallel.h`, `worker_set.h`, `fatal.h` | the seams, catalogued below | here |
 | `engine/host.h`, `host.cpp` | `Host`, a snapshot of all seven registrations, and `current_host()` which takes one | here |
 | `engine/compiler.h` | what the COMPILER provides, not what the machine hosts: `RESTRICT`, `prefetch`, `IsLittleEndian`, `sf_always_inline`, `stringify`. In `engine/` for the same reason as `hashing.h` -- every zone spells the compiler, only the host spells the OS | here |
-| `platform/memory.h/.cpp` | aligned and large-page allocation | [06](06-platform.md) |
-| `platform/numa.h/.cpp`, `numa_shared.h`, `shm.h`, `shm_unix.h` | NUMA topology, replication, cross-process sharing | [06](06-platform.md) |
-| `platform/thread.h/.cpp`, `platform/thread_native.h` | the worker pool and the native thread with a chosen stack | [04](04-multithreading.md), [06](06-platform.md) |
-| `platform/syzygy/` | the tablebase prober | [05](05-tablebases.md) |
+| `platform/memory.h/.cpp` | aligned and large-page allocation | [06](platform.md) |
+| `platform/numa.h/.cpp`, `numa_shared.h`, `shm.h`, `shm_unix.h` | NUMA topology, replication, cross-process sharing | [06](platform.md) |
+| `platform/thread.h/.cpp`, `platform/thread_native.h` | the worker pool and the native thread with a chosen stack | [04](multithreading.md), [06](platform.md) |
+| `platform/syzygy/` | the tablebase prober | [05](tablebases.md) |
 | `platform/text.h/.cpp` | turning the host's text into values: `split`, `is_whitespace`, `remove_whitespace`, `str_to_size_t`, `read_file_to_string` | here |
 | `platform/misc.h/.cpp` | what only the shell asks for: the version strings, the logger, `CommandLine`, the utf-8 path conversions, the console | here |
-| `shell/main.cpp`, `shell/uci.h/.cpp`, `shell/ucioption.h/.cpp`, `shell/engine.h/.cpp` | the UCI transport, the option table, the session | [07](07-shell.md) |
-| `shell/benchmark.h/.cpp`, `shell/perft.h`, `shell/tune.h/.cpp` | bench positions, perft, SPSA tuning | [07](07-shell.md) |
+| `shell/main.cpp`, `shell/uci.h/.cpp`, `shell/ucioption.h/.cpp`, `shell/engine.h/.cpp` | the UCI transport, the option table, the session | [07](shell.md) |
+| `shell/benchmark.h/.cpp`, `shell/perft.h`, `shell/tune.h/.cpp` | bench positions, perft, SPSA tuning | [07](shell.md) |
 | `shell/console.h/.cpp` | `sync_cout`, `sync_endl` and the `dbg_*` counters -- the shell's own terminal | here |
-| `universal/` | per-ISA entry points for the runtime-dispatch binary | [06](06-platform.md) |
+| `universal/` | per-ISA entry points for the runtime-dispatch binary | [06](platform.md) |
 
 **`src/Makefile` is the authority on what is compiled.** `SRCS` is an explicit list, not a
 wildcard, so a file added to a zone directory and not to `SRCS` is in the tree and not in the
@@ -451,7 +451,7 @@ above spell them `host.<seam>`.
 **The limit.** With `SyzygyPath` set, `probe_wdl` is a live indirect call where upstream made a
 direct one, and **`bench` cannot see it** -- the bench list never probes, so a measurement there
 measures the guard rather than the call. Every performance gate in
-[10-tooling-ci.md](10-tooling-ci.md) drives `bench` by default, so none of them sets a
+[tooling-ci.md](tooling-ci.md) drives `bench` by default, so none of them sets a
 `SyzygyPath` and none of them costs this seam. `--syzygy DIR` is the answer, and
 `grep -ln -e '--syzygy' tests/*.sh` names every gate that takes it: `perfbudget.sh` for
 instructions, `perfdecomp.sh` and `perfcounters.sh` for the two axes that see a miss or a
@@ -555,7 +555,7 @@ and the races are typed rather than left undefined -- see `RelaxedAtomic` in
 `src/platform/thread.h` is not among them: the flags the pool shares with every worker are plain
 `std::atomic<bool>`, handed over by reference through `SharedState`.
 
-`bench` is single-threaded, so every value gate in [10-tooling-ci.md](10-tooling-ci.md) stays
+`bench` is single-threaded, so every value gate in [tooling-ci.md](tooling-ci.md) stays
 green while a data race is present. The sanitizer lanes are what cover it.
 
 ## The gates
@@ -570,7 +570,7 @@ different artifact, and each is blind where the next one sees.
 | `tests/linkcheck.sh` | no object built from an engine file references a symbol only a shell or platform object defines | this page |
 | `tests/enginelink.sh` | `engine/` links alone against a stub `main`, and every seam default actually runs | this page |
 | `tests/iwyu.sh` | the include set of each file is minimal, at three tiers | this page |
-| `tests/fuzzsearch.sh` | the search runs with no host registered at all | [02-engine-search.md](02-engine-search.md) |
+| `tests/fuzzsearch.sh` | the search runs with no host registered at all | [engine-search.md](engine-search.md) |
 
 An include check misses a template edge, a symbol check misses an inline header body, and the
 link misses what nothing calls. Run all four.

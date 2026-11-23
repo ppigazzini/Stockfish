@@ -74,7 +74,7 @@ deepest in its cluster.
 
 **The table is shared across threads with no lock.** Entries are written and read concurrently; a
 torn entry is possible and tolerated. `RelaxedAtomic` in `src/engine/basetypes.h` is what keeps
-that defined rather than undefined behaviour. See [04-multithreading.md](04-multithreading.md).
+that defined rather than undefined behaviour. See [multithreading.md](multithreading.md).
 
 Replacement weighs depth against age -- `depth8 - 8 * relative_age(generation8)`, lowest loses --
 so a shallow entry from an old generation is the cheapest thing to lose. `new_search` increments
@@ -175,7 +175,7 @@ returns plausible statistics -- a search that continues, returns a legal move, a
 worse. There is no assert to hit and no bound to exceed; the bench signature is the only thing that
 would notice. `InCheck` and `Capture` are scoped enums over `bool`, so the transposition has no
 spelling; the accessor inlines to the same two subscripts
-([09-type-design.md](09-type-design.md)).
+([type-design.md](type-design.md)).
 
 Two members are spelled `continuationHistory` and they are not the same thing:
 `SharedHistories::continuationHistory()` is a function returning the block,
@@ -189,13 +189,13 @@ git grep -n 'continuationHistory(' -- src
 of two because the index is a mask of the pawn key rather than a modulus. The same requirement on
 the per-bank size is a type rather than an assert: `SharedHistories` takes a `PowerOfTwo`, whose
 constructor is private and whose only factory is `PowerOfTwo::ceil`
-([04-multithreading.md](04-multithreading.md)).
+([multithreading.md](multithreading.md)).
 
 **The split between per-worker and shared decides the entry type.** `mainHistory`, `lowPlyHistory`,
 `captureHistory`, `continuationCorrectionHistory` and `ttMoveHistory` are `Worker` members, touched
 by one thread. The rest arrive through `SharedHistories&`, shared between the workers the host put
 in the same bank -- which bank is a `HistoryBankIndex`, an index into the engine's own map and not
-a handle on the host's topology ([04-multithreading.md](04-multithreading.md)). Those are the ones
+a handle on the host's topology ([multithreading.md](multithreading.md)). Those are the ones
 whose entries carry `StatsEntry`'s `Shared = true`, reached as `AtomicStats` for the continuation
 and pawn planes and spelled out inside `CorrectionBundle` for the four correction counters. That
 makes the entry a `RelaxedAtomic<T>`, so the race is defined rather than undefined. Moving a table
@@ -258,7 +258,7 @@ Under `USE_AVX512` the first sixteen elements go through `MoveSorter`, a registe
 insertion sort, and the scalar loop finishes the rest. **The two must produce the same order**,
 ties included, or that tier disagrees with every other tier on move ordering; nothing local checks
 it and the bench signature across the compile matrix is the whole proof
-([10-tooling-ci.md](10-tooling-ci.md)).
+([tooling-ci.md](tooling-ci.md)).
 
 The `skipQuiets` flag is a member `next_move` re-reads on every call rather than an argument fixed
 at construction, because the search sets it mid-node through `MovePicker::skip_quiet_moves`, called
@@ -271,7 +271,7 @@ that may have been skipped.
 `Search::SharedState` is everything a `Search::Worker` is built from. Six members: a
 `const SearchOptions&` snapshot, the transposition table, the shared history banks, a
 **`const Host&`**, and the two `std::atomic<bool>&` flags every worker watches. What each seam is
-and who installs it is in [00-architecture.md](00-architecture.md).
+and who installs it is in [architecture.md](architecture.md).
 
 **The `Host` does not stop here.** `Worker` holds no `SharedState` -- it unpacks one at
 construction, and `host` is unpacked with the rest onto `Worker::host`, which is the whole point of
@@ -424,7 +424,7 @@ Three things the shape makes visible:
 
 `delta` starts from the move's own `meanSquaredScore` and from `threadIdx % 8`, so **threads begin
 with different window widths** -- one of the ways Lazy SMP diverges
-([04-multithreading.md](04-multithreading.md)).
+([multithreading.md](multithreading.md)).
 
 Output during a fail is throttled by node count rather than depth, and only in single-PV: a
 re-search reports when `mainThread && multiPV == 1 && nodes > NODES_LIMIT_OUTPUT`, because depth is
@@ -614,7 +614,7 @@ Fuzz the search **in-process**, against engine objects only, under ASan and UBSa
 ./tests/fuzzsearch.sh --seconds 600 --corpus .fuzz-corpus-search   # keep what it learns
 ```
 
-A different instrument from `tests/fuzz.py`'s harnesses ([10-tooling-ci.md](10-tooling-ci.md)), not a fourth one of them. Those drive the
+A different instrument from `tests/fuzz.py`'s harnesses ([tooling-ci.md](tooling-ci.md)), not a fourth one of them. Those drive the
 shipped binary's stdin, so a mutation spends most of its budget in the command parser -- the
 table above says so of `uci` outright. This one puts nothing between libFuzzer and the node
 body, and it is the only fuzzing in the tree that runs under sanitizers.
@@ -686,7 +686,7 @@ rather than passing.
 ./tests/tbfetch.sh && ./tests/fuzz.py --seconds 600 --harness tb
 ```
 
-**Every defect this harness has found is a `malformed.sh` fixture** ([05-tablebases.md](05-tablebases.md)), which is where a found
+**Every defect this harness has found is a `malformed.sh` fixture** ([tablebases.md](tablebases.md)), which is where a found
 defect goes: a seed reproduces a harness, a byte list reproduces a defect and survives the
 harness changing. What the fixtures cover is tabulated there.
 
