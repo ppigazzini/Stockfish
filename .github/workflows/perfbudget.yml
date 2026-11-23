@@ -49,7 +49,13 @@ jobs:
       # default to:
       #
       #   * all zeroes, on the first push to a new branch;
-      #   * unreachable, after a force-push rewrote it away.
+      #   * not an ancestor of HEAD, after a force-push rewrote it away. It can
+      #     still be a COMMIT here: the full-history checkout fetches every
+      #     branch and tag, and a rebased branch's old tip is usually still
+      #     named by one, so "the object exists" is not the test. Measured
+      #     against it, the gate compared two unrelated trees and went VOID on
+      #     their nets (run 45159632737: base d97ad571e, nn-1a298aa575a0 against
+      #     head's nn-bddd9d57eb87).
       #
       # The fallback is a real base rather than a skip. A skip here would be
       # reported as a pass by anything reading the exit code, and refish.yml
@@ -84,7 +90,8 @@ jobs:
               ''|*[!0]*) ;;
               *) base="" ;;
             esac
-            if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null \
+               || ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
               fork=$(git merge-base HEAD origin/master 2>/dev/null \
                      || git merge-base HEAD master 2>/dev/null || true)
               # A here-string, not a pipe into `grep -m1`: grep closes the pipe
