@@ -378,6 +378,44 @@ if selected docslint-gates; then
     restore
 fi
 
+# --------------------------------------------------------------- site
+
+row site static
+if selected site; then
+    echo "negative-control: site        -- the llms.txt manifest apart from the docs"
+    # The gate reads mkdocs.yml with the PyYAML of the environment `uv sync --group
+    # docs` writes, and exits 2 without it. Run it there or skip: a bare python3
+    # raising ImportError would exit 1 and read as a detection. Each half requires
+    # exit 1 AND the finding it planted, so a different finding is not a pass.
+    if [ -x .venv/bin/python ] && .venv/bin/python -c 'import yaml' 2>/dev/null; then
+        mutate mkdocs.yml \
+            '- tablebases.md: "`platform/syzygy/`"' \
+            '- tablebases.md: "the Syzygy prober"'
+        rc=0; out=$(.venv/bin/python tests/site.py 2>&1) || rc=$?
+        if [ "$rc" = 1 ] && grep -q 'llmstxt line for tablebases.md' <<< "$out"; then
+            echo "  ok, red (1)"; PASS=$((PASS+1))
+        else
+            echo "  NOT DETECTED -- an llms.txt line apart from its Owns cell (exit $rc)"
+            FAIL=$((FAIL+1))
+        fi
+        restore
+        mutate mkdocs.yml \
+            '          - shell.md: "`shell/main`, `uci`, `ucioption`, `engine`, `benchmark`, `perft`, `tune`"
+' \
+            ''
+        rc=0; out=$(.venv/bin/python tests/site.py 2>&1) || rc=$?
+        if [ "$rc" = 1 ] && grep -q "do not list the nav's pages" <<< "$out"; then
+            echo "  ok, red (2)"; PASS=$((PASS+1))
+        else
+            echo "  NOT DETECTED -- a page dropped from the llms.txt sections (exit $rc)"
+            FAIL=$((FAIL+1))
+        fi
+        restore
+    else
+        echo "  SKIPPED -- no .venv with PyYAML; run uv sync --group docs"; SKIP=$((SKIP+1))
+    fi
+fi
+
 row fingerprint
 if selected fingerprint; then
     if ! command -v valgrind >/dev/null; then

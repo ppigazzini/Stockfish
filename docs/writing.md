@@ -159,10 +159,23 @@ life.
 
 ### Pages
 
-`index.md` is the index, the page a reader lands on. Every other page is named for what it
-holds, and the order a reader meets them in is the index table's alone: a contributor works
-down from the architecture into a zone. Each owns one part of `src/`, names it in the opening
-lines, and names its audience.
+`index.md` is the index, and the home page of the site. Every other page is named for what it
+holds, and the order a reader meets them in is the site's nav alone: a contributor works down
+from the architecture into a zone. Each owns one part of `src/`, names it in the opening lines,
+and names its audience.
+
+**The set is published** at <https://ppigazzini.github.io/Stockfish/>, with `llms.txt` and
+`llms-full.txt` for a reader that is not a browser. Zensical builds it from `mkdocs.yml`, and
+the `Site` workflow deploys it on each push to `refish`. A page added is a line of the `nav`
+and a line of the `llmstxt` sections, the second the page's Owns cell in the index table;
+`tests/site.py` refuses the three apart, then copies the pages to `site-src/` with each link
+that leaves `docs/` pointed at its file on GitHub, since the site holds only the pages. It
+exits 1 on a finding and 2 without the `docs` group's PyYAML. Locally:
+
+```sh
+uv sync --group docs
+uv run --no-sync python tests/site.py && uv run --no-sync zensical serve
+```
 
 A page is **hot** when it describes code that moves and **cold** when what it describes barely
 does. The index table carries the temperature, and the temperature is a prediction of where to
@@ -295,6 +308,7 @@ git log -n 200 --format='%b' master | grep -c '^closes https://github.com/'
 | `tests/docslint.sh` | the mechanical half of documentation rot: links, named paths, a pinned signature, an undiscoverable gate, and the two lists a gate can derive | this page |
 | `tests/anchor.sh` | the commit record carries a `Bench:` a lane can read, and carries nothing else that looks like one | this page |
 | `tests/devcite.sh` | citations into the untracked working area resolve, and the rebase-fragile ones carry their subject | this page |
+| `tests/site.py` | the site's `llms.txt` sections list the nav's pages in its order, each with its index-table Owns cell, and the nav lists every page | this page |
 
 ### `tests/docslint.sh`
 

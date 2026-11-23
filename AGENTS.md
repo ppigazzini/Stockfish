@@ -24,10 +24,11 @@ make -j profile-build ARCH=...       # PGO+LTO -- what actually ships, far slowe
 make help                            # every ARCH
 ```
 
-The Python gates need no third-party package. They used to: `tests/testing.py` imported
-`requests` for one download, so a fresh checkout got `ModuleNotFoundError` from a gate that then
-proved nothing rather than reporting a finding. It is `urllib.request` now, so a bare `python3`
-is enough:
+The Python gates need no third-party package, `tests/site.py` aside: it reads `mkdocs.yml` with
+the PyYAML of the `docs` group (`uv sync --group docs`) and exits 2 without it. They used to:
+`tests/testing.py` imported `requests` for one download, so a fresh checkout got
+`ModuleNotFoundError` from a gate that then proved nothing rather than reporting a finding. It
+is `urllib.request` now, so a bare `python3` is enough for the rest:
 
 ```sh
 uv sync                                       # ruff, ty, pre-commit -- for the hooks, not the gates

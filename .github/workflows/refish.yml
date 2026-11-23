@@ -129,8 +129,9 @@ jobs:
   # A SKIP IS NOT A PASS. The script's own header says a skipped row leaves the
   # status at 0, so the step reads the skipped count and fails on any skip it did
   # not expect. Every static row runs on a hosted runner with no extra tools but
-  # the lockfile checker the `actionslock` row drives, which the job installs, so
-  # the expected count is zero.
+  # two the job installs -- the lockfile checker the `actionslock` row drives, and
+  # the `docs` group whose PyYAML the `site` row's gate reads mkdocs.yml with --
+  # so the expected count is zero.
   NegativeControl:
     name: Negative control (static rows)
     runs-on: ubuntu-24.04
@@ -144,6 +145,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh extension install github/gh-actions-lock --pin v0.5.1
+      # The environment the Site workflow runs the site gate in, from the lock.
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          version: "0.13.9"
+          python-version: "3.12"
+          enable-cache: false
+      - name: Install the docs group
+        run: uv sync --locked --group docs
       - name: Break each static gate on purpose and require it to notice
         env:
           GH_TOKEN: ${{ github.token }}

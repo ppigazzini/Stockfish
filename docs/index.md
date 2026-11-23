@@ -15,10 +15,10 @@ is the claim this set makes about it.
 | [shell.md](shell.md) | `shell/main`, `uci`, `ucioption`, `engine`, `benchmark`, `perft`, `tune` | the UCI surface and options | hot |
 | [idiomatic-cpp.md](idiomatic-cpp.md) | the C++17 this tree commits to, the spellings that measured, and the detector for each | hot-path and build contributors | hot |
 | [type-design.md](type-design.md) | the value domain: what each quantity means and which are distinguishable | anyone adding a type or changing an encoding | cold |
-| [tooling-ci.md](tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
 | [performance.md](performance.md) | the seven axes, what each proves and what it cannot see; `fingerprint.sh` | anyone measuring a refactor or an optimisation | hot |
+| [tooling-ci.md](tooling-ci.md) | `tests/`, `scripts/`, `.github/workflows/` | anyone adding or running a gate | hot |
 | [references.md](references.md) | external links: chess programming, C++17, Make, LTO, gates | all developers | cold |
-| [writing.md](writing.md) | technical writing: pages, code comments, commit messages | anyone writing prose about this code | cold |
+| [writing.md](writing.md) | technical writing: pages, code comments, commit messages; the site they are published as | anyone writing prose about this code | cold |
 | [glossary.md](glossary.md) | the vocabulary, in tiers | all contributors | cold |
 
 **The zone pages do not cover every file, and [architecture.md](architecture.md)'s layout
@@ -38,8 +38,9 @@ the policy parser, the shared mapping -- and `multithreading.md` owns **why the 
 around it**, which is why a worker takes a `HistoryBankIndex` rather than a topology handle.
 Each links to the other for the half it does not own.
 
-Each page is named for what it holds, and the order a reader meets them in is this table's
-alone: a contributor works down from the architecture into a zone.
+Each page is named for what it holds, and the order a reader meets them in is the site's nav,
+which this table follows: a contributor works down from the architecture into a zone. The set
+is published as a site with `llms.txt`; [writing.md](writing.md) says how.
 
 Building, usage, UCI commands and user-facing terminology are the
 [wiki](https://github.com/official-stockfish/Stockfish/wiki)'s.

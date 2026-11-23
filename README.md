@@ -77,6 +77,13 @@ The [section on Stockfish][programmingsf-link] describes many features
 and techniques used by Stockfish. However, it is generic rather than
 focused on Stockfish's precise implementation.
 
+This tree's developer documentation is [docs/](docs/index.md): the architecture,
+each subsystem, and the gates that hold them. It is published at
+<https://ppigazzini.github.io/Stockfish/> with
+[`llms.txt`](https://ppigazzini.github.io/Stockfish/llms.txt) (a manifest of the
+pages) and [`llms-full.txt`](https://ppigazzini.github.io/Stockfish/llms-full.txt)
+(their full text) per the [llmstxt.org](https://llmstxt.org) convention.
+
 The engine testing is done on [Fishtest][fishtest-link].
 If you want to help improve Stockfish, please read this [guideline][guideline-link]
 first, where the basics of Stockfish development are explained.

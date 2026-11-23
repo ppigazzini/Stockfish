@@ -47,6 +47,7 @@ subject it holds.
 | "this gate can still fail" | `tests/negative_control.sh` | a gate with no row, which is simply absent from it | this page |
 | "every gate runs somewhere" | `tests/lanecheck.sh` | whether the gate asserts anything once it runs | this page |
 | "the docs are not rotten" | `tests/docslint.sh` | whether a sentence is false | [writing.md](writing.md) |
+| "the site's manifest is the docs'" | `tests/site.py` | whether a page's line says anything true -- it holds the manifest to the index table, not to the page | [writing.md](writing.md) |
 | "the citations resolve" | `tests/devcite.sh` | whether the SHA names the commit the sentence means | [writing.md](writing.md) |
 | "the actions are pinned" | `tests/actionpins.sh`, `gh actions-lock --verify` | whether a pin is the latest release -- Dependabot proposes it, never gated | this page |
 | "the commit record is readable by a lane" | `tests/anchor.sh` | bodies a shallow clone did not fetch | [writing.md](writing.md) |
@@ -444,6 +445,7 @@ entry for the six that build or publish rather than check.
 | `docs.yml` | `docslint.sh`, `lanecheck.sh`, `shellcheck.sh`, `buildcoverage.sh`, `depcheck.sh`, `actionpins.sh` and `gh actions-lock --verify`, `anchor.sh`, then `linkcheck.sh` and `enginelink.sh` |
 | `fuzz.yml` | nightly: all four `fuzz.py` harnesses -- `uci`, `tb`, `net`, `shm` -- one job each, then `fuzzsearch.sh`, over the corpus `tbfetch.sh` writes |
 | `platformbattery.yml` | the functional battery on Linux arm64 and Windows arm64: `signature.sh` on both, `uci_driver.py`, `instrumented.py` and `malformed.sh` on Linux only, over the corpus `tbfetch.sh` writes |
+| `site.yml` | **the documentation site**, on a push to `refish` or `github_ci`: `site.py` refuses an `llms.txt` manifest apart from the nav or the index table and writes `site-src/`, then `zensical build --strict` builds it, failing on a dead link, a missing anchor or a page off the nav; a push to `refish` deploys it to GitHub Pages ([writing.md](writing.md)) |
 
 **`docs.yml` also audits the workflows themselves** with `uvx zizmor==1.33.0 .github/`: template
 injection, persisted credentials, over-broad permissions, unpinned actions and dangerous
@@ -552,6 +554,8 @@ flowchart LR
     RF --> OTH
     RF --> PBAT["platformbattery.yml"]
     RF --> NC["negative_control.sh<br/>(static rows)"]
+    R --> SITE["site.yml"]
+    SITE --> G9["site.py"]
     PBAT --> G8["signature.sh<br/>uci_driver.py perft<br/>uci_driver.py repro<br/>instrumented.py<br/>malformed.sh (Linux only)"]
     N(["nightly cron"]) --> FZ["fuzz.yml"]
     T --> G1["signature.sh<br/>perft.sh<br/>reprosearch.sh"]

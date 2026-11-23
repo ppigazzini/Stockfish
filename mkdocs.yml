@@ -1,0 +1,135 @@
+site_name: Stockfish
+site_description: "Stockfish is a free and strong UCI chess engine derived from Glaurung 2.1 that analyzes chess positions and computes the optimal moves."
+site_url: https://ppigazzini.github.io/Stockfish/
+repo_url: https://github.com/ppigazzini/Stockfish
+repo_name: ppigazzini/Stockfish
+copyright: "Stockfish is free software under the GNU General Public License v3."
+
+# The pages are built from site-src/, which `tests/site.py` writes from docs/: the same
+# pages, with each link that leaves docs/ pointed at its file on GitHub. Run it first.
+docs_dir: site-src
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - navigation.footer
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+# The order a reader meets the pages in. A page added is a line here and a line of the
+# llmstxt sections below, whose text is the page's Owns cell in the docs/index.md table;
+# `tests/site.py` refuses the three apart.
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Engine:
+      - Board: engine-board.md
+      - Search: engine-search.md
+      - Evaluation: engine-eval.md
+      - Multithreading: multithreading.md
+      - Tablebases: tablebases.md
+  - Runtime:
+      - Platform: platform.md
+      - Shell: shell.md
+  - Practice:
+      - Idiomatic C++: idiomatic-cpp.md
+      - Type design: type-design.md
+      - Performance: performance.md
+  - Tooling and CI: tooling-ci.md
+  - Reference:
+      - References: references.md
+      - Technical writing: writing.md
+      - Glossary: glossary.md
+
+# Every check the builder makes on a link and on the nav, raised to a warning so that --strict
+# fails the build on it: a page or an anchor a link names that does not exist, a page under
+# docs/ that no nav entry lists, and a link the builder cannot read as one to a page.
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  # A diagram is a `mermaid` block, text the page carries: the theme loads Mermaid on a page
+  # holding one and draws it in the site's palette, light or dark, and GitHub draws the same
+  # block.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  # A heading's anchor is the one GitHub gives it, so a `page.md#anchor` link resolves on the
+  # site and on GitHub alike: an em dash between two words leaves both spaces as hyphens.
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
+
+plugins:
+  - search
+  # Machine-readable view of the site: /llms.txt (a manifest mirroring the nav) and
+  # /llms-full.txt (the full content of every page it lists).
+  - llmstxt:
+      markdown_description: >-
+        Stockfish is a free and strong UCI chess engine derived from Glaurung 2.1, and fishtest
+        decides its strength: a functional change lands only with an SPRT result behind it. This
+        branch also carries a refactoring programme held to one rule, that every refactor keeps
+        or improves performance. These pages are its developer documentation: the architecture
+        and the zone boundary it holds, each subsystem of the engine and the runtime under it,
+        the C++ and the type design it commits to, the performance axes, and the gates and CI
+        that hold each claim.
+      full_output: llms-full.txt
+      sections:
+        Home:
+          - index.md: "The index: each page with what it owns, its audience and its temperature, how to find the page that owns any file, and what the documentation lint checks."
+        Architecture:
+          - architecture.md: "the file layout, the startup order, how a search flows, the seams, what depends on what"
+        Engine:
+          - engine-board.md: "`engine/types.h`, `bitboard`, `attacks`, `position`, `movegen`"
+          - engine-search.md: "`engine/search`, `search_go`, `tt`, `history`, `movepick`, `timeman`, `score`"
+          - engine-eval.md: "`engine/evaluate`, `engine/nnue/`"
+          - multithreading.md: "`platform/thread`; replication as the search sees it"
+          - tablebases.md: "`platform/syzygy/`"
+        Runtime:
+          - platform.md: "`platform/memory`, `numa`, `shm`, `thread_native`, `src/universal/`; the replication mechanism"
+          - shell.md: "`shell/main`, `uci`, `ucioption`, `engine`, `benchmark`, `perft`, `tune`"
+        Practice:
+          - idiomatic-cpp.md: "the C++17 this tree commits to, the spellings that measured, and the detector for each"
+          - type-design.md: "the value domain: what each quantity means and which are distinguishable"
+          - performance.md: "the seven axes, what each proves and what it cannot see; `fingerprint.sh`"
+        Tooling and CI:
+          - tooling-ci.md: "`tests/`, `scripts/`, `.github/workflows/`"
+        Reference:
+          - references.md: "external links: chess programming, C++17, Make, LTO, gates"
+          - writing.md: "technical writing: pages, code comments, commit messages; the site they are published as"
+          - glossary.md: "the vocabulary, in tiers"
