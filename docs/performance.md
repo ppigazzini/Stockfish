@@ -549,6 +549,13 @@ grep -m1 '^TIERS=' tests/perfcounters.sh          # what a default run covers
 instructions and loses IPC has moved a cache line; the budget scores that as free. This is the
 same asymmetry that makes `perfbudget.sh` report a locality win with the wrong sign.
 
+**The base is built once when it is upstream's own commit.** The ports measure against that
+commit too, and `tests/upstream_oracle.sh` keeps one build of it per compiler and ARCH in
+`../.upstream-oracle`, which they share. It is what this script's own recipe makes, byte for
+byte, so the base comes from there and only the head is compiled. A `--pgo` base is compiled
+here: two profile builds of one commit are two binaries. So is any base that is not an ancestor
+of `master`.
+
 It uses `perf_event_open` directly through `tests/perf_counters.cpp`, not the `perf` CLI, which
 is a separate package and absent on plenty of machines that can still count. That needs
 `perf_event_paranoid` at 2 or lower -- the usual default -- and a container needs `CAP_PERFMON`;
@@ -1045,6 +1052,37 @@ and the `Network::read_parameters` that swallows it, and `NNUE network evaluate`
 the `NetworkArchitecture::propagate` that survives at some tiers and folds in at others. Anchor
 on `Name::` when widening, or a bare identifier will claim same-named methods from the rows
 below it -- the file is first-match-wins.
+
+## The shared oracle
+
+Upstream's commit is the base of every comparison with upstream, here and in the ports, so it is
+built once and measured once.
+
+```sh
+tests/upstream_oracle.sh                                  # clang, at the merge-base with master
+ORACLE_COMP=gcc ORACLE_ARCH=x86-64-avx2 tests/upstream_oracle.sh
+tests/oracle_profile.sh "$(tests/upstream_oracle.sh)" 16 1 8
+tests/oracle_counters.py --comp gcc refish=src/stockfish fcfish=<gcc build>
+```
+
+`upstream_oracle.sh` archives a commit, builds it under a key of commit, compiler, ARCH, make
+target and patch, and installs it only when it benches that commit's own `Bench:`. A directory
+that exists is therefore finished and never stale.
+
+`oracle_profile.sh` takes an oracle's callgrind profile once and leaves it beside the binary. The
+profile is deterministic, so a second one says the same thing at fifty times the cost of the run.
+`perfdecomp.sh` reads it for its base, and the ports read the same file.
+
+`oracle_counters.py` does not keep a reading. Cycles, IPC, real cache misses and time depend on
+what the machine is doing, and are comparable only between runs interleaved with each other. Each
+round runs the oracle once and every named binary once, and pairs them with that one reading.
+
+**One compiler on both sides.** `oracle_counters.py` reads `.comment` and refuses a binary the
+oracle's compiler did not build. It cannot see a tier or a profile: name the ones the binary was
+built with, or the ratio measures the build.
+
+The three files are byte-identical here and in the ports, and `upstream_oracle.sh` warns when a
+copy differs.
 
 ## The gates
 

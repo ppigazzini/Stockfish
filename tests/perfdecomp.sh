@@ -183,11 +183,28 @@ if [ -n "$SYZYGY" ]; then
 fi
 echo
 
+# The base is UPSTREAM's own commit by default, and the ports build and profile that commit
+# too, so its binary and its profile are shared and taken once. Only without a profile: that
+# build is the one this script's own recipe makes, byte for byte, and a PGO build is not.
+# Anything else -- a refish base, a probing workload, no bash 4 -- is built and profiled here.
+shared_profile() {
+    local oracle
+    local out
+    [ "$PGO" = 0 ] && [ ${#BENCH_ARGS[@]} -eq 0 ] || return 1
+    git merge-base --is-ancestor "$BASE_SHA" master 2>/dev/null || return 1
+    oracle=$(ORACLE_COMP=$COMP ORACLE_ARCH=$ARCH ORACLE_JOBS=$JOBS \
+             tests/upstream_oracle.sh "$BASE_SHA") || return 1
+    out=$(tests/oracle_profile.sh "$oracle" "$TT" 1 "$DEPTH") || return 1
+    cp "$out" "$WORK/cg.base" && cp "$out.log" "$WORK/run-base.log" || return 1
+    cat "$out.nodes"
+}
+
 profile() {  # side -> writes $WORK/cg.$side, echoes the node count
     local side=$1
     local rev
     local dir
     rev=$([ "$side" = base ] && echo "$BASE_SHA" || echo "$HEAD_SHA")
+    if [ "$side" = base ] && shared_profile; then return 0; fi
     dir="$WORK/wt-$side/src"
     git worktree add --detach "$WORK/wt-$side" "$rev" >/dev/null 2>&1 || return 1
     cp src/*.nnue "$WORK/wt-$side/src/" 2>/dev/null

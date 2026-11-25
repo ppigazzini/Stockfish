@@ -248,6 +248,14 @@ build() {  # side arch -> binary path, or empty
     local arch=$2
     local dir="$WORK/wt-$side/src"
     local target=build
+    # The base is UPSTREAM's own commit by default, and the ports build that commit too. The
+    # shared build is this recipe's, byte for byte, so take it rather than make it again for
+    # every run. Only without a profile: two PGO builds of one commit are two binaries.
+    if [ "$side" = base ] && [ "$PGO" = 0 ] \
+       && git merge-base --is-ancestor "$BASE_SHA" master 2>/dev/null; then
+        ORACLE_COMP=$COMP ORACLE_ARCH=$arch ORACLE_JOBS=$JOBS \
+            tests/upstream_oracle.sh "$BASE_SHA" 2>> "$WORK/build-$side-$arch.log" && return 0
+    fi
     [ "$PGO" = 1 ] && target=profile-build
     ( cd "$dir" && make clean >/dev/null 2>&1 \
       && make -j"$JOBS" "$target" ARCH="$arch" COMP="$COMP" ) > "$WORK/build-$side-$arch.log" 2>&1 \

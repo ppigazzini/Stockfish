@@ -312,6 +312,9 @@ NOT_A_GATE=(
     "testing.py        the harness instrumented.py imports rather than a gate"
     "perfcounters_report.py  the aggregation half perfcounters.sh invokes rather than runs"
     "perfdecomp.py     the decomposition half perfdecomp.sh invokes rather than runs"
+    "upstream_oracle.sh  builds the binary the comparisons use as upstream; it compares nothing"
+    "oracle_profile.sh  the profile perfdecomp.sh reads for its base; it compares nothing"
+    "oracle_counters.py  a report: it exits 0 for any ratio"
 )
 
 # Emit `gate<TAB>page` for every row of a page's gates table; an empty page

@@ -107,7 +107,8 @@ cost. These seven do, and they are not interchangeable.
 is the upstream commit this branch forked from; the other four require it. Keep local `master`
 at `upstream/master` and never commit on it: there is no pin file to drift, so a commit of your
 own on `master` silently moves the baseline those two gates measure against, and every earlier
-number stops being comparable.
+number stops being comparable. That base is built once, shared with the ports, and kept in
+`../.upstream-oracle` by `tests/upstream_oracle.sh`; a `--pgo` base is not.
 
 **Measure with gcc AND clang, and let PGO decide.** One compiler cannot distinguish a change
 from its own codegen. Run `perfbudget.sh` with `--comp gcc` and `--comp clang`, and with

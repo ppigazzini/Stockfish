@@ -2210,6 +2210,9 @@ COVERAGE_EXCUSED_NAMES=(
   match.sh
   ltcab.sh
   ltcreplay.py
+  upstream_oracle.sh
+  oracle_profile.sh
+  oracle_counters.py
 )
 COVERAGE_EXCUSED_WHY=(
   "a wall-clock measurement rather than a pass/fail gate; it carries its own A/A control, which is the same check from the inside"
@@ -2224,6 +2227,9 @@ COVERAGE_EXCUSED_WHY=(
   "plays games under a time control; a planted defect would be scored by the same clock the box perturbs, so a control here measures the runner"
   "a wall-clock measurement rather than a pass/fail gate: it exits 0 for any ratio and 1 only when the two binaries' node totals differ, and that VOID refusal is the one perfbudget's row already covers. It runs each binary twice per depth, so it carries its own A/A control, as npsab's does"
   "the replay driver under ltcab.sh: it plays a fixed move list and reports nodes and time rather than asserting a property of the tree, so ltcab.sh's refusals are the pass/fail half and its row is the one that would cover them"
+  "builds the upstream binary rather than judging a tree; it refuses a build whose bench is not upstream's, which is the check it carries"
+  "takes a profile rather than judging a tree; it refuses a run that searched nothing"
+  "a report rather than a pass/fail gate: it exits 0 for any ratio, and refuses mixed compilers, mixed trees and a multiplexed counter"
 )
 
 echo
